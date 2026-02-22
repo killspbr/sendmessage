@@ -1,79 +1,56 @@
 import 'dotenv/config'
-import { createClient } from '@supabase/supabase-js'
-
-const supabaseUrl = process.env.SUPABASE_URL
-const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-
-if (!supabaseUrl || !supabaseServiceRoleKey) {
-  console.error('[scheduler] SUPABASE_URL ou SUPABASE_SERVICE_ROLE_KEY não configurados.')
-}
-
-const supabase = supabaseUrl && supabaseServiceRoleKey
-  ? createClient(supabaseUrl, supabaseServiceRoleKey, {
-      auth: { autoRefreshToken: false, persistSession: false },
-    })
-  : null
+import { query } from './db.js'
 
 const BACKEND_PUBLIC_URL = process.env.BACKEND_PUBLIC_URL || 'http://localhost:4000'
 
 async function processScheduledJobs() {
-  if (!supabase) return
-
   const nowIso = new Date().toISOString()
 
-  const { data: jobs, error } = await supabase
-    .from('scheduled_jobs')
-    .select('id, campaign_id')
-    .eq('status', 'pending')
-    .lte('scheduled_at', nowIso)
-    .limit(10)
+  try {
+    const jobsResult = await query(
+      'SELECT id, campaign_id FROM scheduled_jobs WHERE status = $1 AND scheduled_at <= $2 LIMIT 10',
+      ['pending', nowIso]
+    )
+    const jobs = jobsResult.rows;
 
-  if (error) {
-    console.error('[scheduler] Erro ao buscar scheduled_jobs:', error)
-    return
-  }
+    if (!jobs || jobs.length === 0) {
+      return
+    }
 
-  if (!jobs || jobs.length === 0) {
-    return
-  }
+    for (const job of jobs) {
+      console.log('[scheduler] Processando job', job.id, 'campanha', job.campaign_id)
 
-  for (const job of jobs) {
-    console.log('[scheduler] Processando job', job.id, 'campanha', job.campaign_id)
-
-    await supabase
-      .from('scheduled_jobs')
-      .update({ status: 'processing', started_at: new Date().toISOString() })
-      .eq('id', job.id)
-
-    try {
-      const resp = await fetch(
-        `${BACKEND_PUBLIC_URL}/api/campaigns/${job.campaign_id}/send`,
-        { method: 'POST' },
+      await query(
+        'UPDATE scheduled_jobs SET status = $1, started_at = $2 WHERE id = $3',
+        ['processing', new Date().toISOString(), job.id]
       )
 
-      if (!resp.ok) {
-        throw new Error(`HTTP ${resp.status}`)
+      try {
+        const resp = await fetch(
+          `${BACKEND_PUBLIC_URL}/api/campaigns/${job.campaign_id}/send`,
+          { method: 'POST' },
+        )
+
+        if (!resp.ok) {
+          throw new Error(`HTTP ${resp.status}`)
+        }
+
+        await query(
+          'UPDATE scheduled_jobs SET status = $1, completed_at = $2 WHERE id = $3',
+          ['completed', new Date().toISOString(), job.id]
+        )
+
+        console.log('[scheduler] Job', job.id, 'concluído com sucesso')
+      } catch (e) {
+        console.error('[scheduler] Erro ao processar job', job.id, e)
+        await query(
+          'UPDATE scheduled_jobs SET status = $1, error_message = $2 WHERE id = $3',
+          ['failed', String(e), job.id]
+        )
       }
-
-      await supabase
-        .from('scheduled_jobs')
-        .update({
-          status: 'completed',
-          completed_at: new Date().toISOString(),
-        })
-        .eq('id', job.id)
-
-      console.log('[scheduler] Job', job.id, 'concluído com sucesso')
-    } catch (e) {
-      console.error('[scheduler] Erro ao processar job', job.id, e)
-      await supabase
-        .from('scheduled_jobs')
-        .update({
-          status: 'failed',
-          error_message: String(e),
-        })
-        .eq('id', job.id)
     }
+  } catch (error) {
+    console.error('[scheduler] Erro ao buscar scheduled_jobs:', error)
   }
 }
 

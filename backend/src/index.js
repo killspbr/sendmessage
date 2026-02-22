@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
-import { supabase } from './supabaseClient.js';
+import { query } from './db.js';
+import { login, signup, authenticateToken } from './auth.js';
 
 const app = express();
 const port = process.env.PORT || 4000;
@@ -10,6 +11,350 @@ const N8N_WEBHOOK_URL =
 
 app.use(cors());
 app.use(express.json({ limit: '20mb' }));
+
+// --- ROTAS DE AUTENTICAÇÃO ---
+app.post('/api/auth/signup', signup);
+app.post('/api/auth/login', login);
+
+// A partir daqui, as rotas podem ser protegidas se necessário
+// app.use(authenticateToken); 
+
+app.get('/api/auth/me', authenticateToken, async (req, res) => {
+  try {
+    const result = await query('SELECT id, email, name FROM users WHERE id = $1', [req.user.id]);
+    res.json(result.rows[0]);
+  } catch (error) {
+    res.status(500).json({ error: 'Erro ao buscar perfil' });
+  }
+});
+
+// Configurações de Perfil
+app.get('/api/profile', authenticateToken, async (req, res) => {
+  try {
+    const result = await query('SELECT * FROM user_profiles WHERE id = $1', [req.user.id]);
+    res.json(result.rows[0] || {});
+  } catch (error) {
+    res.status(500).json({ error: 'Erro ao buscar perfil' });
+  }
+});
+
+app.get('/api/profile/full', authenticateToken, async (req, res) => {
+  try {
+    const profile = await query(
+      `SELECT up.*, ug.name as group_name 
+       FROM user_profiles up
+       LEFT JOIN user_groups ug ON up.group_id = ug.id
+       WHERE up.id = $1`,
+      [req.user.id]
+    );
+
+    const permissions = await query(
+      `SELECT p.code 
+       FROM user_profiles up
+       JOIN group_permissions gp ON up.group_id = gp.group_id
+       JOIN permissions p ON gp.permission_id = p.id
+       WHERE up.id = $1`,
+      [req.user.id]
+    );
+
+    res.json({
+      ...(profile.rows[0] || {}),
+      permission_codes: permissions.rows.map(r => r.code)
+    });
+  } catch (error) {
+    res.status(500).json({ error: 'Erro ao buscar perfil completo' });
+  }
+});
+
+app.post('/api/profile', authenticateToken, async (req, res) => {
+  try {
+    const { webhook_whatsapp_url, webhook_email_url } = req.body;
+    await query(
+      'INSERT INTO user_profiles (id, webhook_whatsapp_url, webhook_email_url) VALUES ($1, $2, $3) ON CONFLICT (id) DO UPDATE SET webhook_whatsapp_url = EXCLUDED.webhook_whatsapp_url, webhook_email_url = EXCLUDED.webhook_email_url',
+      [req.user.id, webhook_whatsapp_url, webhook_email_url]
+    );
+    res.json({ ok: true });
+  } catch (error) {
+    res.status(500).json({ error: 'Erro ao salvar perfil' });
+  }
+});
+
+// --- CRUD: CAMPANHAS ---
+app.get('/api/campaigns', authenticateToken, async (req, res) => {
+  try {
+    const result = await query(
+      'SELECT * FROM campaigns WHERE user_id = $1 ORDER BY created_at DESC',
+      [req.user.id]
+    );
+    res.json(result.rows);
+  } catch (error) {
+    res.status(500).json({ error: 'Erro ao buscar campanhas' });
+  }
+});
+
+app.post('/api/campaigns', authenticateToken, async (req, res) => {
+  try {
+    const { name, status, channels, list_name, message, interval_min_seconds, interval_max_seconds } = req.body;
+    const result = await query(
+      'INSERT INTO campaigns (user_id, name, status, channels, list_name, message, interval_min_seconds, interval_max_seconds) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *',
+      [req.user.id, name, status || 'rascunho', channels || [], list_name, message, interval_min_seconds || 30, interval_max_seconds || 90]
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (error) {
+    res.status(500).json({ error: 'Erro ao criar campanha' });
+  }
+});
+
+app.put('/api/campaigns/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, status, channels, list_name, message, interval_min_seconds, interval_max_seconds } = req.body;
+    const result = await query(
+      'UPDATE campaigns SET name = $1, status = $2, channels = $3, list_name = $4, message = $5, interval_min_seconds = $6, interval_max_seconds = $7 WHERE id = $8 AND user_id = $9 RETURNING *',
+      [name, status, channels, list_name, message, interval_min_seconds, interval_max_seconds, id, req.user.id]
+    );
+    res.json(result.rows[0]);
+  } catch (error) {
+    res.status(500).json({ error: 'Erro ao atualizar campanha' });
+  }
+});
+
+app.delete('/api/campaigns/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    await query('DELETE FROM campaigns WHERE id = $1 AND user_id = $2', [id, req.user.id]);
+    res.json({ ok: true });
+  } catch (error) {
+    res.status(500).json({ error: 'Erro ao deletar campanha' });
+  }
+});
+
+app.delete('/api/campaigns', authenticateToken, async (req, res) => {
+  try {
+    await query('DELETE FROM campaigns WHERE user_id = $1', [req.user.id]);
+    res.json({ ok: true });
+  } catch (error) {
+    res.status(500).json({ error: 'Erro ao resetar campanhas' });
+  }
+});
+
+// --- CRUD: LISTAS ---
+app.get('/api/lists', authenticateToken, async (req, res) => {
+  try {
+    const result = await query('SELECT * FROM lists WHERE user_id = $1 ORDER BY name ASC', [req.user.id]);
+    res.json(result.rows);
+  } catch (error) {
+    res.status(500).json({ error: 'Erro ao buscar listas' });
+  }
+});
+
+app.post('/api/lists', authenticateToken, async (req, res) => {
+  try {
+    const { name } = req.body;
+    const result = await query('INSERT INTO lists (user_id, name) VALUES ($1, $2) RETURNING *', [req.user.id, name]);
+    res.status(201).json(result.rows[0]);
+  } catch (error) {
+    res.status(500).json({ error: 'Erro ao criar lista' });
+  }
+});
+
+app.put('/api/lists/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name } = req.body;
+    const result = await query(
+      'UPDATE lists SET name = $1 WHERE id = $2 AND user_id = $3 RETURNING *',
+      [name, id, req.user.id]
+    );
+    res.json(result.rows[0]);
+  } catch (error) {
+    res.status(500).json({ error: 'Erro ao atualizar lista' });
+  }
+});
+
+app.delete('/api/lists/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    await query('DELETE FROM lists WHERE id = $1 AND user_id = $2', [id, req.user.id]);
+    res.json({ ok: true });
+  } catch (error) {
+    res.status(500).json({ error: 'Erro ao deletar lista' });
+  }
+});
+
+app.delete('/api/lists', authenticateToken, async (req, res) => {
+  try {
+    await query('DELETE FROM lists WHERE user_id = $1', [req.user.id]);
+    res.json({ ok: true });
+  } catch (error) {
+    res.status(500).json({ error: 'Erro ao resetar listas' });
+  }
+});
+
+// --- CRUD: CONTATOS ---
+app.get('/api/contacts', authenticateToken, async (req, res) => {
+  try {
+    const { listId } = req.query;
+    let sql = 'SELECT * FROM contacts WHERE user_id = $1';
+    let params = [req.user.id];
+
+    if (listId) {
+      sql += ' AND list_id = $2';
+      params.push(listId);
+    }
+
+    sql += ' ORDER BY name ASC';
+    const result = await query(sql, params);
+    res.json(result.rows);
+  } catch (error) {
+    res.status(500).json({ error: 'Erro ao buscar contatos' });
+  }
+});
+
+app.post('/api/contacts', authenticateToken, async (req, res) => {
+  try {
+    const { list_id, name, phone, email, category, cep, rating, address, city, state, instagram, facebook, whatsapp, website } = req.body;
+    const result = await query(
+      'INSERT INTO contacts (user_id, list_id, name, phone, email, category, cep, rating, address, city, state, instagram, facebook, whatsapp, website) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) RETURNING *',
+      [req.user.id, list_id, name, phone, email, category, cep, rating, address, city, state, instagram, facebook, whatsapp, website]
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (error) {
+    res.status(500).json({ error: 'Erro ao criar contato' });
+  }
+});
+
+app.put('/api/contacts/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, phone, email, category, cep, rating, address, city, state, instagram, facebook, whatsapp, website } = req.body;
+    const result = await query(
+      'UPDATE contacts SET name = $1, phone = $2, email = $3, category = $4, cep = $5, rating = $6, address = $7, city = $8, state = $9, instagram = $10, facebook = $11, whatsapp = $12, website = $13 WHERE id = $14 AND user_id = $15 RETURNING *',
+      [name, phone, email, category, cep, rating, address, city, state, instagram, facebook, whatsapp, website, id, req.user.id]
+    );
+    res.json(result.rows[0]);
+  } catch (error) {
+    res.status(500).json({ error: 'Erro ao atualizar contato' });
+  }
+});
+
+app.delete('/api/contacts/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    await query('DELETE FROM contacts WHERE id = $1 AND user_id = $2', [id, req.user.id]);
+    res.json({ ok: true });
+  } catch (error) {
+    res.status(500).json({ error: 'Erro ao deletar contato' });
+  }
+});
+
+app.delete('/api/contacts', authenticateToken, async (req, res) => {
+  try {
+    await query('DELETE FROM contacts WHERE user_id = $1', [req.user.id]);
+    res.json({ ok: true });
+  } catch (error) {
+    res.status(500).json({ error: 'Erro ao resetar contatos' });
+  }
+});
+
+// --- AGENDAMENTOS ---
+app.get('/api/schedules', authenticateToken, async (req, res) => {
+  try {
+    const result = await query(
+      `SELECT sj.*, c.name as campaign_name 
+       FROM scheduled_jobs sj 
+       JOIN campaigns c ON sj.campaign_id = c.id 
+       WHERE c.user_id = $1 
+       ORDER BY sj.scheduled_at DESC`,
+      [req.user.id]
+    );
+    res.json(result.rows);
+  } catch (error) {
+    res.status(500).json({ error: 'Erro ao buscar agendamentos' });
+  }
+});
+
+app.post('/api/schedules', authenticateToken, async (req, res) => {
+  try {
+    const { campaign_id, scheduled_at } = req.body;
+    const result = await query(
+      'INSERT INTO scheduled_jobs (campaign_id, scheduled_at) VALUES ($1, $2) RETURNING *',
+      [campaign_id, scheduled_at]
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (error) {
+    res.status(500).json({ error: 'Erro ao criar agendamento' });
+  }
+});
+
+// --- HISTÓRICO ---
+app.get('/api/history', authenticateToken, async (req, res) => {
+  try {
+    const result = await query(
+      'SELECT * FROM contact_send_history WHERE user_id = $1 ORDER BY run_at DESC',
+      [req.user.id]
+    );
+    res.json(result.rows);
+  } catch (error) {
+    res.status(500).json({ error: 'Erro ao buscar histórico de contatos' });
+  }
+});
+
+app.post('/api/history', authenticateToken, async (req, res) => {
+  try {
+    const { campaign_id, contact_name, phone_key, channel, ok, status, webhook_ok, run_at } = req.body;
+    const result = await query(
+      'INSERT INTO contact_send_history (user_id, campaign_id, contact_name, phone_key, channel, ok, status, webhook_ok, run_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *',
+      [req.user.id, campaign_id, contact_name, phone_key, channel, ok, status, webhook_ok, run_at || new Date().toISOString()]
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (error) {
+    res.status(500).json({ error: 'Erro ao salvar histórico de contato' });
+  }
+});
+
+app.delete('/api/history', authenticateToken, async (req, res) => {
+  try {
+    await query('DELETE FROM contact_send_history WHERE user_id = $1', [req.user.id]);
+    res.json({ ok: true });
+  } catch (error) {
+    res.status(500).json({ error: 'Erro ao resetar histórico de contatos' });
+  }
+});
+
+app.get('/api/campaigns/history', authenticateToken, async (req, res) => {
+  try {
+    const result = await query(
+      'SELECT * FROM campaign_history WHERE user_id = $1 ORDER BY run_at DESC',
+      [req.user.id]
+    );
+    res.json(result.rows);
+  } catch (error) {
+    res.status(500).json({ error: 'Erro ao buscar histórico de campanhas' });
+  }
+});
+
+app.post('/api/campaigns/history', authenticateToken, async (req, res) => {
+  try {
+    const { campaign_id, status, ok, total, error_count, run_at } = req.body;
+    const result = await query(
+      'INSERT INTO campaign_history (user_id, campaign_id, status, ok, total, error_count, run_at) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *',
+      [req.user.id, campaign_id, status, ok, total, error_count, run_at || new Date().toISOString()]
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (error) {
+    res.status(500).json({ error: 'Erro ao salvar histórico de campanha' });
+  }
+});
+
+app.delete('/api/campaigns/history', authenticateToken, async (req, res) => {
+  try {
+    await query('DELETE FROM campaign_history WHERE user_id = $1', [req.user.id]);
+    res.json({ ok: true });
+  } catch (error) {
+    res.status(500).json({ error: 'Erro ao resetar histórico de campanhas' });
+  }
+});
 
 // Trata erros de body muito grande ou requisição abortada
 app.use((err, req, res, next) => {
@@ -75,70 +420,53 @@ app.post('/api/ai/address-from-cep', async (req, res) => {
   }
 });
 
-// Dispara uma campanha por ID usando n8n, baseado no schema lists/contacts do Supabase
-app.post('/api/campaigns/:id/send', async (req, res) => {
+// Dispara uma campanha por ID usando n8n, baseado no schema lists/contacts do Postgres
+app.post('/api/campaigns/:id/send', authenticateToken, async (req, res) => {
   try {
-    if (!supabase) {
-      return res.status(500).json({ error: 'Supabase não configurado no backend.' });
-    }
-
     const campaignId = req.params.id;
     if (!campaignId) {
       return res.status(400).json({ error: 'campaignId é obrigatório.' });
     }
 
     // 1) Buscar campanha
-    const { data: campaign, error: campError } = await supabase
-      .from('campaigns')
-      .select('id, user_id, name, status, channels, list_name, message, interval_min_seconds, interval_max_seconds, created_at')
-      .eq('id', campaignId)
-      .single();
+    const campaignResult = await query(
+      'SELECT * FROM campaigns WHERE id = $1 AND user_id = $2',
+      [campaignId, req.user.id]
+    );
+    const campaign = campaignResult.rows[0];
 
-    if (campError || !campaign) {
-      console.error('Erro ao buscar campanha:', campError);
+    if (!campaign) {
       return res.status(404).json({ error: 'Campanha não encontrada.' });
     }
 
     // 2) Buscar lista pelo nome e user_id
-    const { data: list, error: listError } = await supabase
-      .from('lists')
-      .select('id, name')
-      .eq('user_id', campaign.user_id)
-      .eq('name', campaign.list_name)
-      .maybeSingle();
+    const listResult = await query(
+      'SELECT id, name FROM lists WHERE user_id = $1 AND name = $2',
+      [req.user.id, campaign.list_name]
+    );
+    const list = listResult.rows[0];
 
-    if (listError || !list) {
-      console.error('Erro ao buscar lista da campanha:', listError);
+    if (!list) {
       return res.status(400).json({ error: 'Lista da campanha não encontrada.' });
     }
 
     // 3) Buscar contatos da lista
-    const { data: contacts, error: contactsError } = await supabase
-      .from('contacts')
-      .select('id, name, phone, email, category, cep, rating')
-      .eq('user_id', campaign.user_id)
-      .eq('list_id', list.id);
+    const contactsResult = await query(
+      'SELECT id, name, phone, email, category, cep, rating FROM contacts WHERE user_id = $1 AND list_id = $2',
+      [req.user.id, list.id]
+    );
+    const contacts = contactsResult.rows;
 
-    if (contactsError) {
-      console.error('Erro ao buscar contatos da lista:', contactsError);
-      return res.status(500).json({ error: 'Falha ao carregar contatos da lista.' });
-    }
-
-    if (!contacts || contacts.length === 0) {
+    if (contacts.length === 0) {
       return res.status(400).json({ error: 'Lista não possui contatos para envio.' });
     }
 
     // 4) Buscar webhooks do perfil do usuário
-    const { data: userProfile, error: profileError } = await supabase
-      .from('user_profiles')
-      .select('webhook_whatsapp_url, webhook_email_url')
-      .eq('id', campaign.user_id)
-      .maybeSingle();
-
-    if (profileError) {
-      console.error('Erro ao buscar perfil do usuário:', profileError);
-      return res.status(500).json({ error: 'Falha ao carregar configurações do usuário.' });
-    }
+    const profileResult = await query(
+      'SELECT webhook_whatsapp_url, webhook_email_url FROM user_profiles WHERE id = $1',
+      [req.user.id]
+    );
+    const userProfile = profileResult.rows[0];
 
     console.log('[DEBUG] User ID:', campaign.user_id);
     console.log('[DEBUG] User Profile:', userProfile);
@@ -157,7 +485,7 @@ app.post('/api/campaigns/:id/send', async (req, res) => {
     // 5) Determinar canais efetivos
     const channels = Array.isArray(campaign.channels) ? campaign.channels : [];
     console.log('[DEBUG] Canais da campanha:', channels);
-    
+
     const effectiveChannels = channels.filter((ch) =>
       ch === 'whatsapp' ? !!webhookUrlWhatsApp.trim() : !!webhookUrlEmail.trim(),
     );
@@ -197,9 +525,9 @@ app.post('/api/campaigns/:id/send', async (req, res) => {
     const messageHtml = messageHtmlRaw.trim().startsWith('<')
       ? messageHtmlRaw
       : `<p style="margin:0; font-size:14px; line-height:1.5; color:#111827;">${messageHtmlRaw
-          .split('\n')
-          .map((line) => (line.trim().length === 0 ? '&nbsp;' : line))
-          .join('<br />')}</p>`;
+        .split('\n')
+        .map((line) => (line.trim().length === 0 ? '&nbsp;' : line))
+        .join('<br />')}</p>`;
 
     const messageText = htmlToText(messageHtml);
 
@@ -429,6 +757,136 @@ app.post('/api/n8n/trigger', async (req, res) => {
   } catch (error) {
     console.error('Erro ao chamar webhook n8n:', error);
     res.status(500).json({ error: 'Falha ao chamar webhook n8n.', details: error.message });
+  }
+});
+
+// --- PERMISSÕES E ADMIN ---
+
+// Retorna as permissões do usuário logado
+app.get('/api/permissions/me', authenticateToken, async (req, res) => {
+  try {
+    const result = await query(
+      `SELECT p.code 
+       FROM user_profiles up
+       JOIN group_permissions gp ON up.group_id = gp.group_id
+       JOIN permissions p ON gp.permission_id = p.id
+       WHERE up.id = $1`,
+      [req.user.id]
+    );
+    res.json(result.rows.map(r => r.code));
+  } catch (error) {
+    res.status(500).json({ error: 'Erro ao buscar permissões' });
+  }
+});
+
+// Listar todos os usuários (Admin)
+app.get('/api/admin/users', authenticateToken, async (req, res) => {
+  try {
+    const result = await query(
+      `SELECT up.*, ug.name as group_name
+       FROM user_profiles up
+       LEFT JOIN user_groups ug ON up.group_id = ug.id
+       ORDER BY up.id ASC`
+    );
+    res.json(result.rows);
+  } catch (error) {
+    res.status(500).json({ error: 'Erro ao buscar usuários' });
+  }
+});
+
+// Listar todos os grupos (Admin)
+app.get('/api/admin/groups', authenticateToken, async (req, res) => {
+  try {
+    const result = await query('SELECT * FROM user_groups ORDER BY name ASC');
+    res.json(result.rows);
+  } catch (error) {
+    res.status(500).json({ error: 'Erro ao buscar grupos' });
+  }
+});
+
+// Listar todas as permissões (Admin)
+app.get('/api/admin/permissions', authenticateToken, async (req, res) => {
+  try {
+    const result = await query('SELECT * FROM permissions ORDER BY code ASC');
+    res.json(result.rows);
+  } catch (error) {
+    res.status(500).json({ error: 'Erro ao buscar permissões' });
+  }
+});
+
+// Listar todas as relações grupo-permissão (Admin)
+app.get('/api/admin/group-permissions', authenticateToken, async (req, res) => {
+  try {
+    const result = await query('SELECT * FROM group_permissions');
+    res.json(result.rows);
+  } catch (error) {
+    res.status(500).json({ error: 'Erro ao buscar permissões de grupos' });
+  }
+});
+
+// Atualizar grupo de um usuário (Admin)
+app.put('/api/admin/users/:id/group', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { group_id } = req.body;
+    await query('UPDATE user_profiles SET group_id = $1 WHERE id = $2', [group_id, id]);
+    res.json({ ok: true });
+  } catch (error) {
+    res.status(500).json({ error: 'Erro ao atualizar grupo do usuário' });
+  }
+});
+
+// Atualizar configurações de um usuário (Admin)
+app.put('/api/admin/users/:id/settings', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const fields = req.body;
+    const allowedFields = ['use_global_ai', 'use_global_webhooks', 'webhook_whatsapp_url', 'webhook_email_url', 'display_name'];
+
+    let queryText = 'UPDATE user_profiles SET ';
+    const queryValues = [];
+    let count = 1;
+
+    for (const [key, value] of Object.entries(fields)) {
+      if (allowedFields.includes(key)) {
+        queryText += `${key} = $${count}, `;
+        queryValues.push(value);
+        count++;
+      }
+    }
+
+    if (queryValues.length === 0) return res.status(400).json({ error: 'Nenhum campo válido fornecido' });
+
+    queryText = queryText.slice(0, -2); // Remove last comma
+    queryText += ` WHERE id = $${count}`;
+    queryValues.push(id);
+
+    await query(queryText, queryValues);
+    res.json({ ok: true });
+  } catch (error) {
+    res.status(500).json({ error: 'Erro ao atualizar configurações do usuário' });
+  }
+});
+
+// Adicionar permissão a um grupo (Admin)
+app.post('/api/admin/group-permissions', authenticateToken, async (req, res) => {
+  try {
+    const { group_id, permission_id } = req.body;
+    await query('INSERT INTO group_permissions (group_id, permission_id) VALUES ($1, $2) ON CONFLICT DO NOTHING', [group_id, permission_id]);
+    res.status(201).json({ ok: true });
+  } catch (error) {
+    res.status(500).json({ error: 'Erro ao adicionar permissão ao grupo' });
+  }
+});
+
+// Remover permissão de um grupo (Admin)
+app.delete('/api/admin/group-permissions', authenticateToken, async (req, res) => {
+  try {
+    const { group_id, permission_id } = req.body;
+    await query('DELETE FROM group_permissions WHERE group_id = $1 AND permission_id = $2', [group_id, permission_id]);
+    res.json({ ok: true });
+  } catch (error) {
+    res.status(500).json({ error: 'Erro ao remover permissão do grupo' });
   }
 });
 

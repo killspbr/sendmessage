@@ -1,6 +1,6 @@
 ﻿import type { ChangeEvent } from 'react'
 import { useEffect, useState } from 'react'
-import { supabase } from './supabaseClient'
+import { apiFetch } from './api'
 import { Sidebar } from './components/layout/Sidebar'
 import { Header } from './components/layout/Header'
 import { ContactForm } from './components/contacts/ContactForm'
@@ -17,21 +17,20 @@ import {
   SchedulesPage,
 } from './pages'
 import { usePermissions } from './hooks/usePermissions'
-import { useAuthWithSupabase } from './hooks/useAuthWithSupabase'
-import { useListsWithSupabase } from './hooks/useListsWithSupabase'
-import { useCampaignsWithSupabase } from './hooks/useCampaignsWithSupabase'
-import { useSendHistoryWithSupabase } from './hooks/useSendHistoryWithSupabase'
-import type { 
-  Contact, 
-  ContactList, 
-  Campaign, 
+import { useAuth } from './hooks/useAuth'
+import { useLists } from './hooks/useLists'
+import { useCampaigns } from './hooks/useCampaigns'
+import { useSendHistory } from './hooks/useSendHistory'
+import { useContacts } from './hooks/useContacts'
+import type {
+  Contact,
+  ContactList,
+  Campaign,
   CampaignChannel,
-  SendHistoryItem, 
+  SendHistoryItem,
   ContactSendHistoryItem,
   ImportConflict,
   CampaignSendLog,
-  SupabaseCampaignRow,
-  SupabaseListRow,
 } from './types'
 import { BACKEND_URL, normalizePhone, formatRating, logError } from './utils'
 
@@ -104,7 +103,7 @@ function App() {
   const [authPassword, setAuthPassword] = useState('')
   const [authName, setAuthName] = useState('')
 
-  const { authLoading, currentUser } = useAuthWithSupabase()
+  const { authLoading, currentUser, login: authLogin, signup: authSignup, logout: authLogout } = useAuth()
   const [authError, setAuthError] = useState<string | null>(null)
 
   const [rememberMe, setRememberMe] = useState(() => {
@@ -148,7 +147,7 @@ function App() {
             setForceUpdate(true)
           }
         })
-        .catch(() => {})
+        .catch(() => { })
     }, 300000) // 5 minutos
 
     return () => clearInterval(interval)
@@ -179,26 +178,21 @@ function App() {
     try {
       const nextUseGlobalAi = overrides.aiApiKey == null
 
-      const { error } = await supabase
-        .from('user_profiles')
-        .update({
+      await apiFetch('/api/profile', {
+        method: 'PUT',
+        body: JSON.stringify({
           use_global_ai: nextUseGlobalAi,
           ai_api_key: overrides.aiApiKey,
         })
-        .eq('id', effectiveUserId)
-
-      if (error) {
-        logError('userSettings.saveOverrides', 'Erro ao salvar configurações pessoais do usuário:', error)
-        return
-      }
+      })
 
       setUserSettings((prev) =>
         prev
           ? {
-              ...prev,
-              use_global_ai: nextUseGlobalAi,
-              ai_api_key: overrides.aiApiKey,
-            }
+            ...prev,
+            use_global_ai: nextUseGlobalAi,
+            ai_api_key: overrides.aiApiKey,
+          }
           : prev,
       )
     } catch (e) {
@@ -209,26 +203,18 @@ function App() {
   const handleSaveGlobalSettings = async () => {
     try {
       const payload = {
-        id: globalSettings?.id ?? undefined,
         global_ai_api_key: geminiApiKey.trim() || null,
         global_webhook_whatsapp_url: webhookUrlWhatsApp.trim() || null,
         global_webhook_email_url: webhookUrlEmail.trim() || null,
       }
 
-      const { data, error } = await supabase
-        .from('app_settings')
-        .upsert(payload, { onConflict: 'id' })
-        .select('id, global_ai_api_key, global_webhook_whatsapp_url, global_webhook_email_url')
-        .single()
-
-      if (error) {
-        logError('globalSettings.save', 'Erro ao salvar configurações globais de integração', error)
-        setLastMoveMessage('Falha ao salvar as configurações globais.')
-        return
-      }
+      const data = await apiFetch('/api/settings', {
+        method: 'POST',
+        body: JSON.stringify(payload)
+      })
 
       setGlobalSettings({
-        id: (data as any).id ?? null,
+        id: data.id ?? null,
         global_ai_api_key: data.global_ai_api_key ?? null,
         global_webhook_whatsapp_url: data.global_webhook_whatsapp_url ?? null,
         global_webhook_email_url: data.global_webhook_email_url ?? null,
@@ -282,18 +268,9 @@ function App() {
 
     const loadUserSettings = async () => {
       try {
-        const { data, error } = await supabase
-          .from('user_profiles')
-          .select('use_global_webhooks,use_global_ai,webhook_whatsapp_url,webhook_email_url,ai_api_key')
-          .eq('id', effectiveUserId)
-          .maybeSingle()
+        const data = await apiFetch('/api/profile')
 
         if (!isMounted) return
-
-        if (error) {
-          logError('userSettings.load', 'Erro ao carregar configurações do usuário', error)
-          return
-        }
 
         if (data) {
           setUserSettings({
@@ -321,20 +298,11 @@ function App() {
   useEffect(() => {
     const loadGlobalSettings = async () => {
       try {
-        const { data, error } = await supabase
-          .from('app_settings')
-          .select('id, global_ai_api_key, global_webhook_whatsapp_url, global_webhook_email_url')
-          .limit(1)
-          .maybeSingle()
-
-        if (error) {
-          logError('globalSettings.load', 'Erro ao carregar app_settings', error)
-          return
-        }
+        const data = await apiFetch('/api/settings')
 
         if (data) {
           setGlobalSettings({
-            id: (data as any).id ?? null,
+            id: data.id ?? null,
             global_ai_api_key: data.global_ai_api_key ?? null,
             global_webhook_whatsapp_url: data.global_webhook_whatsapp_url ?? null,
             global_webhook_email_url: data.global_webhook_email_url ?? null,
@@ -359,7 +327,7 @@ function App() {
     canAll,
   } = usePermissions(effectiveUserId ? { id: effectiveUserId } : null)
 
-  const { lists, currentListId, setCurrentListId, reloadLists, setLists } = useListsWithSupabase({ effectiveUserId })
+  const { lists, currentListId, setCurrentListId, reloadLists, setLists } = useLists({ effectiveUserId })
 
   const [geminiApiKey, setGeminiApiKey] = useState<string>(() => {
     try {
@@ -393,7 +361,7 @@ function App() {
         const val = parseFloat(stored)
         if (!isNaN(val) && val >= 0 && val <= 1) return val
       }
-    } catch {}
+    } catch { }
     return 0.7
   })
 
@@ -404,7 +372,7 @@ function App() {
         const val = parseInt(stored, 10)
         if (!isNaN(val) && val > 0) return val
       }
-    } catch {}
+    } catch { }
     return 1024
   })
 
@@ -437,7 +405,7 @@ function App() {
   // Webhooks efetivos considerando configurações globais x por usuário
   const globalWebhookWhatsapp = globalSettings?.global_webhook_whatsapp_url || ''
   const globalWebhookEmail = globalSettings?.global_webhook_email_url || ''
-  
+
   // Prioridade: webhooks do perfil do usuário (configurados pelo admin) > webhooks globais > webhooks locais
   const userWebhookWhatsapp = userSettings?.webhook_whatsapp_url || null
   const userWebhookEmail = userSettings?.webhook_email_url || null
@@ -452,7 +420,7 @@ function App() {
       localStorage.setItem('sendmessage_geminiApiVersion', geminiApiVersion)
       localStorage.setItem('sendmessage_geminiTemperature', String(geminiTemperature))
       localStorage.setItem('sendmessage_geminiMaxTokens', String(geminiMaxTokens))
-    } catch {}
+    } catch { }
   }, [geminiModel, geminiApiVersion, geminiTemperature, geminiMaxTokens])
   const [debugEnabled, setDebugEnabled] = useState<boolean>(() => {
     try {
@@ -465,7 +433,7 @@ function App() {
   useEffect(() => {
     try {
       localStorage.setItem('sendmessage_debugEnabled', debugEnabled ? 'true' : 'false')
-    } catch {}
+    } catch { }
   }, [debugEnabled])
 
   // currentListId agora vem do hook useListsWithSupabase; mantemos apenas a persistência
@@ -509,7 +477,6 @@ function App() {
     }
   }, [currentPage])
 
-  const [contactsByList, setContactsByList] = useState<Record<string, Contact[]>>({})
 
   const [sendingCampaignId, setSendingCampaignId] = useState<string | null>(null)
   const [sendingCurrentIndex, setSendingCurrentIndex] = useState<number>(0)
@@ -553,7 +520,7 @@ function App() {
     campaignSendLog,
     setCampaignSendLog,
     reloadContactSendHistory,
-  } = useSendHistoryWithSupabase({ effectiveUserId })
+  } = useSendHistory({ effectiveUserId })
 
   useEffect(() => {
     try {
@@ -694,7 +661,8 @@ function App() {
   const [contactFormCity, setContactFormCity] = useState('')
   const [contactFormRating, setContactFormRating] = useState('')
 
-  const { campaigns, setCampaigns } = useCampaignsWithSupabase({ effectiveUserId })
+  const { campaigns, setCampaigns, reloadCampaigns } = useCampaigns({ effectiveUserId })
+  const { contactsByList, setContactsByList, reloadContacts } = useContacts({ effectiveUserId, currentListId })
 
   const [newCampaignName, setNewCampaignName] = useState('')
   const [newCampaignListId, setNewCampaignListId] = useState<string>('default')
@@ -706,248 +674,7 @@ function App() {
   const [importNewContacts, setImportNewContacts] = useState<Contact[] | null>(null)
   const [importConflicts, setImportConflicts] = useState<ImportConflict[] | null>(null)
 
-  // Migração única de dados antigos do localStorage para Supabase (para o usuário efetivo)
-  useEffect(() => {
-    if (!effectiveUserId) return
 
-    const MIGRATION_KEY = 'sendmessage_migratedToSupabase_v1'
-    try {
-      const alreadyMigrated = localStorage.getItem(MIGRATION_KEY)
-      if (alreadyMigrated === 'true') {
-        return
-      }
-    } catch (e) {
-      logError('migration.checkFlag', 'Erro ao ler flag de migração do localStorage', e)
-      // Mesmo assim, tentamos migrar
-    }
-
-    let isMounted = true
-
-    const runMigration = async () => {
-      try {
-        // Marca como migrado logo no inÃ­cio para evitar execuÃ§Ãµes repetidas
-        try {
-          localStorage.setItem(MIGRATION_KEY, 'true')
-        } catch {}
-
-        // LÃª dados antigos
-        let oldLists: { id: string; name: string }[] | null = null
-        let oldContactsByList: Record<string, any[]> | null = null
-
-        try {
-          const rawLists = localStorage.getItem('sendmessage_lists')
-          if (rawLists) {
-            oldLists = JSON.parse(rawLists) as { id: string; name: string }[]
-          }
-        } catch (e) {
-          logError('migration.loadLists', 'Erro ao ler sendmessage_lists do localStorage para migração', e)
-        }
-
-        try {
-          const rawContacts = localStorage.getItem('sendmessage_contactsByList')
-          if (rawContacts) {
-            oldContactsByList = JSON.parse(rawContacts) as Record<string, any[]>
-          }
-        } catch (e) {
-          logError('migration.loadContacts', 'Erro ao ler sendmessage_contactsByList do localStorage para migração', e)
-        }
-
-        // Se nÃ£o hÃ¡ nada para migrar, apenas encerra
-        if (!oldLists && !oldContactsByList) {
-          return
-        }
-
-        setLastMoveMessage('Migrando seus dados antigos para o Supabase...')
-
-        // Busca listas atuais do usuÃ¡rio no Supabase
-        const { data: existingLists, error: existingListsError } = await supabase
-          .from('lists')
-          .select('id, name')
-          .eq('user_id', effectiveUserId)
-
-        if (existingListsError) {
-          logError('migration.loadExistingLists', 'Erro ao carregar listas existentes durante migração', existingListsError)
-          return
-        }
-
-        const byName = new Map<string, string>()
-        ;(existingLists ?? []).forEach((l: SupabaseListRow) => {
-          if (l.name) byName.set(l.name, l.id)
-        })
-
-        // Cria listas antigas que ainda nÃ£o existirem
-        const listIdMap = new Map<string, string>() // oldId -> newSupabaseId
-
-        if (oldLists) {
-          for (const old of oldLists) {
-            const existingId = byName.get(old.name)
-            if (existingId) {
-              listIdMap.set(old.id, existingId)
-              continue
-            }
-
-            const { data: inserted, error: insertError } = await supabase
-              .from('lists')
-              .insert({ user_id: effectiveUserId, name: old.name })
-              .select('id, name')
-              .single()
-
-            if (insertError) {
-              logError('migration.createList', 'Erro ao criar lista durante migração', insertError)
-              continue
-            }
-
-            if (inserted?.id) {
-              byName.set(inserted.name, inserted.id)
-              listIdMap.set(old.id, inserted.id)
-            }
-          }
-        }
-
-        // Garante que listas jÃ¡ carregadas em memÃ³ria usem os ids corretos do Supabase
-        if (isMounted) {
-          if (existingLists && existingLists.length > 0) {
-            const nextLists: ContactList[] = existingLists.map((row: any) => ({ id: row.id, name: row.name }))
-            setLists(nextLists)
-          }
-        }
-
-        // Carrega contatos atuais do usuÃ¡rio para evitar duplicaÃ§Ãµes
-        const { data: existingContacts, error: existingContactsError } = await supabase
-          .from('contacts')
-          .select('id, list_id, name, phone, email')
-          .eq('user_id', effectiveUserId)
-
-        if (existingContactsError) {
-          logError('migration.loadExistingContacts', 'Erro ao carregar contatos existentes durante migração', existingContactsError)
-        }
-
-        const existingKeys = new Set<string>()
-        ;(existingContacts ?? []).forEach((c) => {
-          const phoneKey = typeof c.phone === 'string' ? normalizePhone(c.phone) : ''
-          const emailKey = typeof c.email === 'string' ? c.email.toLowerCase() : ''
-          const nameKey = typeof c.name === 'string' ? c.name.toLowerCase() : ''
-          const key = `${c.list_id}|${phoneKey}|${emailKey}|${nameKey}`
-          existingKeys.add(key)
-        })
-
-        // Migra contatos (sem duplicar)
-        if (oldContactsByList) {
-          for (const [oldListId, contacts] of Object.entries(oldContactsByList)) {
-            const newListId = listIdMap.get(oldListId) ?? currentListId
-            if (!newListId) continue
-
-            for (const c of contacts ?? []) {
-              try {
-                const phoneDigits = typeof c.phone === 'string' ? normalizePhone(c.phone) : ''
-
-                const emailKey = typeof c.email === 'string' ? c.email.toLowerCase() : ''
-                const nameKey = typeof c.name === 'string' ? c.name.toLowerCase() : ''
-                const key = `${newListId}|${phoneDigits}|${emailKey}|${nameKey}`
-
-                if (existingKeys.has(key)) {
-                  // JÃ¡ existe um contato igual para este usuÃ¡rio/lista; evita duplicar
-                  continue
-                }
-
-                const { error: insertContactError } = await supabase.from('contacts').insert({
-                  user_id: effectiveUserId,
-                  list_id: newListId,
-                  name: c.name ?? '',
-                  phone: phoneDigits,
-                  category: c.category ?? '',
-                  email: c.email ?? '',
-                  cep: c.cep ?? '',
-                  address: c.address ?? '',
-                  city: c.city ?? '',
-                  rating: c.rating ?? '',
-                })
-
-                if (!insertContactError) {
-                  existingKeys.add(key)
-                } else {
-                  logError('migration.contacts.insert', 'Erro ao migrar contato (insert)', insertContactError)
-                }
-              } catch (e) {
-                logError('migration.contacts', 'Erro ao migrar contato', e)
-              }
-            }
-          }
-        }
-
-        // Limpa dados antigos (já marcamos MIGRATION_KEY no início)
-        try {
-          localStorage.removeItem('sendmessage_lists')
-          localStorage.removeItem('sendmessage_contactsByList')
-        } catch (e) {
-          logError('migration.cleanup', 'Erro ao limpar dados antigos do localStorage após migração', e)
-        }
-
-        if (isMounted) {
-          setLastMoveMessage('MigraÃ§Ã£o concluÃ­da. Seus dados agora estÃ£o no Supabase.')
-        }
-      } catch (e) {
-        console.error('Erro inesperado durante migraÃ§Ã£o de dados para Supabase', e)
-      }
-    }
-
-    void runMigration()
-
-    return () => {
-      isMounted = false
-    }
-  }, [effectiveUserId, currentListId])
-
-  // Carrega contatos da lista atual a partir do Supabase para o usuÃ¡rio efetivo
-  useEffect(() => {
-    if (!effectiveUserId || !currentListId) return
-
-    let isMounted = true
-
-    const loadContacts = async () => {
-      try {
-        const { data, error } = await supabase
-          .from('contacts')
-          .select('*')
-          .eq('user_id', effectiveUserId)
-          .eq('list_id', currentListId)
-          .order('created_at', { ascending: true })
-
-        if (!isMounted) return
-
-        if (error) {
-          console.error('Erro ao carregar contatos do Supabase', error)
-          return
-        }
-
-        const mapped: Contact[] = (data ?? []).map((row: any, index: number) => ({
-          id: index + 1,
-          supabaseId: row.id,
-          name: row.name ?? '',
-          phone: row.phone ?? '',
-          category: row.category ?? '',
-          cep: row.cep ?? '',
-          rating: row.rating ?? '',
-          email: row.email ?? '',
-          address: row.address ?? undefined,
-          city: row.city ?? undefined,
-        }))
-
-        setContactsByList((prev) => ({
-          ...prev,
-          [currentListId]: mapped,
-        }))
-      } catch (e) {
-        console.error('Erro inesperado ao carregar contatos do Supabase', e)
-      }
-    }
-
-    void loadContacts()
-
-    return () => {
-      isMounted = false
-    }
-  }, [currentUser, currentListId])
 
   // normalizePhone e formatRating agora importados de ./utils
 
@@ -1039,10 +766,10 @@ function App() {
       channels.includes('whatsapp') && channels.includes('email')
         ? 'WhatsApp e Email'
         : channels.includes('whatsapp')
-        ? 'WhatsApp'
-        : channels.includes('email')
-        ? 'Email'
-        : 'mensagens'
+          ? 'WhatsApp'
+          : channels.includes('email')
+            ? 'Email'
+            : 'mensagens'
 
     const wantsEmojis = campaignName.toLowerCase().includes('emojis=sim')
     const emojiRule = wantsEmojis
@@ -1101,7 +828,7 @@ ${emojiRule}
       const forcedGeminiApiVersion = 'v1'
       const forcedGeminiModel = 'gemini-2.5-flash'
       const apiUrl = `https://generativelanguage.googleapis.com/${forcedGeminiApiVersion}/models/${forcedGeminiModel}:generateContent?key=${effectiveAiKey}`
-      
+
       const tempAdjust = mode === 'suggest' ? 0.1 : -0.1
       const finalTemp = Math.max(0, Math.min(1, geminiTemperature + tempAdjust))
 
@@ -1155,7 +882,7 @@ ${emojiRule}
 
       const data = await response.json()
       console.log('Resposta bruta do Gemini:', data)
-      ;(window as any).__lastGeminiResponse = data
+        ; (window as any).__lastGeminiResponse = data
 
       const candidates = Array.isArray(data?.candidates) ? data.candidates : []
 
@@ -1274,8 +1001,8 @@ ${emojiRule}
     return { backendOk, backendStatus, webhookOk }
   }
 
-  // FunÃ§Ã£o para salvar histÃ³rico de envio no Supabase
-  const saveSendHistoryToSupabase = async (entry: {
+  // FunÃ§Ã£o para salvar histÃ³rico de envio no backend
+  const saveSendHistory = async (entry: {
     campaignId: string
     contactName: string
     phoneKey: string
@@ -1287,23 +1014,21 @@ ${emojiRule}
     if (!currentUser) return
 
     try {
-      const { error } = await supabase.from('contact_send_history').insert({
-        user_id: effectiveUserId,
-        campaign_id: entry.campaignId,
-        contact_name: entry.contactName,
-        phone_key: entry.phoneKey,
-        channel: entry.channel,
-        ok: entry.ok,
-        status: entry.status,
-        webhook_ok: entry.webhookOk,
-        run_at: new Date().toISOString(),
+      await apiFetch('/api/history', {
+        method: 'POST',
+        body: JSON.stringify({
+          campaign_id: entry.campaignId,
+          contact_name: entry.contactName,
+          phone_key: entry.phoneKey,
+          channel: entry.channel,
+          ok: entry.ok,
+          status: entry.status,
+          webhook_ok: entry.webhookOk,
+          run_at: new Date().toISOString(),
+        })
       })
-
-      if (error) {
-        console.error('Erro ao salvar histÃ³rico no Supabase:', error)
-      }
     } catch (e) {
-      console.error('Erro ao salvar histÃ³rico no Supabase:', e)
+      console.error('Erro ao salvar histÃ³rico no backend:', e)
     }
   }
 
@@ -1334,10 +1059,10 @@ ${emojiRule}
 
     try {
       if (editingCampaignId) {
-        // Atualiza campanha existente no Supabase
-        const { data, error } = await supabase
-          .from('campaigns')
-          .update({
+        // Atualiza campanha existente no backend
+        const data = await apiFetch(`/api/campaigns/${editingCampaignId}`, {
+          method: 'PUT',
+          body: JSON.stringify({
             name,
             status: 'rascunho',
             channels: newCampaignChannels,
@@ -1346,24 +1071,15 @@ ${emojiRule}
             interval_min_seconds: sendIntervalMinSeconds,
             interval_max_seconds: sendIntervalMaxSeconds,
           })
-          .eq('id', editingCampaignId)
-          .eq('user_id', effectiveUserId)
-          .select('id, name, status, channels, list_name, created_at, message, interval_min_seconds, interval_max_seconds')
-          .single()
-
-        if (error) {
-          console.error('Erro ao atualizar campanha no Supabase', error)
-          setLastMoveMessage('Falha ao atualizar a campanha no banco.')
-          return
-        }
+        })
 
         const createdAtStr = data.created_at
           ? new Date(data.created_at).toLocaleString('pt-BR', {
-              day: '2-digit',
-              month: 'short',
-              hour: '2-digit',
-              minute: '2-digit',
-            })
+            day: '2-digit',
+            month: 'short',
+            hour: '2-digit',
+            minute: '2-digit',
+          })
           : ''
 
         const updated: Campaign = {
@@ -1382,13 +1098,12 @@ ${emojiRule}
 
         setCampaigns((prev) => prev.map((c) => (c.id === editingCampaignId ? updated : c)))
         setEditingCampaignId(null)
-        setLastMoveMessage('Campanha atualizada com sucesso no Supabase.')
+        setLastMoveMessage('Campanha atualizada com sucesso.')
       } else {
-        // Cria nova campanha no Supabase
-        const { data, error } = await supabase
-          .from('campaigns')
-          .insert({
-            user_id: effectiveUserId,
+        // Cria nova campanha no backend
+        const data = await apiFetch('/api/campaigns', {
+          method: 'POST',
+          body: JSON.stringify({
             name,
             status: 'rascunho',
             channels: newCampaignChannels,
@@ -1397,22 +1112,15 @@ ${emojiRule}
             interval_min_seconds: sendIntervalMinSeconds,
             interval_max_seconds: sendIntervalMaxSeconds,
           })
-          .select('id, name, status, channels, list_name, created_at, message, interval_min_seconds, interval_max_seconds')
-          .single()
-
-        if (error) {
-          console.error('Erro ao criar campanha no Supabase', error)
-          setLastMoveMessage('Falha ao criar a campanha no banco.')
-          return
-        }
+        })
 
         const createdAtStr = data.created_at
           ? new Date(data.created_at).toLocaleString('pt-BR', {
-              day: '2-digit',
-              month: 'short',
-              hour: '2-digit',
-              minute: '2-digit',
-            })
+            day: '2-digit',
+            month: 'short',
+            hour: '2-digit',
+            minute: '2-digit',
+          })
           : ''
 
         const campaign: Campaign = {
@@ -1430,7 +1138,7 @@ ${emojiRule}
         }
 
         setCampaigns((prev) => [campaign, ...prev])
-        setLastMoveMessage('Campanha criada com sucesso no Supabase.')
+        setLastMoveMessage('Campanha criada com sucesso.')
       }
 
       setNewCampaignName('')
@@ -1491,29 +1199,22 @@ ${emojiRule}
     }
 
     try {
-      const { error } = await supabase
-        .from('campaigns')
-        .delete()
-        .eq('id', id)
-        .eq('user_id', effectiveUserId)
-
-      if (error) {
-        console.error('Erro ao excluir campanha no Supabase', error)
-        setLastMoveMessage('Falha ao excluir a campanha no banco.')
-        return
-      }
+      await apiFetch(`/api/campaigns/${id}`, {
+        method: 'DELETE'
+      })
 
       setCampaigns((prev) => prev.filter((c) => c.id !== id))
       if (editingCampaignId === id) {
         setEditingCampaignId(null)
+        setLastMoveMessage('')
         setNewCampaignName('')
         setNewCampaignMessage('')
       }
       setDeleteCampaignId(null)
-      setLastMoveMessage('Campanha excluÃ­da com sucesso no Supabase.')
+      setLastMoveMessage('Campanha excluÃ­da com sucesso.')
     } catch (e) {
-      console.error('Erro inesperado ao excluir campanha no Supabase', e)
-      setLastMoveMessage('Erro inesperado ao excluir a campanha no banco.')
+      console.error('Erro inesperado ao excluir campanha:', e)
+      setLastMoveMessage('Erro inesperado ao excluir a campanha.')
     }
   }
 
@@ -1534,35 +1235,26 @@ ${emojiRule}
 
     if (contactsForList.length === 0) {
       try {
-        const { data, error } = await supabase
-          .from('contacts')
-          .select('*')
-          .eq('user_id', effectiveUserId)
-          .eq('list_id', listId)
-          .order('created_at', { ascending: true })
+        const data = await apiFetch(`/api/contacts?listId=${listId}`)
 
-        if (error) {
-          console.error('Erro ao carregar contatos do Supabase ao preparar disparo da campanha', error)
-        } else {
-          const mapped: Contact[] = (data ?? []).map((row: any, index: number) => ({
-            id: index + 1,
-            supabaseId: row.id,
-            name: row.name ?? '',
-            phone: row.phone ?? '',
-            category: row.category ?? '',
-            cep: row.cep ?? '',
-            rating: row.rating ?? '',
-            email: row.email ?? '',
-            address: row.address ?? undefined,
-            city: row.city ?? undefined,
-          }))
+        const mapped: Contact[] = (data ?? []).map((row: any, index: number) => ({
+          id: index + 1,
+          supabaseId: row.id.toString(),
+          name: row.name ?? '',
+          phone: row.phone ?? '',
+          category: row.category ?? '',
+          cep: row.cep ?? '',
+          rating: row.rating ?? '',
+          email: row.email ?? '',
+          address: row.address ?? undefined,
+          city: row.city ?? undefined,
+        }))
 
-          contactsForList = mapped
-          setContactsByList((prev) => ({
-            ...prev,
-            [listId]: mapped,
-          }))
-        }
+        contactsForList = mapped
+        setContactsByList((prev) => ({
+          ...prev,
+          [listId]: mapped,
+        }))
       } catch (e) {
         console.error('Erro inesperado ao carregar contatos ao preparar disparo da campanha', e)
       }
@@ -1589,7 +1281,7 @@ ${emojiRule}
     // Filtra contatos que ainda nÃ£o receberam em TODOS os canais configurados
     const pendingContacts = contactsForList.filter((contact) => {
       const phoneKey = normalizePhone(contact.phone)
-      
+
       for (const channel of effectiveChannels) {
         // Verifica se o contato tem o dado necessÃ¡rio para o canal
         if (channel === 'whatsapp' && !phoneKey) continue
@@ -1599,7 +1291,7 @@ ${emojiRule}
         const alreadySent = contactSendHistory.some(
           (h) => h.campaignId === camp.id && h.phoneKey === phoneKey && h.channel === channel && h.ok
         )
-        
+
         if (!alreadySent) return true // Ainda tem canal pendente
       }
       return false // Todos os canais jÃ¡ foram enviados com sucesso
@@ -1646,9 +1338,9 @@ ${emojiRule}
       const messageHtml = messageHtmlRaw.trim().startsWith('<')
         ? messageHtmlRaw
         : `<p style="margin:0; font-size:14px; line-height:1.5; color:#111827;">${messageHtmlRaw
-            .split('\n')
-            .map((line) => (line.trim().length === 0 ? '&nbsp;' : line))
-            .join('<br />')}</p>`
+          .split('\n')
+          .map((line) => (line.trim().length === 0 ? '&nbsp;' : line))
+          .join('<br />')}</p>`
 
       const messageText = htmlToText(messageHtml)
       const phoneKey = normalizePhone(contact.phone)
@@ -1718,7 +1410,7 @@ ${emojiRule}
 
             try {
               payloadRaw = JSON.stringify(result, null, 2)
-            } catch {}
+            } catch { }
 
             if (Array.isArray(result) && result.length > 0) {
               const item = result[0] as any
@@ -1733,7 +1425,7 @@ ${emojiRule}
                 } else if (item.detalhes != null) {
                   try {
                     errorDetail = JSON.stringify(item.detalhes)
-                  } catch {}
+                  } catch { }
                 }
               }
             }
@@ -1763,8 +1455,8 @@ ${emojiRule}
             return next.slice(0, 1000)
           })
 
-          // Salva no Supabase
-          saveSendHistoryToSupabase({
+          // Salva no backend
+          saveSendHistory({
             campaignId: camp.id,
             contactName: contact.name,
             phoneKey: phoneKey,
@@ -1893,9 +1585,9 @@ ${emojiRule}
       const messageHtml = messageHtmlRaw.trim().startsWith('<')
         ? messageHtmlRaw
         : `<p style="margin:0; font-size:14px; line-height:1.5; color:#111827;">${messageHtmlRaw
-            .split('\n')
-            .map((line) => (line.trim().length === 0 ? '&nbsp;' : line))
-            .join('<br />')}</p>`
+          .split('\n')
+          .map((line) => (line.trim().length === 0 ? '&nbsp;' : line))
+          .join('<br />')}</p>`
 
       const messageText = htmlToText(messageHtml)
 
@@ -1986,7 +1678,7 @@ ${emojiRule}
 
           try {
             payloadRaw = JSON.stringify(result, null, 2)
-          } catch {}
+          } catch { }
 
           if (Array.isArray(result) && result.length > 0) {
             const item = result[0] as any
@@ -2001,7 +1693,7 @@ ${emojiRule}
               } else if (item.detalhes != null) {
                 try {
                   errorDetail = JSON.stringify(item.detalhes)
-                } catch {}
+                } catch { }
               }
             }
           }
@@ -2036,10 +1728,10 @@ ${emojiRule}
             return next.slice(0, 1000)
           })
 
-          // Salva no Supabase
+          // Salva no backend
           const phoneKeyForDb = normalizePhone(contact.phone)
           if (phoneKeyForDb) {
-            saveSendHistoryToSupabase({
+            saveSendHistory({
               campaignId: camp.id,
               contactName: contact.name,
               phoneKey: phoneKeyForDb,
@@ -2114,21 +1806,21 @@ ${emojiRule}
       return next.slice(0, 50)
     })
 
-    // Grava histÃ³rico agregado do disparo no Supabase
+    // Grava histÃ³rico agregado do disparo no backend
     try {
-      if (!effectiveUserId) return
-
-      await supabase.from('send_history').insert({
-        user_id: effectiveUserId,
-        campaign_id: camp.id,
-        status: _lastBackendStatus2,
-        ok: (_lastBackendOk2 ?? errorCount === 0) === true,
-        total: contactsForList.length,
-        error_count: errorCount,
-        run_at: new Date().toISOString(),
+      await apiFetch('/api/campaigns/history', {
+        method: 'POST',
+        body: JSON.stringify({
+          campaign_id: camp.id,
+          status: _lastBackendStatus2,
+          ok: (_lastBackendOk2 ?? errorCount === 0) === true,
+          total: contactsForList.length,
+          error_count: errorCount,
+          run_at: new Date().toISOString(),
+        })
       })
     } catch (e) {
-      console.error('Erro ao gravar histÃ³rico agregado no Supabase', e)
+      console.error('Erro ao gravar histÃ³rico agregado no backend', e)
     }
 
     // Envia notificaÃ§Ã£o de conclusÃ£o da lista
@@ -2194,9 +1886,9 @@ ${emojiRule}
         prev.map((c) =>
           c.id === camp.id
             ? {
-                ...c,
-                status: 'enviada',
-              }
+              ...c,
+              status: 'enviada',
+            }
             : c,
         ),
       )
@@ -2209,9 +1901,9 @@ ${emojiRule}
         prev.map((c) =>
           c.id === camp.id
             ? {
-                ...c,
-                status: 'enviada_com_erros',
-              }
+              ...c,
+              status: 'enviada_com_erros',
+            }
             : c,
         ),
       )
@@ -2473,7 +2165,7 @@ ${emojiRule}
 
     const current = contactsByList[currentListId] ?? []
     const existing = current.find((c) => c.id === id)
-    const supabaseId = existing?.supabaseId
+    const supabaseId = existing?.supabaseId // No backend esse é o ID (uuid ou serial)
 
     if (!supabaseId) {
       setLastMoveMessage('NÃ£o foi possÃ­vel identificar o contato no banco para exclusÃ£o.')
@@ -2481,26 +2173,18 @@ ${emojiRule}
     }
 
     try {
-      const { error } = await supabase
-        .from('contacts')
-        .delete()
-        .eq('id', supabaseId)
-        .eq('user_id', effectiveUserId)
-
-      if (error) {
-        console.error('Erro ao excluir contato no Supabase', error)
-        setLastMoveMessage('Falha ao excluir o contato no banco.')
-        return
-      }
+      await apiFetch(`/api/contacts/${supabaseId}`, {
+        method: 'DELETE'
+      })
 
       setContactsByList((prev) => ({
         ...prev,
         [currentListId]: current.filter((c) => c.id !== id),
       }))
-      setLastMoveMessage('Contato excluÃ­do com sucesso no Supabase.')
+      setLastMoveMessage('Contato excluÃ­do com sucesso.')
     } catch (e) {
-      console.error('Erro inesperado ao excluir contato no Supabase', e)
-      setLastMoveMessage('Erro inesperado ao excluir o contato no banco.')
+      console.error('Erro inesperado ao excluir contato:', e)
+      setLastMoveMessage('Erro inesperado ao excluir o contato.')
     }
   }
 
@@ -2583,10 +2267,10 @@ ${emojiRule}
                 const nextContacts = listContacts.map((c) =>
                   c.id === contactId
                     ? {
-                        ...c,
-                        address: address || c.address || '',
-                        city: city || c.city || '',
-                      }
+                      ...c,
+                      address: address || c.address || '',
+                      city: city || c.city || '',
+                    }
                     : c,
                 )
                 return { ...prev, [listId]: nextContacts }
@@ -2733,13 +2417,13 @@ ${emojiRule}
         const existing = current.find((c) => c.id === editingContactId)
         const supabaseId = existing?.supabaseId
         if (!supabaseId) {
-          setLastMoveMessage('NÃ£o foi possÃ­vel identificar o contato no banco para ediÃ§Ã£o.')
+          setLastMoveMessage('Não foi possível identificar o contato no banco para edição.')
           return
         }
 
-        const { data, error } = await supabase
-          .from('contacts')
-          .update({
+        const data = await apiFetch(`/api/contacts/${supabaseId}`, {
+          method: 'PUT',
+          body: JSON.stringify({
             name,
             phone: phoneDigits,
             category: contactFormCategory,
@@ -2749,20 +2433,11 @@ ${emojiRule}
             city: contactFormCity,
             rating: contactFormRating,
           })
-          .eq('id', supabaseId)
-          .eq('user_id', effectiveUserId)
-          .select('*')
-          .single()
-
-        if (error) {
-          console.error('Erro ao atualizar contato no Supabase', error)
-          setLastMoveMessage('Falha ao atualizar o contato no banco.')
-          return
-        }
+        })
 
         const updatedContact: Contact = {
           id: existing.id,
-          supabaseId: data.id,
+          supabaseId: data.id.toString(),
           name: data.name ?? '',
           phone: data.phone ?? '',
           category: data.category ?? '',
@@ -2778,11 +2453,10 @@ ${emojiRule}
           [currentListId]: current.map((c) => (c.id === editingContactId ? updatedContact : c)),
         }))
       } else {
-        // CriaÃ§Ã£o de novo contato
-        const { data, error } = await supabase
-          .from('contacts')
-          .insert({
-            user_id: effectiveUserId,
+        // Criação de novo contato
+        const data = await apiFetch('/api/contacts', {
+          method: 'POST',
+          body: JSON.stringify({
             list_id: currentListId,
             name,
             phone: phoneDigits,
@@ -2793,19 +2467,12 @@ ${emojiRule}
             city: contactFormCity,
             rating: contactFormRating,
           })
-          .select('*')
-          .single()
-
-        if (error) {
-          console.error('Erro ao criar contato no Supabase', error)
-          setLastMoveMessage('Falha ao criar o contato no banco.')
-          return
-        }
+        })
 
         const maxId = current.reduce((max, c) => (c.id > max ? c.id : max), 0)
         const next: Contact = {
           id: maxId + 1,
-          supabaseId: data.id,
+          supabaseId: data.id.toString(),
           name: data.name ?? '',
           phone: data.phone ?? '',
           category: data.category ?? '',
@@ -2815,17 +2482,17 @@ ${emojiRule}
           city: data.city ?? undefined,
           rating: data.rating ?? '',
         }
-
         setContactsByList((prev) => ({
           ...prev,
-          [currentListId]: [...current, next],
+          [currentListId]: [next, ...current],
         }))
       }
 
-      handleCancelContactForm()
-      setLastMoveMessage('Contato salvo com sucesso no Supabase.')
+      setLastMoveMessage('Contato salvo com sucesso.')
+      setShowContactForm(false)
+      setEditingContactId(null)
     } catch (e) {
-      console.error('Erro inesperado ao salvar contato no Supabase', e)
+      console.error('Erro inesperado ao salvar contato:', e)
       setLastMoveMessage('Erro inesperado ao salvar o contato no banco.')
     }
   }
@@ -2886,84 +2553,74 @@ ${emojiRule}
         const phoneDigits = normalizePhone(data.phone)
         const ratingNumber = Number(formatRating(data.rating) || 0)
 
-        const { error } = await supabase
-          .from('contacts')
-          .update({
-            name: data.name ?? '',
-            phone: phoneDigits,
-            email: (data.email ?? '').trim(),
-            category: data.category ?? '',
-            cep: data.cep ?? '',
-            rating: ratingNumber,
+        try {
+          await apiFetch(`/api/contacts/${supabaseId}`, {
+            method: 'PUT',
+            body: JSON.stringify({
+              name: data.name ?? '',
+              phone: phoneDigits,
+              email: (data.email ?? '').trim(),
+              category: data.category ?? '',
+              cep: data.cep ?? '',
+              rating: ratingNumber,
+            })
           })
-          .eq('id', supabaseId)
-          .eq('user_id', effectiveUserId)
-
-        if (error) {
-          console.error('Erro ao atualizar contato durante importaÃ§Ã£o', error)
+        } catch (e) {
+          console.error('Erro ao atualizar contato durante importaÃ§Ã£o', e)
         }
       }
 
       // 2) Insere novos contatos
       if (toInsert.length > 0) {
-        const payload = toInsert.map((c) => {
+        for (const c of toInsert) {
           const phoneDigits = normalizePhone(c.phone)
           const ratingNumber = Number(formatRating(c.rating) || 0)
 
-          return {
-            user_id: effectiveUserId,
-            list_id: currentListId,
-            name: c.name ?? '',
-            phone: phoneDigits,
-            email: (c.email ?? '').trim(),
-            category: c.category ?? '',
-            cep: c.cep ?? '',
-            rating: ratingNumber,
+          try {
+            await apiFetch('/api/contacts', {
+              method: 'POST',
+              body: JSON.stringify({
+                list_id: currentListId,
+                name: c.name ?? '',
+                phone: phoneDigits,
+                email: (c.email ?? '').trim(),
+                category: c.category ?? '',
+                cep: c.cep ?? '',
+                rating: ratingNumber,
+              })
+            })
+          } catch (e) {
+            console.error('Erro ao inserir contato durante importaÃ§Ã£o', e)
           }
-        })
-
-        const { error: insertError } = await supabase.from('contacts').insert(payload)
-        if (insertError) {
-          console.error('Erro ao inserir contatos durante importaÃ§Ã£o', insertError)
-          setLastMoveMessage('Falha ao salvar alguns contatos importados no banco.')
         }
       }
 
-      // 3) Recarrega contatos da lista atual a partir do Supabase para garantir consistÃªncia
+      // 3) Recarrega contatos da lista atual a partir do backend para garantir consistÃªncia
       try {
-        const { data, error } = await supabase
-          .from('contacts')
-          .select('*')
-          .eq('user_id', effectiveUserId)
-          .eq('list_id', currentListId)
-          .order('created_at', { ascending: true })
+        const data = await apiFetch(`/api/contacts?listId=${currentListId}`)
 
-        if (error) {
-          console.error('Erro ao recarregar contatos apÃ³s importaÃ§Ã£o', error)
-        } else {
-          const mapped: Contact[] = (data ?? []).map((row: any, index: number) => ({
-            id: index + 1,
-            supabaseId: row.id,
-            name: row.name ?? '',
-            phone: row.phone ?? '',
-            category: row.category ?? '',
-            email: row.email ?? '',
-            cep: row.cep ?? '',
-            address: row.address ?? undefined,
-            city: row.city ?? undefined,
-            rating: row.rating ?? '',
-          }))
+        const mapped: Contact[] = (data ?? []).map((row: any, index: number) => ({
+          id: index + 1,
+          supabaseId: row.id,
+          name: row.name ?? '',
+          phone: row.phone ?? '',
+          category: row.category ?? '',
+          email: row.email ?? '',
+          cep: row.cep ?? '',
+          address: row.address ?? undefined,
+          city: row.city ?? undefined,
+          rating: row.rating ?? '',
+        }))
 
-          setContactsByList((prev) => ({
-            ...prev,
-            [currentListId]: mapped,
-          }))
-        }
+        setContactsByList((prev) => ({
+          ...prev,
+          [currentListId]: mapped,
+        }))
       } catch (e) {
         console.error('Erro inesperado ao recarregar contatos apÃ³s importaÃ§Ã£o', e)
       }
 
-      setLastMoveMessage('ImportaÃ§Ã£o aplicada e contatos salvos no Supabase.')
+      setLastMoveMessage('ImportaÃ§Ã£o aplicada e contatos salvos no backend.')
     } catch (e) {
       console.error('Erro inesperado ao aplicar importaÃ§Ã£o de contatos', e)
       setLastMoveMessage('Erro inesperado ao aplicar a importaÃ§Ã£o de contatos.')
@@ -3113,8 +2770,7 @@ ${emojiRule}
 
     if (movedCount > 0) {
       setLastMoveMessage(
-        `${movedCount} contato${movedCount > 1 ? 's' : ''} movido${
-          movedCount > 1 ? 's' : ''
+        `${movedCount} contato${movedCount > 1 ? 's' : ''} movido${movedCount > 1 ? 's' : ''
         } para "${targetList.name}",`,
       )
     }
@@ -3151,12 +2807,12 @@ ${emojiRule}
     const d = importPreview.data
 
     try {
-      setLastMoveMessage('Importando dados para o Supabase...')
+      setLastMoveMessage('Importando dados para o servidor...')
 
       // 1) Apaga listas, contatos e campanhas atuais do usuÃ¡rio (substituir tudo)
-      await supabase.from('contacts').delete().eq('user_id', effectiveUserId)
-      await supabase.from('campaigns').delete().eq('user_id', effectiveUserId)
-      await supabase.from('lists').delete().eq('user_id', effectiveUserId)
+      await apiFetch('/api/contacts', { method: 'DELETE' })
+      await apiFetch('/api/campaigns', { method: 'DELETE' })
+      await apiFetch('/api/lists', { method: 'DELETE' })
 
       // 2) Recria listas do backup no Supabase
       const listIdMap = new Map<string, string>() // oldId -> newSupabaseId
@@ -3164,19 +2820,17 @@ ${emojiRule}
       if (Array.isArray(d.lists)) {
         for (const old of d.lists as any[]) {
           const name = typeof old.name === 'string' ? old.name : 'Lista sem nome'
-          const { data: inserted, error } = await supabase
-            .from('lists')
-            .insert({ user_id: effectiveUserId, name })
-            .select('id, name')
-            .single()
+          try {
+            const inserted = await apiFetch('/api/lists', {
+              method: 'POST',
+              body: JSON.stringify({ name })
+            })
 
-          if (error) {
-            console.error('Erro ao criar lista durante importaÃ§Ã£o', error, old)
-            continue
-          }
-
-          if (inserted?.id) {
-            listIdMap.set(String(old.id ?? old.name), inserted.id)
+            if (inserted?.id) {
+              listIdMap.set(String(old.id ?? old.name), inserted.id)
+            }
+          } catch (e) {
+            console.error('Erro ao criar lista durante importaÃ§Ã£o', e, old)
           }
         }
       }
@@ -3192,17 +2846,19 @@ ${emojiRule}
           try {
             const phoneDigits = typeof c.phone === 'string' ? normalizePhone(c.phone) : ''
 
-            await supabase.from('contacts').insert({
-              user_id: effectiveUserId,
-              list_id: newListId,
-              name: c.name ?? '',
-              phone: phoneDigits,
-              category: c.category ?? '',
-              email: c.email ?? '',
-              cep: c.cep ?? '',
-              address: c.address ?? '',
-              city: c.city ?? '',
-              rating: c.rating ?? '',
+            await apiFetch('/api/contacts', {
+              method: 'POST',
+              body: JSON.stringify({
+                list_id: newListId,
+                name: c.name ?? '',
+                phone: phoneDigits,
+                category: c.category ?? '',
+                email: c.email ?? '',
+                cep: c.cep ?? '',
+                address: c.address ?? '',
+                city: c.city ?? '',
+                rating: c.rating ?? '',
+              })
             })
           } catch (e) {
             console.error('Erro ao importar contato do backup', c, e)
@@ -3217,20 +2873,22 @@ ${emojiRule}
             const channels: CampaignChannel[] = Array.isArray(camp.channels)
               ? (camp.channels as CampaignChannel[])
               : camp.channel
-              ? [camp.channel as CampaignChannel]
-              : ['whatsapp']
+                ? [camp.channel as CampaignChannel]
+                : ['whatsapp']
 
             const listName: string = typeof camp.listName === 'string'
               ? camp.listName
               : 'Lista padrão'
 
-            await supabase.from('campaigns').insert({
-              user_id: effectiveUserId,
-              name: camp.name ?? '',
-              status: camp.status ?? 'rascunho',
-              channels,
-              list_name: listName,
-              message: camp.message ?? '',
+            await apiFetch('/api/campaigns', {
+              method: 'POST',
+              body: JSON.stringify({
+                name: camp.name ?? '',
+                status: camp.status ?? 'rascunho',
+                channels,
+                list_name: listName,
+                message: camp.message ?? '',
+              })
             })
           } catch (e) {
             console.error('Erro ao recriar campanha durante importaÃ§Ã£o', e, camp)
@@ -3238,132 +2896,42 @@ ${emojiRule}
         }
       }
 
-      // 5) Recarrega listas do Supabase para o estado local
-      const { data: loadedLists, error: loadListsError } = await supabase
-        .from('lists')
-        .select('id, name')
-        .eq('user_id', effectiveUserId)
-        .order('created_at', { ascending: true })
+      // 5, 6, 7) Recarrega dados do backend para o estado local
+      await reloadLists()
+      await reloadCampaigns()
 
-      if (!loadListsError && loadedLists) {
-        const nextLists: ContactList[] = loadedLists.map((row: any) => ({
-          id: row.id,
-          name: row.name,
-        }))
-        setLists(nextLists)
-        if (nextLists.length > 0) {
-          setCurrentListId(nextLists[0].id)
-        }
-      }
-
-      // 6) Recarrega campanhas do Supabase para o estado local
-      try {
-        const { data: loadedCamps, error: loadCampsError } = await supabase
-          .from('campaigns')
-          .select('id, name, status, channels, list_name, created_at, message')
-          .eq('user_id', effectiveUserId)
-          .order('created_at', { ascending: true })
-
-        if (!loadCampsError && loadedCamps) {
-          const nextCamps: Campaign[] = loadedCamps.map((row: any) => {
-            const channels: CampaignChannel[] = Array.isArray(row.channels)
-              ? (row.channels as CampaignChannel[])
-              : ['whatsapp']
-
-            const createdAtStr = row.created_at
-              ? new Date(row.created_at).toLocaleString('pt-BR', {
-                  day: '2-digit',
-                  month: 'short',
-                  hour: '2-digit',
-                  minute: '2-digit',
-                })
-              : ''
-
-            return {
-              id: row.id,
-              name: row.name ?? '',
-              status: (row.status as Campaign['status']) ?? 'rascunho',
-              channels,
-              listName: row.list_name ?? 'Lista padrão',
-              createdAt: createdAtStr,
-              message: row.message ?? '',
-            }
-          })
-
-          setCampaigns(nextCamps)
-        }
-      } catch (e) {
-        console.error('Erro ao recarregar campanhas do Supabase apÃ³s importaÃ§Ã£o', e)
-      }
-
-      // 7) Importa histÃ³rico de envios para o Supabase
       if (Array.isArray(d.contactSendHistory) && d.contactSendHistory.length > 0) {
         // Primeiro apaga histÃ³rico existente
-        await supabase.from('contact_send_history').delete().eq('user_id', effectiveUserId)
+        await apiFetch('/api/history', { method: 'DELETE' })
 
-        // Insere histÃ³rico do backup em lotes de 100
+        // Insere histÃ³rico do backup em lotes de 10
         const historyItems = d.contactSendHistory as any[]
-        const batchSize = 100
+        const batchSize = 10
         for (let i = 0; i < historyItems.length; i += batchSize) {
-          const batch = historyItems.slice(i, i + batchSize).map((item: any) => ({
-            user_id: effectiveUserId,
-            campaign_id: item.campaignId ?? '',
-            campaign_name: item.campaignName ?? '',
-            contact_name: item.contactName ?? '',
-            phone_key: item.phoneKey ?? '',
-            channel: item.channel ?? 'whatsapp',
-            ok: item.ok ?? false,
-            status: item.status ?? 0,
-            webhook_ok: item.webhookOk ?? true,
-            run_at: item.runAt ? new Date().toISOString() : new Date().toISOString(),
-          }))
-
-          const { error: historyError } = await supabase
-            .from('contact_send_history')
-            .insert(batch)
-
-          if (historyError) {
-            console.error('Erro ao importar histÃ³rico de envios:', historyError)
-          }
-        }
-
-        // Recarrega histÃ³rico do Supabase
-        const { data: loadedHistory } = await supabase
-          .from('contact_send_history')
-          .select('*')
-          .eq('user_id', effectiveUserId)
-          .order('run_at', { ascending: false })
-
-        if (loadedHistory) {
-          const history: ContactSendHistoryItem[] = loadedHistory.map((row: any) => ({
-            id: row.id,
-            contactId: 0,
-            campaignId: row.campaign_id,
-            campaignName: row.campaign_name,
-            contactName: row.contact_name,
-            phoneKey: row.phone_key,
-            channel: row.channel as 'whatsapp' | 'email',
-            ok: row.ok,
-            status: row.status || 0,
-            webhookOk: row.webhook_ok ?? true,
-            runAt: row.run_at ? new Date(row.run_at).toLocaleString('pt-BR') : '',
-          }))
-          setContactSendHistory(history)
-
-          const logMap: Record<string, CampaignSendLog> = {}
-          for (const item of history) {
-            if (!logMap[item.campaignId]) {
-              logMap[item.campaignId] = {
-                lastStatus: item.status || (item.ok ? 200 : 500),
-                lastOk: item.ok,
-                lastErrorCount: item.ok ? 0 : 1,
-                lastTotal: 1,
-                lastRunAt: item.runAt,
-              }
+          const batch = historyItems.slice(i, i + batchSize)
+          for (const item of batch) {
+            try {
+              await apiFetch('/api/history', {
+                method: 'POST',
+                body: JSON.stringify({
+                  campaign_id: item.campaignId ?? '',
+                  campaign_name: item.campaignName ?? '',
+                  contact_name: item.contactName ?? '',
+                  phone_key: item.phoneKey ?? '',
+                  channel: item.channel ?? 'whatsapp',
+                  ok: item.ok ?? false,
+                  status: item.status ?? 0,
+                  webhook_ok: item.webhookOk ?? true,
+                  run_at: item.runAt ? new Date(item.runAt).toISOString() : new Date().toISOString(),
+                })
+              })
+            } catch (e) {
+              console.error('Erro ao importar item de histórico:', e)
             }
           }
-          setCampaignSendLog(logMap)
         }
+
+        await reloadContactSendHistory()
       }
 
       // 8) Demais dados (webhooks, intervalos) continuam locais
@@ -3426,44 +2994,35 @@ ${emojiRule}
 
     if (listModalMode === 'create') {
       try {
-        const { data: inserted, error } = await supabase
-          .from('lists')
-          .insert({ user_id: effectiveUserId, name: trimmed })
-          .select('id, name')
-          .single()
+        const data = await apiFetch('/api/lists', {
+          method: 'POST',
+          body: JSON.stringify({ name: trimmed })
+        })
 
-        if (error) {
-          console.error('Erro ao criar lista no Supabase', error)
-          setLastMoveMessage('Falha ao criar a lista no banco.')
-          return
-        }
-
-        setLists((prev) => [...prev, { id: inserted.id, name: inserted.name }])
-        setContactsByList((prev) => ({ ...prev, [inserted.id]: [] }))
+        setLists((prev) => [...prev, { id: data.id, name: data.name }])
+        setContactsByList((prev) => ({ ...prev, [data.id]: [] }))
         handleClearFilters()
         setSelectedIds([])
-        setCurrentListId(inserted.id)
+        setCurrentListId(data.id)
         setLastMoveMessage('Lista criada com sucesso.')
         handleCancelListModal()
       } catch (e) {
-        console.error('Erro inesperado ao criar lista', e)
-        setLastMoveMessage('Erro inesperado ao criar a lista.')
+        console.error('Erro ao criar lista:', e)
+        setLastMoveMessage('Falha ao criar a lista.')
       }
     } else if (listModalMode === 'rename') {
       try {
-        const { error } = await supabase.from('lists').update({ name: trimmed }).eq('id', currentListId)
-        if (error) {
-          console.error('Erro ao renomear lista no Supabase', error)
-          setLastMoveMessage('Falha ao renomear a lista no banco.')
-          return
-        }
+        await apiFetch(`/api/lists/${currentListId}`, {
+          method: 'PUT',
+          body: JSON.stringify({ name: trimmed })
+        })
 
         setLists((prev) => prev.map((l) => (l.id === currentListId ? { ...l, name: trimmed } : l)))
         setLastMoveMessage('Lista renomeada com sucesso.')
         handleCancelListModal()
       } catch (e) {
-        console.error('Erro inesperado ao renomear lista', e)
-        setLastMoveMessage('Erro inesperado ao renomear a lista.')
+        console.error('Erro ao renomear lista:', e)
+        setLastMoveMessage('Falha ao renomear a lista.')
       }
     }
   }
@@ -3481,13 +3040,9 @@ ${emojiRule}
     }
 
     try {
-      const { error } = await supabase.from('lists').delete().eq('id', currentListId)
-      if (error) {
-        console.error('Erro ao excluir lista no Supabase', error)
-        setLastMoveMessage('Falha ao excluir a lista no banco.')
-        setConfirmDeleteListOpen(false)
-        return
-      }
+      await apiFetch(`/api/lists/${currentListId}`, {
+        method: 'DELETE'
+      })
 
       setContactsByList((prev) => {
         const { [currentListId]: _, ...rest } = prev
@@ -3506,8 +3061,8 @@ ${emojiRule}
       setLastMoveMessage('Lista excluída com sucesso.')
       setConfirmDeleteListOpen(false)
     } catch (e) {
-      console.error('Erro inesperado ao excluir lista', e)
-      setLastMoveMessage('Erro inesperado ao excluir a lista.')
+      console.error('Erro ao excluir lista:', e)
+      setLastMoveMessage('Falha ao excluir a lista.')
       setConfirmDeleteListOpen(false)
     }
   }
@@ -3525,39 +3080,15 @@ ${emojiRule}
 
     try {
       if (authMode === 'signup') {
-        const { data, error } = await supabase.auth.signUp({ email, password })
-        if (error) {
-          setAuthError(error.message)
-          return
-        }
-
-        // Cria/atualiza perfil do usuário com display_name logo após o cadastro
-        const userId = data.user?.id
-        if (userId) {
-          try {
-            const { error: profileError } = await supabase
-              .from('user_profiles')
-              .upsert({ id: userId, display_name: name }, { onConflict: 'id' })
-
-            if (profileError) {
-              console.error('Erro ao criar/atualizar user_profiles após signup:', profileError)
-            }
-          } catch (e) {
-            console.error('Erro inesperado ao criar/atualizar user_profiles após signup:', e)
-          }
-        }
+        await authSignup({ email, password, name })
         setAuthError(
-          'Cadastro realizado. Verifique seu email (se a confirmação estiver ativada) e depois faça login.',
+          'Cadastro realizado com sucesso. Você já pode fazer login.',
         )
         setAuthMode('login')
         setAuthPassword('')
         setAuthName('')
       } else {
-        const { data, error } = await supabase.auth.signInWithPassword({ email, password })
-        if (error) {
-          setAuthError(error.message)
-          return
-        }
+        await authLogin({ email, password })
       }
 
       // Persistência de email/nome conforme "Lembrar de mim"
@@ -3576,17 +3107,17 @@ ${emojiRule}
       } catch (e) {
         console.error('Erro ao persistir dados de login (remember me)', e)
       }
-    } catch (e) {
-      console.error('Erro ao autenticar no Supabase', e)
-      setAuthError('Erro inesperado ao autenticar. Tente novamente.')
+    } catch (e: any) {
+      console.error('Erro ao autenticar:', e)
+      setAuthError(e.message || 'Erro inesperado ao autenticar. Tente novamente.')
     }
   }
 
   const _handleSignOut = async () => {
     try {
-      await supabase.auth.signOut()
+      authLogout()
     } catch (e) {
-      console.error('Erro ao sair do Supabase', e)
+      console.error('Erro ao sair:', e)
     }
   }
 

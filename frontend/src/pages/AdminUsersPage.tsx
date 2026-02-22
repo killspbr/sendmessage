@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { supabase } from '../supabaseClient'
+import { apiFetch } from '../api'
 
 type AdminUsersPageProps = {
   can?: (code: string) => boolean
@@ -67,160 +67,95 @@ export function AdminUsersPage({
     setError(null)
 
     try {
-      const { error: updateError } = await supabase
-        .from('user_profiles')
-        .update({ [field]: nextValue })
-        .eq('id', userId)
-
-      if (updateError) {
-        console.error('Erro ao atualizar configurações do usuário:', updateError)
-        setError('Erro ao atualizar configurações do usuário.')
-        return
-      }
+      await apiFetch(`/api/admin/users/${userId}/settings`, {
+        method: 'PUT',
+        body: JSON.stringify({ [field]: nextValue })
+      })
 
       setUsers((prev) =>
         prev.map((u) =>
           u.id === userId
             ? {
-                ...u,
-                useGlobalAi: field === 'use_global_ai' ? nextValue : u.useGlobalAi,
-                useGlobalWebhooks:
-                  field === 'use_global_webhooks' ? nextValue : u.useGlobalWebhooks,
-              }
+              ...u,
+              useGlobalAi: field === 'use_global_ai' ? nextValue : u.useGlobalAi,
+              useGlobalWebhooks:
+                field === 'use_global_webhooks' ? nextValue : u.useGlobalWebhooks,
+            }
             : u,
         ),
       )
     } catch (e) {
-      console.error('Erro inesperado ao atualizar configurações do usuário:', e)
-      setError('Erro inesperado ao atualizar configurações do usuário.')
+      console.error('Erro ao atualizar configurações do usuário:', e)
+      setError('Erro ao atualizar configurações do usuário.')
     } finally {
       setSavingUserSettingsId(null)
     }
   }
 
+  const loadAdminData = async () => {
+    setLoading(true)
+    setError(null)
+
+    try {
+      // 1) Carrega grupos
+      const groupsData = await apiFetch('/api/admin/groups')
+      const mappedGroups: AdminGroup[] = (groupsData ?? []).map((g: any) => ({
+        id: g.id,
+        name: g.name ?? '(sem nome)',
+      }))
+      setGroups(mappedGroups)
+
+      if (!selectedGroupId && mappedGroups.length > 0) {
+        setSelectedGroupId(mappedGroups[0].id)
+      }
+
+      // 2) Carrega permissões
+      const permsData = await apiFetch('/api/admin/permissions')
+      const mappedPerms: AdminPermission[] = (permsData ?? []).map((p: any) => ({
+        id: p.id,
+        code: p.code,
+        name: p.name ?? null,
+        description: null,
+      }))
+      setPermissions(mappedPerms)
+
+      // 3) Carrega relação grupo-permissão
+      const groupPermsData = await apiFetch('/api/admin/group-permissions')
+      const gpMap: Record<string, Set<string>> = {}
+      for (const row of groupPermsData ?? []) {
+        const gid = row.group_id as string
+        const pid = row.permission_id as string
+        if (!gid || !pid) continue
+        if (!gpMap[gid]) gpMap[gid] = new Set<string>()
+        gpMap[gid].add(pid)
+      }
+      setGroupPermissions(gpMap)
+
+      // 4) Carrega perfis de usuário
+      const profilesData = await apiFetch('/api/admin/users')
+      const mappedUsers: AdminUserProfile[] = (profilesData ?? []).map((u: any) => ({
+        id: u.id,
+        displayName: u.display_name ?? null,
+        groupId: u.group_id ?? null,
+        groupName: u.group_name ?? null,
+        useGlobalAi: u.use_global_ai ?? true,
+        useGlobalWebhooks: u.use_global_webhooks ?? true,
+        webhookWhatsappUrl: u.webhook_whatsapp_url ?? null,
+        webhookEmailUrl: u.webhook_email_url ?? null,
+      }))
+      setUsers(mappedUsers)
+    } catch (e) {
+      console.error('Erro ao carregar dados de administração:', e)
+      setError('Erro ao carregar dados de administração.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
   useEffect(() => {
     if (!canManageUsers) return
-
-    let isMounted = true
-
-    const loadAdminData = async () => {
-      setLoading(true)
-      setError(null)
-
-      try {
-        // 1) Carrega grupos
-        const { data: groupsData, error: groupsError } = await supabase
-          .from('user_groups')
-          .select('id, name')
-          .order('name', { ascending: true })
-
-        if (!isMounted) return
-
-        if (groupsError) {
-          console.error('Erro ao carregar user_groups:', groupsError)
-          setError('Erro ao carregar grupos de usuários.')
-          return
-        }
-
-        const mappedGroups: AdminGroup[] = (groupsData ?? []).map((g: any) => ({
-          id: g.id,
-          name: g.name ?? '(sem nome)',
-        }))
-        setGroups(mappedGroups)
-
-        if (!selectedGroupId && mappedGroups.length > 0) {
-          setSelectedGroupId(mappedGroups[0].id)
-        }
-
-        // 2) Carrega permissões (sem depender de coluna description, que pode não existir)
-        const { data: permsData, error: permsError } = await supabase
-          .from('permissions')
-          .select('id, code, name')
-          .order('code', { ascending: true })
-
-        if (!isMounted) return
-
-        if (permsError) {
-          console.error('Erro ao carregar permissions:', permsError)
-          setError('Erro ao carregar lista de permissões.')
-          return
-        }
-
-        const mappedPerms: AdminPermission[] = (permsData ?? []).map((p: any) => ({
-          id: p.id,
-          code: p.code,
-          name: p.name ?? null,
-          // description não existe na tabela atual; mantemos o campo no tipo como null
-          description: null,
-        }))
-        setPermissions(mappedPerms)
-
-        // 3) Carrega relação grupo-permissão
-        const { data: groupPermsData, error: groupPermsError } = await supabase
-          .from('group_permissions')
-          .select('group_id, permission_id')
-
-        if (!isMounted) return
-
-        if (groupPermsError) {
-          console.error('Erro ao carregar group_permissions:', groupPermsError)
-          setError('Erro ao carregar permissões por grupo.')
-          return
-        }
-
-        const gpMap: Record<string, Set<string>> = {}
-        for (const row of groupPermsData ?? []) {
-          const gid = row.group_id as string
-          const pid = row.permission_id as string
-          if (!gid || !pid) continue
-          if (!gpMap[gid]) gpMap[gid] = new Set<string>()
-          gpMap[gid].add(pid)
-        }
-        setGroupPermissions(gpMap)
-
-        // 4) Carrega perfis de usuário + grupo (incluindo display_name e webhooks)
-        const { data: profilesData, error: profilesError } = await supabase
-          .from('user_profiles')
-          .select('id, display_name, group_id, use_global_ai, use_global_webhooks, webhook_whatsapp_url, webhook_email_url, user_groups(name)')
-          .order('id', { ascending: true })
-
-        if (!isMounted) return
-
-        if (profilesError) {
-          console.error('Erro ao carregar user_profiles:', profilesError)
-          setError('Erro ao carregar lista de usuários.')
-          return
-        }
-
-        const mappedUsers: AdminUserProfile[] = (profilesData ?? []).map((u: any) => ({
-          id: u.id,
-          displayName: u.display_name ?? null,
-          groupId: u.group_id ?? null,
-          groupName: u.user_groups?.name ?? null,
-          useGlobalAi: u.use_global_ai ?? true,
-          useGlobalWebhooks: u.use_global_webhooks ?? true,
-          webhookWhatsappUrl: u.webhook_whatsapp_url ?? null,
-          webhookEmailUrl: u.webhook_email_url ?? null,
-        }))
-        setUsers(mappedUsers)
-      } catch (e) {
-        console.error('Erro inesperado ao carregar dados de administração:', e)
-        if (isMounted) {
-          setError('Erro inesperado ao carregar dados de administração.')
-        }
-      } finally {
-        if (isMounted) {
-          setLoading(false)
-        }
-      }
-    }
-
     void loadAdminData()
-
-    return () => {
-      isMounted = false
-    }
-  }, [canManageUsers, selectedGroupId])
+  }, [canManageUsers])
 
   if (!canManageUsers) {
     return (
@@ -247,15 +182,10 @@ export function AdminUsersPage({
 
     try {
       if (nextEnabled) {
-        const { error: insertError } = await supabase
-          .from('group_permissions')
-          .insert({ group_id: groupId, permission_id: permissionId })
-
-        if (insertError) {
-          console.error('Erro ao adicionar permissão ao grupo:', insertError)
-          setError('Erro ao adicionar permissão ao grupo.')
-          return
-        }
+        await apiFetch('/api/admin/group-permissions', {
+          method: 'POST',
+          body: JSON.stringify({ group_id: groupId, permission_id: permissionId })
+        })
 
         setGroupPermissions((prev) => {
           const next: Record<string, Set<string>> = { ...prev }
@@ -265,17 +195,10 @@ export function AdminUsersPage({
           return next
         })
       } else {
-        const { error: deleteError } = await supabase
-          .from('group_permissions')
-          .delete()
-          .eq('group_id', groupId)
-          .eq('permission_id', permissionId)
-
-        if (deleteError) {
-          console.error('Erro ao remover permissão do grupo:', deleteError)
-          setError('Erro ao remover permissão do grupo.')
-          return
-        }
+        await apiFetch('/api/admin/group-permissions', {
+          method: 'DELETE',
+          body: JSON.stringify({ group_id: groupId, permission_id: permissionId })
+        })
 
         setGroupPermissions((prev) => {
           const next: Record<string, Set<string>> = { ...prev }
@@ -286,8 +209,8 @@ export function AdminUsersPage({
         })
       }
     } catch (e) {
-      console.error('Erro inesperado ao atualizar permissão do grupo:', e)
-      setError('Erro inesperado ao atualizar permissão do grupo.')
+      console.error('Erro ao atualizar permissão do grupo:', e)
+      setError('Erro ao atualizar permissão do grupo.')
     } finally {
       setSavingPermission(false)
     }
@@ -295,14 +218,10 @@ export function AdminUsersPage({
 
   const handleToggleAllPermissionsForSelectedGroup = async (nextEnabled: boolean) => {
     if (!selectedGroupId || savingPermission || permissions.length === 0) return
-
     setError(null)
-
-    // Executa em sequência para reutilizar a lógica de handleTogglePermission
     for (const perm of permissions) {
       const isCurrentlyEnabled = selectedGroupPerms.has(perm.id)
       if (nextEnabled === isCurrentlyEnabled) continue
-      // eslint-disable-next-line no-await-in-loop
       await handleTogglePermission(selectedGroupId, perm.id, nextEnabled)
     }
   }
@@ -314,16 +233,10 @@ export function AdminUsersPage({
     setError(null)
 
     try {
-      const { error: updateError } = await supabase
-        .from('user_profiles')
-        .update({ group_id: groupIdOrNull })
-        .eq('id', userId)
-
-      if (updateError) {
-        console.error('Erro ao atualizar grupo do usuário:', updateError)
-        setError('Erro ao atualizar grupo do usuário.')
-        return
-      }
+      await apiFetch(`/api/admin/users/${userId}/group`, {
+        method: 'PUT',
+        body: JSON.stringify({ group_id: groupIdOrNull })
+      })
 
       const group = groupIdOrNull ? groups.find((g) => g.id === groupIdOrNull) ?? null : null
 
@@ -331,16 +244,16 @@ export function AdminUsersPage({
         prev.map((u) =>
           u.id === userId
             ? {
-                ...u,
-                groupId: groupIdOrNull,
-                groupName: group?.name ?? null,
-              }
+              ...u,
+              groupId: groupIdOrNull,
+              groupName: group?.name ?? null,
+            }
             : u,
         ),
       )
     } catch (e) {
-      console.error('Erro inesperado ao atualizar grupo do usuário:', e)
-      setError('Erro inesperado ao atualizar grupo do usuário.')
+      console.error('Erro ao atualizar grupo do usuário:', e)
+      setError('Erro ao atualizar grupo do usuário.')
     } finally {
       setSavingUserGroupId(null)
     }
@@ -353,28 +266,22 @@ export function AdminUsersPage({
     setError(null)
 
     try {
-      const { error: updateError } = await supabase
-        .from('user_profiles')
-        .update({
+      await apiFetch(`/api/admin/users/${userId}/settings`, {
+        method: 'PUT',
+        body: JSON.stringify({
           webhook_whatsapp_url: webhookWhatsappInput.trim() || null,
           webhook_email_url: webhookEmailInput.trim() || null,
         })
-        .eq('id', userId)
-
-      if (updateError) {
-        console.error('Erro ao atualizar webhooks do usuário:', updateError)
-        setError('Erro ao atualizar webhooks do usuário.')
-        return
-      }
+      })
 
       setUsers((prev) =>
         prev.map((u) =>
           u.id === userId
             ? {
-                ...u,
-                webhookWhatsappUrl: webhookWhatsappInput.trim() || null,
-                webhookEmailUrl: webhookEmailInput.trim() || null,
-              }
+              ...u,
+              webhookWhatsappUrl: webhookWhatsappInput.trim() || null,
+              webhookEmailUrl: webhookEmailInput.trim() || null,
+            }
             : u,
         ),
       )
@@ -383,8 +290,8 @@ export function AdminUsersPage({
       setWebhookWhatsappInput('')
       setWebhookEmailInput('')
     } catch (e) {
-      console.error('Erro inesperado ao atualizar webhooks do usuário:', e)
-      setError('Erro inesperado ao atualizar webhooks do usuário.')
+      console.error('Erro ao atualizar webhooks do usuário:', e)
+      setError('Erro ao atualizar webhooks do usuário.')
     } finally {
       setSavingUserSettingsId(null)
     }
@@ -429,7 +336,7 @@ export function AdminUsersPage({
         <div className="flex flex-col gap-2">
           <h3 className="text-xs font-semibold text-slate-800">Usuários</h3>
           <p className="text-[11px] text-slate-500">
-            Lista de perfis cadastrados em <code className="font-mono text-[10px]">user_profiles</code> e seus grupos atuais.
+            Lista de perfis cadastrados e seus grupos atuais.
           </p>
           <div className="mt-1 rounded-lg border border-slate-200 bg-slate-50/80 max-h-80 overflow-auto">
             {users.length === 0 ? (
@@ -472,8 +379,6 @@ export function AdminUsersPage({
                               if (currentRoleIndex < 0) return true
                               const targetIndex = ROLE_ORDER.indexOf(g.name as any)
                               if (targetIndex < 0) return true
-                              // Regra: papéis só podem atribuir papéis com nível igual ou inferior.
-                              // Isso permite que Administrador atribua "Administrador" a outros usuários.
                               return targetIndex >= currentRoleIndex
                             })
                             .map((g) => (
@@ -565,11 +470,10 @@ export function AdminUsersPage({
                         {onImpersonateUser && (
                           <button
                             type="button"
-                            className={`px-2 py-0.5 rounded-md text-[10px] border ${
-                              impersonatedUserId === u.id
+                            className={`px-2 py-0.5 rounded-md text-[10px] border ${impersonatedUserId === u.id
                                 ? 'bg-violet-600 text-white border-violet-700'
                                 : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
-                            }`}
+                              }`}
                             onClick={() =>
                               onImpersonateUser(impersonatedUserId === u.id ? null : u.id)
                             }
@@ -603,11 +507,10 @@ export function AdminUsersPage({
                   <button
                     key={g.id}
                     type="button"
-                    className={`w-full flex items-center justify-between gap-2 px-2 py-1.5 rounded-md text-[11px] border transition ${
-                      isSelected
+                    className={`w-full flex items-center justify-between gap-2 px-2 py-1.5 rounded-md text-[11px] border transition ${isSelected
                         ? 'bg-violet-50 border-violet-300 text-violet-900'
                         : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
-                    }`}
+                      }`}
                     onClick={() => setSelectedGroupId(g.id)}
                   >
                     <span className="truncate">{g.name}</span>
@@ -681,7 +584,7 @@ export function AdminUsersPage({
                         </td>
                         <td className="px-2 py-1 align-top font-mono text-[10px] text-slate-800">{p.code}</td>
                         <td className="px-2 py-1 align-top text-slate-700">
-                          {p.name || p.description || <span className="text-slate-400">(sem descrição)</span>}
+                          {p.name || <span className="text-slate-400">(sem descrição)</span>}
                         </td>
                       </tr>
                     )

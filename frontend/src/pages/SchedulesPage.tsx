@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { supabase } from '../supabaseClient'
+import { apiFetch } from '../api'
 import type { Campaign } from '../types'
 
 export type ScheduleStatus = 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled'
@@ -9,6 +9,7 @@ type ScheduledJob = {
   campaign_id: string
   scheduled_at: string
   status: ScheduleStatus
+  campaign_name?: string
 }
 
 type SchedulesPageProps = {
@@ -27,90 +28,23 @@ export function SchedulesPage({ campaigns, effectiveUserId }: SchedulesPageProps
   const [newTime, setNewTime] = useState<string>('')
   const [creating, setCreating] = useState(false)
 
-  useEffect(() => {
-    let cancelled = false
-
-    const load = async () => {
-      if (!effectiveUserId) return
-      setLoading(true)
-      setError(null)
-      try {
-        const { data, error } = await supabase
-          .from('scheduled_jobs')
-          .select('id, campaign_id, scheduled_at, status')
-          .eq('user_id', effectiveUserId)
-          .order('scheduled_at', { ascending: true })
-
-        if (cancelled) return
-
-        if (error) {
-          console.error('Erro ao carregar scheduled_jobs', error)
-          setError('Falha ao carregar agendamentos.')
-          return
-        }
-
-        setJobs((data ?? []) as ScheduledJob[])
-      } catch (e: any) {
-        if (!cancelled) {
-          console.error('Erro inesperado ao carregar scheduled_jobs', e)
-          setError('Erro inesperado ao carregar agendamentos.')
-        }
-      } finally {
-        if (!cancelled) setLoading(false)
-      }
-    }
-
-    void load()
-
-    return () => {
-      cancelled = true
-    }
-  }, [effectiveUserId])
-
-  // Realtime: escuta inserts/updates/deletes em scheduled_jobs do usuário atual
-  useEffect(() => {
+  const loadJobs = async () => {
     if (!effectiveUserId) return
-
-    const channel = supabase
-      .channel(`scheduled_jobs_realtime_${effectiveUserId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'scheduled_jobs',
-          filter: `user_id=eq.${effectiveUserId}`,
-        },
-        (payload: any) => {
-          const eventType = payload.eventType as 'INSERT' | 'UPDATE' | 'DELETE'
-
-          if (eventType === 'INSERT') {
-            const newJob = payload.new as ScheduledJob
-            setJobs((prev) => {
-              // evita duplicar se já estiver na lista
-              if (prev.some((j) => j.id === newJob.id)) return prev
-              return [...prev, newJob].sort((a, b) =>
-                a.scheduled_at.localeCompare(b.scheduled_at),
-              )
-            })
-          } else if (eventType === 'UPDATE') {
-            const updated = payload.new as ScheduledJob
-            setJobs((prev) =>
-              prev
-                .map((j) => (j.id === updated.id ? updated : j))
-                .sort((a, b) => a.scheduled_at.localeCompare(b.scheduled_at)),
-            )
-          } else if (eventType === 'DELETE') {
-            const old = payload.old as ScheduledJob
-            setJobs((prev) => prev.filter((j) => j.id !== old.id))
-          }
-        },
-      )
-      .subscribe()
-
-    return () => {
-      void supabase.removeChannel(channel)
+    setLoading(true)
+    setError(null)
+    try {
+      const data = await apiFetch('/api/schedules')
+      setJobs((data ?? []) as ScheduledJob[])
+    } catch (e: any) {
+      console.error('Erro ao carregar agendamentos', e)
+      setError('Falha ao carregar agendamentos.')
+    } finally {
+      setLoading(false)
     }
+  }
+
+  useEffect(() => {
+    void loadJobs()
   }, [effectiveUserId])
 
   const jobsWithCampaign = useMemo(
@@ -119,7 +53,7 @@ export function SchedulesPage({ campaigns, effectiveUserId }: SchedulesPageProps
         const camp = campaigns.find((c) => c.id === job.campaign_id)
         return {
           ...job,
-          campaignName: camp?.name ?? '(Campanha removida)',
+          campaignName: job.campaign_name || camp?.name || '(Campanha removida)',
         }
       }),
     [jobs, campaigns],
@@ -240,35 +174,20 @@ export function SchedulesPage({ campaigns, effectiveUserId }: SchedulesPageProps
               setCreating(true)
               setError(null)
               try {
-                const { error } = await supabase.from('scheduled_jobs').insert({
-                  user_id: effectiveUserId,
-                  campaign_id: newCampaignId,
-                  scheduled_at: scheduledAt.toISOString(),
-                  status: 'pending',
+                await apiFetch('/api/schedules', {
+                  method: 'POST',
+                  body: JSON.stringify({
+                    campaign_id: newCampaignId,
+                    scheduled_at: scheduledAt.toISOString(),
+                  })
                 })
 
-                if (error) {
-                  console.error('Erro ao criar agendamento', error)
-                  setError('Falha ao criar o agendamento.')
-                } else {
-                  // limpa data/hora e recarrega
-                  setNewDate('')
-                  setNewTime('')
-                  const { data, error: reloadError } = await supabase
-                    .from('scheduled_jobs')
-                    .select('id, campaign_id, scheduled_at, status')
-                    .eq('user_id', effectiveUserId)
-                    .order('scheduled_at', { ascending: true })
-
-                  if (reloadError) {
-                    console.error('Erro ao recarregar agendamentos após criar', reloadError)
-                  } else {
-                    setJobs((data ?? []) as ScheduledJob[])
-                  }
-                }
+                setNewDate('')
+                setNewTime('')
+                await loadJobs()
               } catch (e: any) {
-                console.error('Erro inesperado ao criar agendamento', e)
-                setError('Erro inesperado ao criar o agendamento.')
+                console.error('Erro ao criar agendamento', e)
+                setError('Falha ao criar o agendamento.')
               } finally {
                 setCreating(false)
               }
@@ -326,29 +245,7 @@ export function SchedulesPage({ campaigns, effectiveUserId }: SchedulesPageProps
               type="button"
               className="h-7 px-3 rounded-md text-[11px] font-medium border border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100"
               disabled={loading}
-              onClick={async () => {
-                // reload simples
-                try {
-                  setLoading(true)
-                  const { data, error } = await supabase
-                    .from('scheduled_jobs')
-                    .select('id, campaign_id, scheduled_at, status')
-                    .eq('user_id', effectiveUserId || '')
-                    .order('scheduled_at', { ascending: true })
-                  if (error) {
-                    console.error('Erro ao recarregar scheduled_jobs', error)
-                    setError('Falha ao recarregar agendamentos.')
-                  } else {
-                    setJobs((data ?? []) as ScheduledJob[])
-                    setError(null)
-                  }
-                } catch (e: any) {
-                  console.error('Erro inesperado ao recarregar scheduled_jobs', e)
-                  setError('Erro inesperado ao recarregar agendamentos.')
-                } finally {
-                  setLoading(false)
-                }
-              }}
+              onClick={loadJobs}
             >
               Recarregar
             </button>
@@ -363,74 +260,67 @@ export function SchedulesPage({ campaigns, effectiveUserId }: SchedulesPageProps
 
         <div className="border border-slate-100 rounded-xl overflow-hidden mt-1">
           <table className="w-full text-[11px]">
-          <thead className="bg-slate-50 text-slate-500">
-            <tr>
-              <th className="text-left px-3 py-2">Campanha</th>
-              <th className="text-left px-3 py-2">Data/Hora agendada</th>
-              <th className="text-left px-3 py-2">Status</th>
-              <th className="text-right px-3 py-2">Ações</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.length === 0 ? (
+            <thead className="bg-slate-50 text-slate-500">
               <tr>
-                <td colSpan={4} className="px-3 py-4 text-center text-[11px] text-slate-400">
-                  {loading ? 'Carregando agendamentos...' : 'Nenhum agendamento encontrado.'}
-                </td>
+                <th className="text-left px-3 py-2">Campanha</th>
+                <th className="text-left px-3 py-2">Data/Hora agendada</th>
+                <th className="text-left px-3 py-2">Status</th>
+                <th className="text-right px-3 py-2">Ações</th>
               </tr>
-            ) : (
-              filtered.map((job) => (
-                <tr key={job.id} className="border-t border-slate-100">
-                  <td className="px-3 py-2 text-slate-800">{job.campaignName}</td>
-                  <td className="px-3 py-2 text-slate-600">{formatDateTime(job.scheduled_at)}</td>
-                  <td className="px-3 py-2">
-                    <span
-                      className={`inline-flex items-center px-2 py-0.5 rounded-full border text-[10px] ${statusClass[job.status]}`}
-                    >
-                      {statusLabel[job.status]}
-                    </span>
+            </thead>
+            <tbody>
+              {filtered.length === 0 ? (
+                <tr>
+                  <td colSpan={4} className="px-3 py-4 text-center text-[11px] text-slate-400">
+                    {loading ? 'Carregando agendamentos...' : 'Nenhum agendamento encontrado.'}
                   </td>
-                  <td className="px-3 py-2 text-right">
-                    {job.status === 'pending' ? (
-                      <button
-                        type="button"
-                        className="h-7 px-2 rounded-md border border-slate-200 bg-white text-[10px] text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
-                        disabled={!effectiveUserId || loading}
-                        onClick={async () => {
-                          if (!effectiveUserId) return
-                          try {
-                            const { error } = await supabase
-                              .from('scheduled_jobs')
-                              .update({ status: 'cancelled' })
-                              .eq('id', job.id)
-                              .eq('user_id', effectiveUserId)
-
-                            if (error) {
-                              console.error('Erro ao cancelar agendamento', error)
-                              setError('Falha ao cancelar o agendamento.')
-                            } else {
+                </tr>
+              ) : (
+                filtered.map((job) => (
+                  <tr key={job.id} className="border-t border-slate-100">
+                    <td className="px-3 py-2 text-slate-800">{job.campaignName}</td>
+                    <td className="px-3 py-2 text-slate-600">{formatDateTime(job.scheduled_at)}</td>
+                    <td className="px-3 py-2">
+                      <span
+                        className={`inline-flex items-center px-2 py-0.5 rounded-full border text-[10px] ${statusClass[job.status]}`}
+                      >
+                        {statusLabel[job.status]}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2 text-right">
+                      {job.status === 'pending' ? (
+                        <button
+                          type="button"
+                          className="h-7 px-2 rounded-md border border-slate-200 bg-white text-[10px] text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                          disabled={!effectiveUserId || loading}
+                          onClick={async () => {
+                            if (!effectiveUserId) return
+                            try {
+                              await apiFetch(`/api/schedules/${job.id}`, {
+                                method: 'PUT',
+                                body: JSON.stringify({ status: 'cancelled' })
+                              })
                               setJobs((prev) =>
                                 prev.map((j) =>
                                   j.id === job.id ? { ...j, status: 'cancelled' } : j,
                                 ),
                               )
+                            } catch (e: any) {
+                              console.error('Erro ao cancelar agendamento', e)
+                              setError('Falha ao cancelar o agendamento.')
                             }
-                          } catch (e: any) {
-                            console.error('Erro inesperado ao cancelar agendamento', e)
-                            setError('Erro inesperado ao cancelar o agendamento.')
-                          }
-                        }}
-                      >
-                        Cancelar
-                      </button>
-                    ) : (
-                      <span className="text-[10px] text-slate-400">—</span>
-                    )}
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
+                          }}
+                        >
+                          Cancelar
+                        </button>
+                      ) : (
+                        <span className="text-[10px] text-slate-400">—</span>
+                      )}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
           </table>
         </div>
       </div>
