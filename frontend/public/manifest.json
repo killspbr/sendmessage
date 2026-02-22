@@ -1,0 +1,20 @@
+{
+  "name": "CL Marketing",
+  "short_name": "CL Marketing",
+  "description": "Sistema de disparo de campanhas de marketing via WhatsApp e Email",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f8fafc",
+  "theme_color": "#7c3aed",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "/icons/icon-512x512.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable any"
+    }
+  ],
+  "categories": ["business", "productivity"],
+  "lang": "pt-BR"
+}
