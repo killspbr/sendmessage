@@ -369,6 +369,42 @@ app.use((err, req, res, next) => {
   return next(err);
 });
 
+// --- CONFIGURAÇÕES GLOBAIS ---
+app.get('/api/settings', async (req, res) => {
+  try {
+    const result = await query('SELECT * FROM app_settings LIMIT 1');
+    res.json(result.rows[0] || {});
+  } catch (error) {
+    res.status(500).json({ error: 'Erro ao buscar configurações globais' });
+  }
+});
+
+app.post('/api/settings', authenticateToken, async (req, res) => {
+  try {
+    const { global_ai_api_key, global_webhook_whatsapp_url, global_webhook_email_url } = req.body;
+
+    // Tenta atualizar se existir, ou inserir se não
+    const check = await query('SELECT id FROM app_settings LIMIT 1');
+
+    let result;
+    if (check.rows.length > 0) {
+      result = await query(
+        'UPDATE app_settings SET global_ai_api_key = $1, global_webhook_whatsapp_url = $2, global_webhook_email_url = $3, updated_at = CURRENT_TIMESTAMP RETURNING *',
+        [global_ai_api_key, global_webhook_whatsapp_url, global_webhook_email_url]
+      );
+    } else {
+      result = await query(
+        'INSERT INTO app_settings (global_ai_api_key, global_webhook_whatsapp_url, global_webhook_email_url) VALUES ($1, $2, $3) RETURNING *',
+        [global_ai_api_key, global_webhook_whatsapp_url, global_webhook_email_url]
+      );
+    }
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    res.status(500).json({ error: 'Erro ao salvar configurações globais' });
+  }
+});
+
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', service: 'sendmessage-backend' });
 });
