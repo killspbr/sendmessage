@@ -14,7 +14,7 @@ type CampaignsPageProps = {
   sendHistory: SendHistoryItem[]
   contactSendHistory: ContactSendHistoryItem[]
   campaignSendLog: Record<string, CampaignSendLog>
-  
+
   // Estado do editor
   campaignEditorOpen: boolean
   editingCampaignId: string | null
@@ -22,7 +22,7 @@ type CampaignsPageProps = {
   newCampaignListId: string
   newCampaignChannels: CampaignChannel[]
   newCampaignMessage: string
-  
+
   // Estado de envio
   sendingCampaignId: string | null
   sendingCurrentIndex: number
@@ -30,7 +30,7 @@ type CampaignsPageProps = {
   sendingErrors: number
   sendingNextDelaySeconds: number | null
   sendConfirmCampaignId: string | null
-  
+
   // Configurações
   webhookUrlWhatsApp: string
   webhookUrlEmail: string
@@ -38,11 +38,11 @@ type CampaignsPageProps = {
   sendIntervalMaxSeconds: number
   onChangeSendIntervalMinSeconds: (value: number) => void
   onChangeSendIntervalMaxSeconds: (value: number) => void
-  
+
   // Estado do relatório
   reportCampaignId: string | null
   reportViewMode: 'all' | 'last'
-  
+
   // Handlers do editor
   onSetCampaignEditorOpen: (open: boolean) => void
   onSetEditingCampaignId: (id: string | null) => void
@@ -50,7 +50,7 @@ type CampaignsPageProps = {
   onSetNewCampaignListId: (id: string) => void
   onSetNewCampaignChannels: (channels: CampaignChannel[]) => void
   onSetNewCampaignMessage: (message: string) => void
-  
+
   // Handlers de ações
   onCreateCampaign: () => void
   onCancelEditCampaign: () => void
@@ -61,11 +61,11 @@ type CampaignsPageProps = {
   onSendCampaign: (campaign: Campaign) => void
   onContinueCampaign: (campaign: Campaign) => void
   onSetSendConfirmCampaignId: (id: string | null) => void
-  
+
   // Handlers do relatório
   onSetReportCampaignId: (id: string | null) => void
   onSetReportViewMode: (mode: 'all' | 'last') => void
-  
+
   // Funções utilitárias
   htmlToWhatsapp: (html: string) => string
   htmlToText: (html: string) => string
@@ -152,6 +152,12 @@ export function CampaignsPage({
       Image,
     ],
     content: newCampaignMessage || '<p></p>',
+    editorProps: {
+      attributes: {
+        class: 'prose prose-sm sm:prose focus:outline-none max-w-none ProseMirror',
+        style: 'min-height: 350px; cursor: text;',
+      },
+    },
     onUpdate: ({ editor }) => {
       const html = editor.getHTML()
       onSetNewCampaignMessage(html)
@@ -305,11 +311,10 @@ export function CampaignsPage({
                         <span className="text-[9px] text-slate-500">Tom:</span>
                         <button
                           type="button"
-                          className={`px-1.5 py-0.5 rounded-full text-[9px] border ${
-                            aiTone === 'neutral'
-                              ? 'bg-white text-slate-800 border-slate-400'
-                              : 'text-slate-500 border-transparent'
-                          }`}
+                          className={`px-1.5 py-0.5 rounded-full text-[9px] border ${aiTone === 'neutral'
+                            ? 'bg-white text-slate-800 border-slate-400'
+                            : 'text-slate-500 border-transparent'
+                            }`}
                           title="Texto equilibrado, sem apelo de vendas forte."
                           onClick={() => setAiTone('neutral')}
                         >
@@ -317,11 +322,10 @@ export function CampaignsPage({
                         </button>
                         <button
                           type="button"
-                          className={`px-1.5 py-0.5 rounded-full text-[9px] border ${
-                            aiTone === 'friendly'
-                              ? 'bg-white text-slate-800 border-slate-400'
-                              : 'text-slate-500 border-transparent'
-                          }`}
+                          className={`px-1.5 py-0.5 rounded-full text-[9px] border ${aiTone === 'friendly'
+                            ? 'bg-white text-slate-800 border-slate-400'
+                            : 'text-slate-500 border-transparent'
+                            }`}
                           title="Texto próximo e informal, mais acolhedor."
                           onClick={() => setAiTone('friendly')}
                         >
@@ -329,11 +333,10 @@ export function CampaignsPage({
                         </button>
                         <button
                           type="button"
-                          className={`px-1.5 py-0.5 rounded-full text-[9px] border ${
-                            aiTone === 'sales'
-                              ? 'bg-white text-slate-800 border-slate-400'
-                              : 'text-slate-500 border-transparent'
-                          }`}
+                          className={`px-1.5 py-0.5 rounded-full text-[9px] border ${aiTone === 'sales'
+                            ? 'bg-white text-slate-800 border-slate-400'
+                            : 'text-slate-500 border-transparent'
+                            }`}
                           title="Texto mais direto para venda, com foco em conversão."
                           onClick={() => setAiTone('sales')}
                         >
@@ -345,11 +348,10 @@ export function CampaignsPage({
                         <span className="text-[9px] text-slate-500">Tipo:</span>
                         <button
                           type="button"
-                          className={`px-1.5 py-0.5 rounded-full text-[9px] border ${
-                            aiCampaignType === 'first_contact'
-                              ? 'bg-white text-slate-800 border-slate-400'
-                              : 'text-slate-500 border-transparent'
-                          }`}
+                          className={`px-1.5 py-0.5 rounded-full text-[9px] border ${aiCampaignType === 'first_contact'
+                            ? 'bg-white text-slate-800 border-slate-400'
+                            : 'text-slate-500 border-transparent'
+                            }`}
                           title="Primeiro contato com a base dessa campanha."
                           onClick={() => setAiCampaignType('first_contact')}
                         >
@@ -357,11 +359,10 @@ export function CampaignsPage({
                         </button>
                         <button
                           type="button"
-                          className={`px-1.5 py-0.5 rounded-full text-[9px] border ${
-                            aiCampaignType === 'follow_up'
-                              ? 'bg-white text-slate-800 border-slate-400'
-                              : 'text-slate-500 border-transparent'
-                          }`}
+                          className={`px-1.5 py-0.5 rounded-full text-[9px] border ${aiCampaignType === 'follow_up'
+                            ? 'bg-white text-slate-800 border-slate-400'
+                            : 'text-slate-500 border-transparent'
+                            }`}
                           title="Mensagem de acompanhamento após contato anterior."
                           onClick={() => setAiCampaignType('follow_up')}
                         >
@@ -369,11 +370,10 @@ export function CampaignsPage({
                         </button>
                         <button
                           type="button"
-                          className={`px-1.5 py-0.5 rounded-full text-[9px] border ${
-                            aiCampaignType === 'recovery'
-                              ? 'bg-white text-slate-800 border-slate-400'
-                              : 'text-slate-500 border-transparent'
-                          }`}
+                          className={`px-1.5 py-0.5 rounded-full text-[9px] border ${aiCampaignType === 'recovery'
+                            ? 'bg-white text-slate-800 border-slate-400'
+                            : 'text-slate-500 border-transparent'
+                            }`}
                           title="Focado em recuperar clientes inativos ou perdidos."
                           onClick={() => setAiCampaignType('recovery')}
                         >
@@ -456,11 +456,10 @@ export function CampaignsPage({
                         <span className="text-[9px] text-slate-500">Objetivo:</span>
                         <button
                           type="button"
-                          className={`px-1.5 py-0.5 rounded-full text-[9px] border ${
-                            aiGoal === 'leads'
-                              ? 'bg-white text-slate-800 border-slate-400'
-                              : 'text-slate-500 border-transparent'
-                          }`}
+                          className={`px-1.5 py-0.5 rounded-full text-[9px] border ${aiGoal === 'leads'
+                            ? 'bg-white text-slate-800 border-slate-400'
+                            : 'text-slate-500 border-transparent'
+                            }`}
                           title="Foco em gerar contatos interessados (leads)."
                           onClick={() => setAiGoal('leads')}
                         >
@@ -468,11 +467,10 @@ export function CampaignsPage({
                         </button>
                         <button
                           type="button"
-                          className={`px-1.5 py-0.5 rounded-full text-[9px] border ${
-                            aiGoal === 'direct_sale'
-                              ? 'bg-white text-slate-800 border-slate-400'
-                              : 'text-slate-500 border-transparent'
-                          }`}
+                          className={`px-1.5 py-0.5 rounded-full text-[9px] border ${aiGoal === 'direct_sale'
+                            ? 'bg-white text-slate-800 border-slate-400'
+                            : 'text-slate-500 border-transparent'
+                            }`}
                           title="Foco em gerar vendas diretamente pela mensagem."
                           onClick={() => setAiGoal('direct_sale')}
                         >
@@ -480,11 +478,10 @@ export function CampaignsPage({
                         </button>
                         <button
                           type="button"
-                          className={`px-1.5 py-0.5 rounded-full text-[9px] border ${
-                            aiGoal === 'engagement'
-                              ? 'bg-white text-slate-800 border-slate-400'
-                              : 'text-slate-500 border-transparent'
-                          }`}
+                          className={`px-1.5 py-0.5 rounded-full text-[9px] border ${aiGoal === 'engagement'
+                            ? 'bg-white text-slate-800 border-slate-400'
+                            : 'text-slate-500 border-transparent'
+                            }`}
                           title="Foco em respostas, cliques ou interação com a base."
                           onClick={() => setAiGoal('engagement')}
                         >
@@ -586,19 +583,21 @@ export function CampaignsPage({
                 )}
               </div>
 
-              <div className="w-full rounded-md border border-slate-200 bg-white min-h-[200px] flex flex-col">
-                <div className="flex flex-wrap items-center gap-1 border-b border-slate-100 bg-slate-50 px-2 py-1">
+              {/* Novo Container do Editor com Estilo Moderno */}
+              <div className="tiptap-container border border-slate-200 shadow-sm mt-3">
+                {/* Toolbar Refatorada */}
+                <div className="flex flex-wrap items-center gap-1.5 border-b border-slate-100 bg-slate-50/80 px-3 py-2">
                   <select
-                    className="h-6 rounded border border-slate-200 bg-white px-1 text-[10px] text-slate-700"
+                    className="h-8 rounded-lg border border-slate-200 bg-white px-2 text-[11px] font-medium text-slate-700 outline-none focus:ring-1 focus:ring-violet-400"
                     disabled={!editor}
                     value={
                       editor?.isActive('heading', { level: 1 })
                         ? 'h1'
                         : editor?.isActive('heading', { level: 2 })
-                        ? 'h2'
-                        : editor?.isActive('heading', { level: 3 })
-                        ? 'h3'
-                        : 'p'
+                          ? 'h2'
+                          : editor?.isActive('heading', { level: 3 })
+                            ? 'h3'
+                            : 'p'
                     }
                     onChange={(e) => {
                       if (!editor) return
@@ -609,233 +608,203 @@ export function CampaignsPage({
                       if (value === 'h3') editor.chain().focus().setHeading({ level: 3 }).run()
                     }}
                   >
-                    <option value="p">Parágrafo</option>
-                    <option value="h1">Título 1</option>
-                    <option value="h2">Título 2</option>
-                    <option value="h3">Título 3</option>
+                    <option value="p">Texto Normal</option>
+                    <option value="h1">Título Grande</option>
+                    <option value="h2">Título Médio</option>
+                    <option value="h3">Subtítulo</option>
                   </select>
 
-                  <button
-                    type="button"
-                    className={`px-1.5 py-0.5 rounded text-[10px] ${
-                      editor?.isActive('bold') ? 'bg-slate-800 text-white' : 'text-slate-700 hover:bg-slate-100'
-                    }`}
-                    disabled={!editor}
-                    onClick={() => editor?.chain().focus().toggleBold().run()}
-                  >
-                    N
-                  </button>
-                  <button
-                    type="button"
-                    className={`px-1.5 py-0.5 rounded text-[10px] ${
-                      editor?.isActive('italic') ? 'bg-slate-800 text-white' : 'text-slate-700 hover:bg-slate-100'
-                    }`}
-                    disabled={!editor}
-                    onClick={() => editor?.chain().focus().toggleItalic().run()}
-                  >
-                    I
-                  </button>
-                  <button
-                    type="button"
-                    className={`px-1.5 py-0.5 rounded text-[10px] ${
-                      editor?.isActive('underline')
-                        ? 'bg-slate-800 text-white'
-                        : 'text-slate-700 hover:bg-slate-100'
-                    }`}
-                    disabled={!editor}
-                    onClick={() => editor?.chain().focus().toggleUnderline().run()}
-                  >
-                    U
-                  </button>
-                  <button
-                    type="button"
-                    className={`px-1.5 py-0.5 rounded text-[10px] ${
-                      editor?.isActive('strike')
-                        ? 'bg-slate-800 text-white'
-                        : 'text-slate-700 hover:bg-slate-100'
-                    }`}
-                    disabled={!editor}
-                    onClick={() => editor?.chain().focus().toggleStrike().run()}
-                  >
-                    S
-                  </button>
-                  <button
-                    type="button"
-                    className={`px-1.5 py-0.5 rounded text-[10px] ${
-                      editor?.isActive('heading', { level: 2 })
-                        ? 'bg-slate-800 text-white'
-                        : 'text-slate-700 hover:bg-slate-100'
-                    }`}
-                    disabled={!editor}
-                    onClick={() => editor?.chain().focus().toggleHeading({ level: 2 }).run()}
-                  >
-                    H2
-                  </button>
-                  <button
-                    type="button"
-                    className={`px-1.5 py-0.5 rounded text-[10px] ${
-                      editor?.isActive('paragraph') ? 'bg-slate-800 text-white' : 'text-slate-700 hover:bg-slate-100'
-                    }`}
-                    disabled={!editor}
-                    onClick={() => editor?.chain().focus().setParagraph().run()}
-                  >
-                    P
-                  </button>
-                  <span className="h-4 w-px bg-slate-200 mx-1" />
-                  <button
-                    type="button"
-                    className="px-1.5 py-0.5 rounded text-[10px] text-slate-700 hover:bg-slate-100 disabled:opacity-40"
-                    disabled={!editor}
-                    onClick={() => {
-                      if (!editor) return
-                      const url = window.prompt('URL da imagem:')?.trim()
-                      if (!url) return
-                      editor.chain().focus().setImage({ src: url }).run()
-                    }}
-                  >
-                    Img
-                  </button>
-                  <button
-                    type="button"
-                    className={`px-1.5 py-0.5 rounded text-[10px] ${
-                      editor?.isActive('link')
-                        ? 'bg-slate-800 text-white'
-                        : 'text-slate-700 hover:bg-slate-100'
-                    }`}
-                    disabled={!editor}
-                    onClick={() => {
-                      if (!editor) return
-                      const prevUrl = editor.getAttributes('link').href as string | undefined
-                      const url = window.prompt('URL do link:', prevUrl || '')?.trim()
-                      if (!url) {
-                        editor.chain().focus().unsetLink().run()
-                        return
-                      }
-                      editor.chain().focus().extendMarkRange('link').setLink({ href: url }).run()
-                    }}
-                  >
-                    Link
-                  </button>
-                  <button
-                    type="button"
-                    className="px-1.5 py-0.5 rounded text-[10px] text-slate-700 hover:bg-slate-100 disabled:opacity-40"
-                    disabled={!editor}
-                    onClick={() => editor?.chain().focus().unsetLink().run()}
-                  >
-                    Sem link
-                  </button>
-                  <span className="h-4 w-px bg-slate-200 mx-1" />
-                  <button
-                    type="button"
-                    className={`px-1.5 py-0.5 rounded text-[10px] ${
-                      editor?.isActive('bulletList')
-                        ? 'bg-slate-800 text-white'
-                        : 'text-slate-700 hover:bg-slate-100'
-                    }`}
-                    disabled={!editor}
-                    onClick={() => editor?.chain().focus().toggleBulletList().run()}
-                  >
-                    • Lista
-                  </button>
-                  <button
-                    type="button"
-                    className={`px-1.5 py-0.5 rounded text-[10px] ${
-                      editor?.isActive('orderedList')
-                        ? 'bg-slate-800 text-white'
-                        : 'text-slate-700 hover:bg-slate-100'
-                    }`}
-                    disabled={!editor}
-                    onClick={() => editor?.chain().focus().toggleOrderedList().run()}
-                  >
-                    1. Lista
-                  </button>
-                  <button
-                    type="button"
-                    className={`px-1.5 py-0.5 rounded text-[10px] ${
-                      editor?.isActive('blockquote')
-                        ? 'bg-slate-800 text-white'
-                        : 'text-slate-700 hover:bg-slate-100'
-                    }`}
-                    disabled={!editor}
-                    onClick={() => editor?.chain().focus().toggleBlockquote().run()}
-                  >
-                    ❝
-                  </button>
-                  <span className="h-4 w-px bg-slate-200 mx-1" />
-                  <button
-                    type="button"
-                    className={`px-1.5 py-0.5 rounded text-[10px] ${
-                      editor?.isActive({ textAlign: 'left' })
-                        ? 'bg-slate-800 text-white'
-                        : 'text-slate-700 hover:bg-slate-100'
-                    }`}
-                    disabled={!editor}
-                    onClick={() => editor?.chain().focus().setTextAlign('left').run()}
-                  >
-                    ⬅
-                  </button>
-                  <button
-                    type="button"
-                    className={`px-1.5 py-0.5 rounded text-[10px] ${
-                      editor?.isActive({ textAlign: 'center' })
-                        ? 'bg-slate-800 text-white'
-                        : 'text-slate-700 hover:bg-slate-100'
-                    }`}
-                    disabled={!editor}
-                    onClick={() => editor?.chain().focus().setTextAlign('center').run()}
-                  >
-                    ⬌
-                  </button>
-                  <button
-                    type="button"
-                    className={`px-1.5 py-0.5 rounded text-[10px] ${
-                      editor?.isActive({ textAlign: 'right' })
-                        ? 'bg-slate-800 text-white'
-                        : 'text-slate-700 hover:bg-slate-100'
-                    }`}
-                    disabled={!editor}
-                    onClick={() => editor?.chain().focus().setTextAlign('right').run()}
-                  >
-                    ➡
-                  </button>
-                  <button
-                    type="button"
-                    className={`px-1.5 py-0.5 rounded text-[10px] ${
-                      editor?.isActive({ textAlign: 'justify' })
-                        ? 'bg-slate-800 text-white'
-                        : 'text-slate-700 hover:bg-slate-100'
-                    }`}
-                    disabled={!editor}
-                    onClick={() => editor?.chain().focus().setTextAlign('justify').run()}
-                  >
-                    ☰
-                  </button>
-                  <span className="h-4 w-px bg-slate-200 mx-1" />
-                  <button
-                    type="button"
-                    className="px-1.5 py-0.5 rounded text-[10px] text-slate-700 hover:bg-slate-100 disabled:opacity-40"
-                    disabled={!editor}
-                    onClick={() => editor?.chain().focus().undo().run()}
-                  >
-                    Undo
-                  </button>
-                  <button
-                    type="button"
-                    className="px-1.5 py-0.5 rounded text-[10px] text-slate-700 hover:bg-slate-100 disabled:opacity-40"
-                    disabled={!editor}
-                    onClick={() => editor?.chain().focus().redo().run()}
-                  >
-                    Redo
-                  </button>
+                  <span className="h-6 w-px bg-slate-200 mx-1" />
+
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      title="Negrito"
+                      className={`w-8 h-8 flex items-center justify-center rounded-lg transition-colors ${editor?.isActive('bold') ? 'bg-violet-600 text-white' : 'text-slate-600 hover:bg-white hover:shadow-sm'
+                        }`}
+                      disabled={!editor}
+                      onClick={() => editor?.chain().focus().toggleBold().run()}
+                    >
+                      <strong className="text-xs">B</strong>
+                    </button>
+                    <button
+                      type="button"
+                      title="Itálico"
+                      className={`w-8 h-8 flex items-center justify-center rounded-lg transition-colors ${editor?.isActive('italic') ? 'bg-violet-600 text-white' : 'text-slate-600 hover:bg-white hover:shadow-sm'
+                        }`}
+                      disabled={!editor}
+                      onClick={() => editor?.chain().focus().toggleItalic().run()}
+                    >
+                      <em className="text-xs serif">I</em>
+                    </button>
+                    <button
+                      type="button"
+                      title="Sublinhado"
+                      className={`w-8 h-8 flex items-center justify-center rounded-lg transition-colors ${editor?.isActive('underline') ? 'bg-violet-600 text-white' : 'text-slate-600 hover:bg-white hover:shadow-sm'
+                        }`}
+                      disabled={!editor}
+                      onClick={() => editor?.chain().focus().toggleUnderline().run()}
+                    >
+                      <span className="text-xs underline decoration-2">U</span>
+                    </button>
+                    <button
+                      type="button"
+                      title="Riscado"
+                      className={`w-8 h-8 flex items-center justify-center rounded-lg transition-colors ${editor?.isActive('strike') ? 'bg-violet-600 text-white' : 'text-slate-600 hover:bg-white hover:shadow-sm'
+                        }`}
+                      disabled={!editor}
+                      onClick={() => editor?.chain().focus().toggleStrike().run()}
+                    >
+                      <span className="text-xs line-through">S</span>
+                    </button>
+                  </div>
+
+                  <span className="h-6 w-px bg-slate-200 mx-1" />
+
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      title="Lista com Marcadores"
+                      className={`w-8 h-8 flex items-center justify-center rounded-lg transition-colors ${editor?.isActive('bulletList') ? 'bg-violet-600 text-white' : 'text-slate-600 hover:bg-white hover:shadow-sm'
+                        }`}
+                      disabled={!editor}
+                      onClick={() => editor?.chain().focus().toggleBulletList().run()}
+                    >
+                      <span className="text-xs">•</span>
+                    </button>
+                    <button
+                      type="button"
+                      title="Lista Numerada"
+                      className={`w-8 h-8 flex items-center justify-center rounded-lg transition-colors ${editor?.isActive('orderedList') ? 'bg-violet-600 text-white' : 'text-slate-600 hover:bg-white hover:shadow-sm'
+                        }`}
+                      disabled={!editor}
+                      onClick={() => editor?.chain().focus().toggleOrderedList().run()}
+                    >
+                      <span className="text-[10px]">1.</span>
+                    </button>
+                    <button
+                      type="button"
+                      title="Citação"
+                      className={`w-8 h-8 flex items-center justify-center rounded-lg transition-colors ${editor?.isActive('blockquote') ? 'bg-violet-600 text-white' : 'text-slate-600 hover:bg-white hover:shadow-sm'
+                        }`}
+                      disabled={!editor}
+                      onClick={() => editor?.chain().focus().toggleBlockquote().run()}
+                    >
+                      <span className="text-[10px]">❝</span>
+                    </button>
+                  </div>
+
+                  <span className="h-6 w-px bg-slate-200 mx-1" />
+
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      title="Alinhar à Esquerda"
+                      className={`w-8 h-8 flex items-center justify-center rounded-lg transition-colors ${editor?.isActive({ textAlign: 'left' }) ? 'bg-violet-600 text-white' : 'text-slate-600 hover:bg-white hover:shadow-sm'
+                        }`}
+                      disabled={!editor}
+                      onClick={() => editor?.chain().focus().setTextAlign('left').run()}
+                    >
+                      <span className="text-xs">⬅</span>
+                    </button>
+                    <button
+                      type="button"
+                      title="Centralizar"
+                      className={`w-8 h-8 flex items-center justify-center rounded-lg transition-colors ${editor?.isActive({ textAlign: 'center' }) ? 'bg-violet-600 text-white' : 'text-slate-600 hover:bg-white hover:shadow-sm'
+                        }`}
+                      disabled={!editor}
+                      onClick={() => editor?.chain().focus().setTextAlign('center').run()}
+                    >
+                      <span className="text-xs">⬌</span>
+                    </button>
+                    <button
+                      type="button"
+                      title="Alinhar à Direita"
+                      className={`w-8 h-8 flex items-center justify-center rounded-lg transition-colors ${editor?.isActive({ textAlign: 'right' }) ? 'bg-violet-600 text-white' : 'text-slate-600 hover:bg-white hover:shadow-sm'
+                        }`}
+                      disabled={!editor}
+                      onClick={() => editor?.chain().focus().setTextAlign('right').run()}
+                    >
+                      <span className="text-xs">➡</span>
+                    </button>
+                  </div>
+
+                  <span className="h-6 w-px bg-slate-200 mx-1" />
+
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      title="Inserir Imagem"
+                      className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-600 hover:bg-white hover:shadow-sm transition-colors"
+                      disabled={!editor}
+                      onClick={() => {
+                        if (!editor) return
+                        const url = window.prompt('URL da imagem:')?.trim()
+                        if (!url) return
+                        editor.chain().focus().setImage({ src: url }).run()
+                      }}
+                    >
+                      <span className="text-xs">🖼️</span>
+                    </button>
+                    <button
+                      type="button"
+                      title="Inserir Link"
+                      className={`w-8 h-8 flex items-center justify-center rounded-lg transition-colors ${editor?.isActive('link') ? 'bg-violet-600 text-white' : 'text-slate-600 hover:bg-white hover:shadow-sm'
+                        }`}
+                      disabled={!editor}
+                      onClick={() => {
+                        if (!editor) return
+                        const prevUrl = editor.getAttributes('link').href as string | undefined
+                        const url = window.prompt('URL do link:', prevUrl || '')?.trim()
+                        if (!url) {
+                          editor.chain().focus().unsetLink().run()
+                          return
+                        }
+                        editor.chain().focus().extendMarkRange('link').setLink({ href: url }).run()
+                      }}
+                    >
+                      <span className="text-xs">🔗</span>
+                    </button>
+                  </div>
+
+                  <div className="flex-1" />
+
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      title="Desfazer"
+                      className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-600 hover:bg-white hover:shadow-sm transition-colors disabled:opacity-30"
+                      disabled={!editor}
+                      onClick={() => editor?.chain().focus().undo().run()}
+                    >
+                      <span className="text-xs">↩️</span>
+                    </button>
+                    <button
+                      type="button"
+                      title="Refazer"
+                      className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-600 hover:bg-white hover:shadow-sm transition-colors disabled:opacity-30"
+                      disabled={!editor}
+                      onClick={() => editor?.chain().focus().redo().run()}
+                    >
+                      <span className="text-xs">↪️</span>
+                    </button>
+                  </div>
                 </div>
-                <EditorContent editor={editor} className="flex-1 px-3 py-2 text-[13px] leading-relaxed outline-none" />
+
+                <div
+                  className="flex-1 overflow-y-auto bg-white cursor-text"
+                  onClick={() => editor?.chain().focus().run()}
+                >
+                  <EditorContent editor={editor} />
+                </div>
               </div>
-              <p className="text-[10px] text-slate-400 mt-0.5">
-                Use este editor para formatar o texto da campanha com títulos, listas, cores e outros recursos. Quando a IA for usada, revise o texto antes de salvar.
-                {!geminiApiKey && ' Para integrar IA, informe a Gemini API Key nas configurações.'}
-                {' Aviso visível apenas aqui na tela: esta mensagem pode ter sido gerada com auxílio de IA, mas este aviso não será enviado aos contatos.'}
+
+              <p className="text-[10px] text-slate-400 mt-2 flex items-center gap-1.5 px-1">
+                <span className="inline-block w-1.5 h-1.5 rounded-full bg-blue-400"></span>
+                Dica: Use atalhos como Ctrl+B para negrito e Ctrl+Enter para salvar rapidamente.
               </p>
             </div>
+
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
               <div className="flex flex-col gap-1">
@@ -1016,44 +985,44 @@ export function CampaignsPage({
                 const max = sendingCamp?.intervalMaxSeconds ?? 90
 
                 return (
-                <div className="rounded-lg border border-emerald-200 bg-emerald-50/70 px-3 py-2 flex flex-col gap-1 text-[11px] text-emerald-900">
-                  <div className="flex items-center justify-between">
-                    <span className="font-semibold">
-                      Envio em andamento: {
-                        campaigns.find((c) => c.id === sendingCampaignId)?.name || 'Campanha'
-                      }
-                    </span>
-                    <span className="text-[10px]">
-                      {sendingCurrentIndex} de {sendingTotal} contatos
-                    </span>
-                  </div>
-                  <div className="w-full h-1.5 rounded-full bg-emerald-100 overflow-hidden">
-                    <div
-                      className="h-full bg-emerald-500 transition-all duration-300"
-                      style={{
-                        width:
-                          sendingTotal > 0
-                            ? `${Math.min(100, Math.max(0, (sendingCurrentIndex / sendingTotal) * 100))}%`
-                            : '0%',
-                      }}
-                    />
-                  </div>
-                  <div className="flex flex-col gap-0.5 text-[10px] mt-0.5">
+                  <div className="rounded-lg border border-emerald-200 bg-emerald-50/70 px-3 py-2 flex flex-col gap-1 text-[11px] text-emerald-900">
                     <div className="flex items-center justify-between">
-                      <span>
-                        Intervalo automático entre disparos: entre {min}s e {max}s por contato.
+                      <span className="font-semibold">
+                        Envio em andamento: {
+                          campaigns.find((c) => c.id === sendingCampaignId)?.name || 'Campanha'
+                        }
                       </span>
-                      <span>Erros: {sendingErrors}</span>
+                      <span className="text-[10px]">
+                        {sendingCurrentIndex} de {sendingTotal} contatos
+                      </span>
                     </div>
-                    {sendingNextDelaySeconds != null && sendingNextDelaySeconds > 0 && (
-                      <div className="flex items-center justify-between text-emerald-800">
+                    <div className="w-full h-1.5 rounded-full bg-emerald-100 overflow-hidden">
+                      <div
+                        className="h-full bg-emerald-500 transition-all duration-300"
+                        style={{
+                          width:
+                            sendingTotal > 0
+                              ? `${Math.min(100, Math.max(0, (sendingCurrentIndex / sendingTotal) * 100))}%`
+                              : '0%',
+                        }}
+                      />
+                    </div>
+                    <div className="flex flex-col gap-0.5 text-[10px] mt-0.5">
+                      <div className="flex items-center justify-between">
                         <span>
-                          Próximo envio em <strong>{sendingNextDelaySeconds}s</strong>
+                          Intervalo automático entre disparos: entre {min}s e {max}s por contato.
                         </span>
+                        <span>Erros: {sendingErrors}</span>
                       </div>
-                    )}
+                      {sendingNextDelaySeconds != null && sendingNextDelaySeconds > 0 && (
+                        <div className="flex items-center justify-between text-emerald-800">
+                          <span>
+                            Próximo envio em <strong>{sendingNextDelaySeconds}s</strong>
+                          </span>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
                 )
               })()}
 
@@ -1078,9 +1047,8 @@ export function CampaignsPage({
                         {(() => {
                           const log = campaignSendLog[camp.id]
                           if (log) {
-                            return `Último envio: ${
-                              log.lastOk ? 'OK' : `Erro ${log.lastErrorCount > 0 ? 500 : 0}`
-                            } · ${log.lastRunAt}`
+                            return `Último envio: ${log.lastOk ? 'OK' : `Erro ${log.lastErrorCount > 0 ? 500 : 0}`
+                              } · ${log.lastRunAt}`
                           }
 
                           const historyForCamp = sendHistory.filter(
@@ -1108,11 +1076,10 @@ export function CampaignsPage({
                       {camp.channels.map((ch) => (
                         <span
                           key={ch}
-                          className={`text-[10px] px-2 py-0.5 rounded-full border ${
-                            ch === 'whatsapp'
-                              ? 'bg-emerald-50 text-emerald-700 border-emerald-100'
-                              : 'bg-sky-50 text-sky-700 border-sky-100'
-                          }`}
+                          className={`text-[10px] px-2 py-0.5 rounded-full border ${ch === 'whatsapp'
+                            ? 'bg-emerald-50 text-emerald-700 border-emerald-100'
+                            : 'bg-sky-50 text-sky-700 border-sky-100'
+                            }`}
                         >
                           {ch === 'whatsapp' ? 'WhatsApp' : 'Email'}
                         </span>
@@ -1240,11 +1207,10 @@ export function CampaignsPage({
                           <div className="inline-flex rounded-full border border-slate-200 bg-slate-50 p-[1px] text-[9px]">
                             <button
                               type="button"
-                              className={`px-2 py-0.5 rounded-full ${
-                                reportViewMode === 'all'
-                                  ? 'bg-white text-slate-800 shadow-sm'
-                                  : 'text-slate-500'
-                              }`}
+                              className={`px-2 py-0.5 rounded-full ${reportViewMode === 'all'
+                                ? 'bg-white text-slate-800 shadow-sm'
+                                : 'text-slate-500'
+                                }`}
                               onClick={(e) => {
                                 e.stopPropagation()
                                 onSetReportViewMode('all')
@@ -1254,11 +1220,10 @@ export function CampaignsPage({
                             </button>
                             <button
                               type="button"
-                              className={`px-2 py-0.5 rounded-full ${
-                                reportViewMode === 'last'
-                                  ? 'bg-white text-slate-800 shadow-sm'
-                                  : 'text-slate-500'
-                              }`}
+                              className={`px-2 py-0.5 rounded-full ${reportViewMode === 'last'
+                                ? 'bg-white text-slate-800 shadow-sm'
+                                : 'text-slate-500'
+                                }`}
                               onClick={(e) => {
                                 e.stopPropagation()
                                 onSetReportViewMode('last')
@@ -1391,11 +1356,10 @@ export function CampaignsPage({
                                       <td className="py-1 pr-2">
                                         <div className="flex items-center gap-1.5">
                                           <span
-                                            className={`px-1.5 py-0.5 rounded-full text-[9px] font-medium flex items-center justify-center ${
-                                              entry.webhookOk === false
-                                                ? 'bg-red-50 text-red-700 border border-red-200'
-                                                : 'bg-sky-50 text-sky-700 border border-sky-200'
-                                            }`}
+                                            className={`px-1.5 py-0.5 rounded-full text-[9px] font-medium flex items-center justify-center ${entry.webhookOk === false
+                                              ? 'bg-red-50 text-red-700 border border-red-200'
+                                              : 'bg-sky-50 text-sky-700 border border-sky-200'
+                                              }`}
                                             title={
                                               entry.webhookOk === false
                                                 ? 'Webhook não funcionou.'
@@ -1405,17 +1369,16 @@ export function CampaignsPage({
                                             <span aria-hidden="true">🔌</span>
                                           </span>
                                           <span
-                                            className={`px-1.5 py-0.5 rounded-full text-[9px] font-medium cursor-help flex items-center justify-center ${
-                                              entry.ok
-                                                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                                                : 'bg-red-50 text-red-700 border border-red-200'
-                                            }`}
+                                            className={`px-1.5 py-0.5 rounded-full text-[9px] font-medium cursor-help flex items-center justify-center ${entry.ok
+                                              ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                              : 'bg-red-50 text-red-700 border border-red-200'
+                                              }`}
                                             title={
                                               entry.ok
                                                 ? 'Mensagem enviada.'
                                                 : entry.channel === 'email'
-                                                ? 'Erro no envio, verifique o endereço de e-mail.'
-                                                : 'Erro no envio, verifique o telefone.'
+                                                  ? 'Erro no envio, verifique o endereço de e-mail.'
+                                                  : 'Erro no envio, verifique o telefone.'
                                             }
                                           >
                                             <span aria-hidden="true">💬</span>

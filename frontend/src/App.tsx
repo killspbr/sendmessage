@@ -174,18 +174,27 @@ function App() {
 
   const handleSaveUserOverrides = async (overrides: {
     aiApiKey: string | null
+    webhookWhatsappUrl?: string | null
+    webhookEmailUrl?: string | null
   }) => {
     if (!effectiveUserId) return
 
     try {
       const nextUseGlobalAi = overrides.aiApiKey == null
+      const nextUseGlobalWebhooks = overrides.webhookWhatsappUrl === undefined && overrides.webhookEmailUrl === undefined
+
+      const payload: any = {
+        use_global_ai: nextUseGlobalAi,
+        ai_api_key: overrides.aiApiKey,
+      }
+
+      if (overrides.webhookWhatsappUrl !== undefined) payload.webhook_whatsapp_url = overrides.webhookWhatsappUrl
+      if (overrides.webhookEmailUrl !== undefined) payload.webhook_email_url = overrides.webhookEmailUrl
+      if (!nextUseGlobalWebhooks) payload.use_global_webhooks = false
 
       await apiFetch('/api/profile', {
         method: 'PUT',
-        body: JSON.stringify({
-          use_global_ai: nextUseGlobalAi,
-          ai_api_key: overrides.aiApiKey,
-        })
+        body: JSON.stringify(payload)
       })
 
       setUserSettings((prev) =>
@@ -194,6 +203,8 @@ function App() {
             ...prev,
             use_global_ai: nextUseGlobalAi,
             ai_api_key: overrides.aiApiKey,
+            webhook_whatsapp_url: overrides.webhookWhatsappUrl !== undefined ? overrides.webhookWhatsappUrl : prev.webhook_whatsapp_url,
+            webhook_email_url: overrides.webhookEmailUrl !== undefined ? overrides.webhookEmailUrl : prev.webhook_email_url,
           }
           : prev,
       )
@@ -309,6 +320,11 @@ function App() {
             global_webhook_whatsapp_url: data.global_webhook_whatsapp_url ?? null,
             global_webhook_email_url: data.global_webhook_email_url ?? null,
           })
+
+          // Sincroniza estados locais se estiverem vazios
+          if (data.global_webhook_whatsapp_url) setWebhookUrlWhatsApp(data.global_webhook_whatsapp_url)
+          if (data.global_webhook_email_url) setWebhookUrlEmail(data.global_webhook_email_url)
+          if (data.global_ai_api_key) setGeminiApiKey(data.global_ai_api_key)
         } else {
           setGlobalSettings(null)
         }

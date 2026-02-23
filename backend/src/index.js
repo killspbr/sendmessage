@@ -68,14 +68,84 @@ app.get('/api/profile/full', authenticateToken, async (req, res) => {
 
 app.post('/api/profile', authenticateToken, async (req, res) => {
   try {
-    const { webhook_whatsapp_url, webhook_email_url } = req.body;
+    const {
+      webhook_whatsapp_url,
+      webhook_email_url,
+      use_global_ai,
+      ai_api_key,
+      use_global_webhooks
+    } = req.body;
+
     await query(
-      'INSERT INTO user_profiles (id, webhook_whatsapp_url, webhook_email_url) VALUES ($1, $2, $3) ON CONFLICT (id) DO UPDATE SET webhook_whatsapp_url = EXCLUDED.webhook_whatsapp_url, webhook_email_url = EXCLUDED.webhook_email_url',
-      [req.user.id, webhook_whatsapp_url, webhook_email_url]
+      `INSERT INTO user_profiles (id, webhook_whatsapp_url, webhook_email_url, use_global_ai, ai_api_key, use_global_webhooks) 
+       VALUES ($1, $2, $3, $4, $5, $6) 
+       ON CONFLICT (id) DO UPDATE SET 
+         webhook_whatsapp_url = EXCLUDED.webhook_whatsapp_url, 
+         webhook_email_url = EXCLUDED.webhook_email_url,
+         use_global_ai = EXCLUDED.use_global_ai,
+         ai_api_key = EXCLUDED.ai_api_key,
+         use_global_webhooks = EXCLUDED.use_global_webhooks`,
+      [req.user.id, webhook_whatsapp_url, webhook_email_url, use_global_ai, ai_api_key, use_global_webhooks]
     );
     res.json({ ok: true });
   } catch (error) {
     res.status(500).json({ error: 'Erro ao salvar perfil' });
+  }
+});
+
+app.put('/api/profile', authenticateToken, async (req, res) => {
+  try {
+    const {
+      webhook_whatsapp_url,
+      webhook_email_url,
+      use_global_ai,
+      ai_api_key,
+      use_global_webhooks
+    } = req.body;
+
+    const fields = [];
+    const values = [];
+    let setClause = '';
+    let count = 1;
+
+    if (webhook_whatsapp_url !== undefined) {
+      fields.push('webhook_whatsapp_url');
+      values.push(webhook_whatsapp_url);
+      setClause += `webhook_whatsapp_url = $${count++}, `;
+    }
+    if (webhook_email_url !== undefined) {
+      fields.push('webhook_email_url');
+      values.push(webhook_email_url);
+      setClause += `webhook_email_url = $${count++}, `;
+    }
+    if (use_global_ai !== undefined) {
+      fields.push('use_global_ai');
+      values.push(use_global_ai);
+      setClause += `use_global_ai = $${count++}, `;
+    }
+    if (ai_api_key !== undefined) {
+      fields.push('ai_api_key');
+      values.push(ai_api_key);
+      setClause += `ai_api_key = $${count++}, `;
+    }
+    if (use_global_webhooks !== undefined) {
+      fields.push('use_global_webhooks');
+      values.push(use_global_webhooks);
+      setClause += `use_global_webhooks = $${count++}, `;
+    }
+
+    if (fields.length === 0) return res.status(400).json({ error: 'Nenhum campo para atualizar' });
+
+    setClause = setClause.slice(0, -2);
+    values.push(req.user.id);
+
+    await query(
+      `UPDATE user_profiles SET ${setClause} WHERE id = $${count}`,
+      values
+    );
+    res.json({ ok: true });
+  } catch (error) {
+    res.status(500).json({ error: 'Erro ao atualizar perfil' });
   }
 });
 
