@@ -21,6 +21,7 @@ WEB (Frontend Deployment)
 - **Build Command**: `npm run build`
 - **Output Directory**: `dist`
 - **Root Directory**: `frontend` (Crucial since it's a monorepo)
+- **Environment Variable Tip**: If build fails with `tsc not found`, ensure `NODE_ENV` is set to `development` during build, or move build tools to `dependencies`.
 
 ## Task Breakdown
 
