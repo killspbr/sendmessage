@@ -451,21 +451,36 @@ app.get('/api/settings', async (req, res) => {
 
 app.post('/api/settings', authenticateToken, async (req, res) => {
   try {
-    const { global_ai_api_key, global_webhook_whatsapp_url, global_webhook_email_url } = req.body;
+    const {
+      global_ai_api_key,
+      global_webhook_whatsapp_url,
+      global_webhook_email_url,
+      evolution_api_url,
+      evolution_api_key,
+      evolution_shared_instance
+    } = req.body;
 
-    // Tenta atualizar se existir, ou inserir se não
     const check = await query('SELECT id FROM app_settings LIMIT 1');
 
     let result;
     if (check.rows.length > 0) {
       result = await query(
-        'UPDATE app_settings SET global_ai_api_key = $1, global_webhook_whatsapp_url = $2, global_webhook_email_url = $3, updated_at = CURRENT_TIMESTAMP RETURNING *',
-        [global_ai_api_key, global_webhook_whatsapp_url, global_webhook_email_url]
+        `UPDATE app_settings SET 
+          global_ai_api_key = $1, 
+          global_webhook_whatsapp_url = $2, 
+          global_webhook_email_url = $3,
+          evolution_api_url = $4,
+          evolution_api_key = $5,
+          evolution_shared_instance = $6,
+          updated_at = CURRENT_TIMESTAMP 
+         RETURNING *`,
+        [global_ai_api_key, global_webhook_whatsapp_url, global_webhook_email_url, evolution_api_url, evolution_api_key, evolution_shared_instance]
       );
     } else {
       result = await query(
-        'INSERT INTO app_settings (global_ai_api_key, global_webhook_whatsapp_url, global_webhook_email_url) VALUES ($1, $2, $3) RETURNING *',
-        [global_ai_api_key, global_webhook_whatsapp_url, global_webhook_email_url]
+        `INSERT INTO app_settings (global_ai_api_key, global_webhook_whatsapp_url, global_webhook_email_url, evolution_api_url, evolution_api_key, evolution_shared_instance) 
+         VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+        [global_ai_api_key, global_webhook_whatsapp_url, global_webhook_email_url, evolution_api_url, evolution_api_key, evolution_shared_instance]
       );
     }
 
@@ -567,41 +582,40 @@ app.post('/api/campaigns/:id/send', authenticateToken, async (req, res) => {
       return res.status(400).json({ error: 'Lista não possui contatos para envio.' });
     }
 
-    // 4) Buscar webhooks do perfil do usuário
+    // 4) Buscar webhooks e configurações Evolution
     const profileResult = await query(
-      'SELECT webhook_whatsapp_url, webhook_email_url FROM user_profiles WHERE id = $1',
+      'SELECT webhook_whatsapp_url, webhook_email_url, evolution_url, evolution_apikey, evolution_instance FROM user_profiles WHERE id = $1',
       [req.user.id]
     );
     const userProfile = profileResult.rows[0];
 
-    console.log('[DEBUG] User ID:', campaign.user_id);
-    console.log('[DEBUG] User Profile:', userProfile);
-    console.log('[DEBUG] Webhook WhatsApp do perfil:', userProfile?.webhook_whatsapp_url);
-    console.log('[DEBUG] Webhook Email do perfil:', userProfile?.webhook_email_url);
-    console.log('[DEBUG] Webhook WhatsApp env:', process.env.WEBHOOK_WHATSAPP);
-    console.log('[DEBUG] Webhook Email env:', process.env.WEBHOOK_EMAIL);
+    // Buscar configurações globais de fallback
+    const globalSettingsResult = await query('SELECT * FROM app_settings LIMIT 1');
+    const globalSettings = globalSettingsResult.rows[0] || {};
 
-    // Usar webhooks do perfil do usuário, ou fallback para env vars
-    const webhookUrlWhatsApp = userProfile?.webhook_whatsapp_url || process.env.WEBHOOK_WHATSAPP || '';
-    const webhookUrlEmail = userProfile?.webhook_email_url || process.env.WEBHOOK_EMAIL || '';
+    // Determinar configurações de WhatsApp (Prioridade: Usuário -> Global)
+    const evolutionUrl = (userProfile?.evolution_url || globalSettings.evolution_api_url || '').trim();
+    const evolutionApiKey = (userProfile?.evolution_apikey || globalSettings.evolution_api_key || '').trim();
+    const evolutionInstance = (userProfile?.evolution_instance || globalSettings.evolution_shared_instance || '').trim();
 
-    console.log('[DEBUG] Webhook WhatsApp final:', webhookUrlWhatsApp);
-    console.log('[DEBUG] Webhook Email final:', webhookUrlEmail);
+    // Fallback para n8n se Evolution não estiver configurada (Transição)
+    const webhookUrlWhatsApp = userProfile?.webhook_whatsapp_url || globalSettings.global_webhook_whatsapp_url || process.env.WEBHOOK_WHATSAPP || '';
+    const webhookUrlEmail = userProfile?.webhook_email_url || globalSettings.global_webhook_email_url || process.env.WEBHOOK_EMAIL || '';
 
     // 5) Determinar canais efetivos
     const channels = Array.isArray(campaign.channels) ? campaign.channels : [];
-    console.log('[DEBUG] Canais da campanha:', channels);
-
-    const effectiveChannels = channels.filter((ch) =>
-      ch === 'whatsapp' ? !!webhookUrlWhatsApp.trim() : !!webhookUrlEmail.trim(),
-    );
-
-    console.log('[DEBUG] Canais efetivos:', effectiveChannels);
+    const effectiveChannels = channels.filter((ch) => {
+      if (ch === 'whatsapp') {
+        // Se temos Evolution configurada ou Webhook n8n
+        return (!!evolutionUrl && !!evolutionInstance) || !!webhookUrlWhatsApp.trim();
+      }
+      return !!webhookUrlEmail.trim();
+    });
 
     if (effectiveChannels.length === 0) {
       return res.status(400).json({
         error:
-          'Nenhum webhook configurado para os canais desta campanha. O administrador precisa configurar webhooks para este usuário.',
+          'Nenhum serviço de envio configurado (Evolution ou Webhooks). Verifique as configurações globais ou do usuário.',
       });
     }
 
@@ -650,58 +664,73 @@ app.post('/api/campaigns/:id/send', authenticateToken, async (req, res) => {
         if (channel === 'whatsapp') {
           const phone = normalizePhone(contact.phone);
           if (!phone) continue;
+
+          // DISPARO DIRETO VIA EVOLUTION API OU FALLBACK N8N
+          if (evolutionUrl && evolutionInstance) {
+            try {
+              const fullUrl = `${evolutionUrl}/message/sendText/${evolutionInstance}`;
+              const response = await fetch(fullUrl, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'apikey': evolutionApiKey
+                },
+                body: JSON.stringify({
+                  number: `55${phone}`, // Assume Brazil if not present
+                  text: htmlToWhatsapp(messageHtml),
+                  linkPreview: true
+                }),
+              });
+
+              if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                console.error(`[Evolution] Erro ao enviar para ${phone}:`, errorData);
+                errors++;
+              }
+            } catch (e) {
+              console.error(`[Evolution] Falha na requisição para ${phone}:`, e);
+              errors++;
+            }
+          } else if (webhookUrlWhatsApp.trim()) {
+            // FALLBACK N8N (Temporário)
+            try {
+              const backendBase = process.env.BACKEND_PUBLIC_URL || process.env.BACKEND_PUBLIC_URI || `http://localhost:${port}`;
+              await fetch(`${backendBase}/api/n8n/trigger`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  webhookUrl: webhookUrlWhatsApp.trim(),
+                  message: htmlToWhatsapp(messageHtml),
+                  contacts: [contact],
+                  meta: { campaignId: campaign.id, contactIndex, totalContacts: contacts.length }
+                }),
+              });
+            } catch (e) {
+              errors++;
+            }
+          }
         }
+
         if (channel === 'email') {
           const email = (contact.email || '').trim();
           if (!email) continue;
-        }
 
-        const targetWebhookUrl = channel === 'whatsapp' ? webhookUrlWhatsApp.trim() : webhookUrlEmail.trim();
-        const isEmailChannel = channel === 'email';
-
-        const payload = {
-          meta: {
-            source: 'sendmessage',
-            trigger: 'campaign',
-            campaignId: campaign.id,
-            campaignName: campaign.name,
-            listId: list.id,
-            listName: list.name,
-            channels: [channel],
-            createdAt: campaign.created_at,
-            contactIndex,
-            totalContacts: contacts.length,
-          },
-          message: isEmailChannel ? messageHtml : htmlToWhatsapp(messageHtml),
-          messageText,
-          messageHtml,
-          contacts: [
-            {
-              id: contact.id,
-              name: contact.name,
-              phone: normalizePhone(contact.phone),
-              email: contact.email,
-              category: contact.category,
-              rating: contact.rating ?? null,
-              cep: contact.cep,
-            },
-          ],
-        };
-
-        try {
-          const backendBase = process.env.BACKEND_PUBLIC_URL || process.env.BACKEND_PUBLIC_URI || `http://localhost:${port}`;
-          const response = await fetch(`${backendBase}/api/n8n/trigger`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ webhookUrl: targetWebhookUrl, ...payload }),
-          });
-
-          if (!response.ok) {
+          // EMAIL CONTINUA VIA N8N POR ENQUANTO
+          try {
+            const backendBase = process.env.BACKEND_PUBLIC_URL || process.env.BACKEND_PUBLIC_URI || `http://localhost:${port}`;
+            await fetch(`${backendBase}/api/n8n/trigger`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                webhookUrl: webhookUrlEmail.trim(),
+                message: messageHtml,
+                contacts: [contact],
+                meta: { channel: 'email', campaignId: campaign.id, contactIndex, totalContacts: contacts.length }
+              }),
+            });
+          } catch (e) {
             errors++;
           }
-        } catch (e) {
-          console.error('Erro ao chamar /api/n8n/trigger para campanha agendada:', e);
-          errors++;
         }
       }
 

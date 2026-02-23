@@ -6,11 +6,17 @@ type UserSettingsPageProps = {
     ai_api_key: string | null
     webhook_whatsapp_url: string | null
     webhook_email_url: string | null
+    evolution_url: string | null
+    evolution_apikey: string | null
+    evolution_instance: string | null
   } | null
   onSaveOverrides: (overrides: {
     aiApiKey: string | null
     webhookWhatsappUrl?: string | null
     webhookEmailUrl?: string | null
+    evolutionUrl?: string | null
+    evolutionApiKey?: string | null
+    evolutionInstance?: string | null
   }) => Promise<void> | void
 }
 
@@ -20,6 +26,9 @@ export function UserSettingsPage({ userSettings, onSaveOverrides }: UserSettings
   const [aiKey, setAiKey] = useState(userSettings?.ai_api_key ?? '')
   const [whatsappWebhook, setWhatsappWebhook] = useState(userSettings?.webhook_whatsapp_url ?? '')
   const [emailWebhook, setEmailWebhook] = useState(userSettings?.webhook_email_url ?? '')
+  const [evolutionUrl, setEvolutionUrl] = useState(userSettings?.evolution_url ?? '')
+  const [evolutionApiKey, setEvolutionApiKey] = useState(userSettings?.evolution_apikey ?? '')
+  const [evolutionInstance, setEvolutionInstance] = useState(userSettings?.evolution_instance ?? '')
   const [saving, setSaving] = useState(false)
 
   const [localUseGlobalAi, setLocalUseGlobalAi] = useState(useGlobalAi)
@@ -28,6 +37,9 @@ export function UserSettingsPage({ userSettings, onSaveOverrides }: UserSettings
     setAiKey(userSettings?.ai_api_key ?? '')
     setWhatsappWebhook(userSettings?.webhook_whatsapp_url ?? '')
     setEmailWebhook(userSettings?.webhook_email_url ?? '')
+    setEvolutionUrl(userSettings?.evolution_url ?? '')
+    setEvolutionApiKey(userSettings?.evolution_apikey ?? '')
+    setEvolutionInstance(userSettings?.evolution_instance ?? '')
   }, [userSettings])
 
   useEffect(() => {
@@ -42,6 +54,9 @@ export function UserSettingsPage({ userSettings, onSaveOverrides }: UserSettings
         aiApiKey: localUseGlobalAi ? null : aiKey.trim() || null,
         webhookWhatsappUrl: whatsappWebhook.trim() || null,
         webhookEmailUrl: emailWebhook.trim() || null,
+        evolutionUrl: evolutionUrl.trim() || null,
+        evolutionApiKey: evolutionApiKey.trim() || null,
+        evolutionInstance: evolutionInstance.trim() || null,
       })
     } finally {
       setSaving(false)
@@ -58,16 +73,63 @@ export function UserSettingsPage({ userSettings, onSaveOverrides }: UserSettings
       </div>
 
       <div className="flex flex-col gap-3">
-        {/* Webhooks de Integração */}
+        {/* Configurações Evolution API */}
         <div>
-          <h3 className="text-xs font-semibold text-slate-800">Canais de Disparo (Webhooks)</h3>
+          <h3 className="text-xs font-semibold text-slate-800">Sua Instância Evolution API (WhatsApp)</h3>
           <p className="text-[10px] text-slate-500 mb-2">
-            Configure seus próprios webhooks do n8n/make se desejar usar contas de disparo diferentes das globais.
+            Caso você tenha sua própria Evolution API ou instância separada, configure-a aqui. Se deixar em branco, o sistema usará a instância global do administrador.
           </p>
 
           <div className="space-y-3">
             <div className="flex flex-col gap-1">
-              <label className="text-[10px] font-medium text-slate-600">Meu Webhook WhatsApp</label>
+              <label className="text-[10px] font-medium text-slate-600">Minha Evolution URL</label>
+              <input
+                type="text"
+                value={evolutionUrl}
+                onChange={(e) => setEvolutionUrl(e.target.value)}
+                placeholder="https://api.sua-evolution.com"
+                className="h-9 w-full px-2 rounded-md border border-slate-200 bg-white text-[11px] text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-violet-400/80"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="flex flex-col gap-1">
+                <label className="text-[10px] font-medium text-slate-600">Minha API Key</label>
+                <input
+                  type="password"
+                  value={evolutionApiKey}
+                  onChange={(e) => setEvolutionApiKey(e.target.value)}
+                  placeholder="sua_chave"
+                  className="h-9 w-full px-2 rounded-md border border-slate-200 bg-white text-[11px] text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-violet-400/80"
+                />
+              </div>
+
+              <div className="flex flex-col gap-1">
+                <label className="text-[10px] font-medium text-slate-600">Minha Instância</label>
+                <input
+                  type="text"
+                  value={evolutionInstance}
+                  onChange={(e) => setEvolutionInstance(e.target.value)}
+                  placeholder="minha_instancia"
+                  className="h-9 w-full px-2 rounded-md border border-slate-200 bg-white text-[11px] text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-violet-400/80"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <hr className="border-slate-100 my-1" />
+
+        {/* Webhooks de Integração (Legado) */}
+        <div>
+          <h3 className="text-xs font-semibold text-slate-800">Canais de Disparo Legados (n8n Webhooks)</h3>
+          <p className="text-[10px] text-slate-500 mb-2">
+            Note: Estes campos serão descontinuados em favor da Evolution API integrada.
+          </p>
+
+          <div className="space-y-3">
+            <div className="flex flex-col gap-1">
+              <label className="text-[10px] font-medium text-slate-600">Meu Webhook WhatsApp (Legado)</label>
               <input
                 type="text"
                 value={whatsappWebhook}

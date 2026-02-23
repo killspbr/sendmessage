@@ -160,6 +160,9 @@ function App() {
     ai_api_key: string | null
     webhook_whatsapp_url: string | null
     webhook_email_url: string | null
+    evolution_url: string | null
+    evolution_apikey: string | null
+    evolution_instance: string | null
   }
 
   type GlobalSettings = {
@@ -167,6 +170,9 @@ function App() {
     global_ai_api_key: string | null
     global_webhook_whatsapp_url: string | null
     global_webhook_email_url: string | null
+    evolution_api_url: string | null
+    evolution_api_key: string | null
+    evolution_shared_instance: string | null
   }
 
   const [userSettings, setUserSettings] = useState<UserSettings | null>(null)
@@ -176,6 +182,9 @@ function App() {
     aiApiKey: string | null
     webhookWhatsappUrl?: string | null
     webhookEmailUrl?: string | null
+    evolutionUrl?: string | null
+    evolutionApiKey?: string | null
+    evolutionInstance?: string | null
   }) => {
     if (!effectiveUserId) return
 
@@ -190,6 +199,9 @@ function App() {
 
       if (overrides.webhookWhatsappUrl !== undefined) payload.webhook_whatsapp_url = overrides.webhookWhatsappUrl
       if (overrides.webhookEmailUrl !== undefined) payload.webhook_email_url = overrides.webhookEmailUrl
+      if (overrides.evolutionUrl !== undefined) payload.evolution_url = overrides.evolutionUrl
+      if (overrides.evolutionApiKey !== undefined) payload.evolution_apikey = overrides.evolutionApiKey
+      if (overrides.evolutionInstance !== undefined) payload.evolution_instance = overrides.evolutionInstance
       if (!nextUseGlobalWebhooks) payload.use_global_webhooks = false
 
       await apiFetch('/api/profile', {
@@ -205,6 +217,9 @@ function App() {
             ai_api_key: overrides.aiApiKey,
             webhook_whatsapp_url: overrides.webhookWhatsappUrl !== undefined ? overrides.webhookWhatsappUrl : prev.webhook_whatsapp_url,
             webhook_email_url: overrides.webhookEmailUrl !== undefined ? overrides.webhookEmailUrl : prev.webhook_email_url,
+            evolution_url: overrides.evolutionUrl !== undefined ? overrides.evolutionUrl : prev.evolution_url,
+            evolution_apikey: overrides.evolutionApiKey !== undefined ? overrides.evolutionApiKey : prev.evolution_apikey,
+            evolution_instance: overrides.evolutionInstance !== undefined ? overrides.evolutionInstance : prev.evolution_instance,
           }
           : prev,
       )
@@ -219,6 +234,9 @@ function App() {
         global_ai_api_key: geminiApiKey.trim() || null,
         global_webhook_whatsapp_url: webhookUrlWhatsApp.trim() || null,
         global_webhook_email_url: webhookUrlEmail.trim() || null,
+        evolution_api_url: evolutionApiUrl.trim() || null,
+        evolution_api_key: evolutionApiKey.trim() || null,
+        evolution_shared_instance: evolutionInstance.trim() || null,
       }
 
       const data = await apiFetch('/api/settings', {
@@ -231,6 +249,9 @@ function App() {
         global_ai_api_key: data.global_ai_api_key ?? null,
         global_webhook_whatsapp_url: data.global_webhook_whatsapp_url ?? null,
         global_webhook_email_url: data.global_webhook_email_url ?? null,
+        evolution_api_url: data.evolution_api_url ?? null,
+        evolution_api_key: data.evolution_api_key ?? null,
+        evolution_shared_instance: data.evolution_shared_instance ?? null,
       })
 
       setLastMoveMessage('Configurações globais salvas com sucesso.')
@@ -291,6 +312,9 @@ function App() {
             ai_api_key: data.ai_api_key ?? null,
             webhook_whatsapp_url: data.webhook_whatsapp_url ?? null,
             webhook_email_url: data.webhook_email_url ?? null,
+            evolution_url: data.evolution_url ?? null,
+            evolution_apikey: data.evolution_apikey ?? null,
+            evolution_instance: data.evolution_instance ?? null,
           })
         } else {
           setUserSettings(null)
@@ -319,12 +343,18 @@ function App() {
             global_ai_api_key: data.global_ai_api_key ?? null,
             global_webhook_whatsapp_url: data.global_webhook_whatsapp_url ?? null,
             global_webhook_email_url: data.global_webhook_email_url ?? null,
+            evolution_api_url: data.evolution_api_url ?? null,
+            evolution_api_key: data.evolution_api_key ?? null,
+            evolution_shared_instance: data.evolution_shared_instance ?? null,
           })
 
           // Sincroniza estados locais se estiverem vazios
           if (data.global_webhook_whatsapp_url) setWebhookUrlWhatsApp(data.global_webhook_whatsapp_url)
           if (data.global_webhook_email_url) setWebhookUrlEmail(data.global_webhook_email_url)
           if (data.global_ai_api_key) setGeminiApiKey(data.global_ai_api_key)
+          if (data.evolution_api_url) setEvolutionApiUrl(data.evolution_api_url)
+          if (data.evolution_api_key) setEvolutionApiKey(data.evolution_api_key)
+          if (data.evolution_shared_instance) setEvolutionInstance(data.evolution_shared_instance)
         } else {
           setGlobalSettings(null)
         }
@@ -420,6 +450,30 @@ function App() {
     }
   })
 
+  const [evolutionApiUrl, setEvolutionApiUrl] = useState<string>(() => {
+    try {
+      return localStorage.getItem('sendmessage_evolution_api_url') ?? ''
+    } catch {
+      return ''
+    }
+  })
+
+  const [evolutionApiKey, setEvolutionApiKey] = useState<string>(() => {
+    try {
+      return localStorage.getItem('sendmessage_evolution_api_key') ?? ''
+    } catch {
+      return ''
+    }
+  })
+
+  const [evolutionInstance, setEvolutionInstance] = useState<string>(() => {
+    try {
+      return localStorage.getItem('sendmessage_evolution_instance') ?? ''
+    } catch {
+      return ''
+    }
+  })
+
   // Webhooks efetivos considerando configurações globais x por usuário
   const globalWebhookWhatsapp = globalSettings?.global_webhook_whatsapp_url || ''
   const globalWebhookEmail = globalSettings?.global_webhook_email_url || ''
@@ -430,6 +484,15 @@ function App() {
 
   const effectiveWebhookWhatsapp = userWebhookWhatsapp || globalWebhookWhatsapp || webhookUrlWhatsApp
   const effectiveWebhookEmail = userWebhookEmail || globalWebhookEmail || webhookUrlEmail
+
+  // Persistir configurações da Evolution no localStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem('sendmessage_evolution_api_url', evolutionApiUrl)
+      localStorage.setItem('sendmessage_evolution_api_key', evolutionApiKey)
+      localStorage.setItem('sendmessage_evolution_instance', evolutionInstance)
+    } catch { }
+  }, [evolutionApiUrl, evolutionApiKey, evolutionInstance])
 
   // Persistir configuraÃ§Ãµes do Gemini no localStorage
   useEffect(() => {
@@ -3547,6 +3610,12 @@ ${emojiRule}
                 webhookUrlEmail={webhookUrlEmail}
                 onChangeWebhookWhatsApp={setWebhookUrlWhatsApp}
                 onChangeWebhookEmail={setWebhookUrlEmail}
+                evolutionApiUrl={evolutionApiUrl}
+                evolutionApiKey={evolutionApiKey}
+                evolutionInstance={evolutionInstance}
+                onChangeEvolutionApiUrl={setEvolutionApiUrl}
+                onChangeEvolutionApiKey={setEvolutionApiKey}
+                onChangeEvolutionInstance={setEvolutionInstance}
                 geminiApiKey={geminiApiKey}
                 onChangeGeminiApiKey={setGeminiApiKey}
                 geminiModel={geminiModel}
