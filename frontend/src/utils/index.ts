@@ -8,7 +8,9 @@ export const BACKEND_URL = import.meta.env.VITE_API_URL ||
 
 // Normaliza telefone removendo caracteres não numéricos
 export function normalizePhone(phone: string): string {
-  return phone.replace(/\D/g, '')
+  const digits = phone.replace(/\D/g, '')
+  // Se começar com 55, removemos para evitar duplicidade com o prefixo definido no n8n
+  return digits.startsWith('55') ? digits.substring(2) : digits
 }
 
 // Formata avaliação com estrela

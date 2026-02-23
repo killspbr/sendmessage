@@ -608,7 +608,10 @@ app.post('/api/campaigns/:id/send', authenticateToken, async (req, res) => {
     const intervalMin = campaign.interval_min_seconds ?? 30;
     const intervalMax = campaign.interval_max_seconds ?? 90;
 
-    const normalizePhone = (phone) => (phone || '').replace(/\D/g, '');
+    const normalizePhone = (phone) => {
+      const digits = (phone || '').replace(/\D/g, '');
+      return digits.startsWith('55') ? digits.substring(2) : digits;
+    };
 
     const htmlToWhatsapp = (html) => {
       return html

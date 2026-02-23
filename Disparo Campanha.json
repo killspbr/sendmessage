@@ -1,0 +1,1258 @@
+{
+  "name": "Disparo Campanha",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "disparocampanhazap",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "id": "ee91dd9b-07fe-48b8-94c5-d37e0b3de0f7",
+      "name": "Webhook",
+      "webhookId": "562cad35-99c8-4596-9eaf-2eab4c07769b"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "de115a76-7ec1-40b4-bf7d-35cd14eb2daa",
+              "name": "telefone",
+              "value": "=+55{{ $json.body.contacts[0].phone }}",
+              "type": "string"
+            },
+            {
+              "id": "be856cf3-83aa-4945-bc90-a6bd4d1d011d",
+              "name": "mensagem",
+              "value": "={{ $json.body.message }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        208,
+        0
+      ],
+      "id": "8e5a6be2-2356-45da-98fe-620cfd564188",
+      "name": "Edit Fields"
+    },
+    {
+      "parameters": {
+        "respondWith": "allIncomingItems",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        1776,
+        64
+      ],
+      "id": "2dbf5677-69d9-4572-b236-89d1f4a700d0",
+      "name": "Respond to Webhook"
+    },
+    {
+      "parameters": {
+        "resource": "messages-api",
+        "instanceName": "senb",
+        "remoteJid": "={{ $json.telefone }}",
+        "messageText": "={{ $json.mensagem }}",
+        "options_message": {}
+      },
+      "type": "n8n-nodes-evolution-api.evolutionApi",
+      "typeVersion": 1,
+      "position": [
+        416,
+        0
+      ],
+      "id": "593ad9f3-c987-4a41-9595-f031de70541e",
+      "name": "Enviar texto",
+      "credentials": {
+        "evolutionApi": {
+          "id": "QjYjnNveZADqbd0Z",
+          "name": "Evolution account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "disparocampanhamail",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -16,
+        -352
+      ],
+      "id": "c183fee6-d2f0-4abc-82cb-1510a287d917",
+      "name": "Webhook1",
+      "webhookId": "562cad35-99c8-4596-9eaf-2eab4c07769b",
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "de115a76-7ec1-40b4-bf7d-35cd14eb2daa",
+              "name": "telefone",
+              "value": "=+55{{ $json.body.contacts[0].phone }}",
+              "type": "string"
+            },
+            {
+              "id": "be856cf3-83aa-4945-bc90-a6bd4d1d011d",
+              "name": "mensagem",
+              "value": "={{ $json.body.message }}",
+              "type": "string"
+            },
+            {
+              "id": "9cf02fdc-c1b5-44da-985c-ebdf11438725",
+              "name": "email",
+              "value": "={{ $json.body.contacts[0].email }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        192,
+        -352
+      ],
+      "id": "fa943b10-5c42-4826-a4e6-4280cc18d605",
+      "name": "Edit Fields1",
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        1776,
+        -352
+      ],
+      "id": "89f1f10c-bfa6-4b7a-a63c-a00a5ebf8e0b",
+      "name": "Respond to Webhook1",
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "fromEmail": "claudio.rodrigues@clrodrigues.com.br",
+        "toEmail": "={{ $json.email }}",
+        "subject": "Mais uma porção de Segurança do Trabalho - CL Rodrigues",
+        "html": "=<!DOCTYPE html>\n<html lang=\"pt-BR\">\n<head>\n<meta charset=\"UTF-8\" />\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />\n<title>Campanha CL Rodrigues</title>\n</head>\n\n<body style=\"margin:0; padding:0; background:#f9f9f9; font-family: Arial, Helvetica, sans-serif;\">\n\n<table width=\"100%\" border=\"0\" cellspacing=\"0\" cellpadding=\"0\" style=\"background:#f9f9f9; padding: 20px 0;\">\n  <tr>\n    <td align=\"center\">\n\n      <!-- CONTAINER -->\n      <table width=\"600\" border=\"0\" cellspacing=\"0\" cellpadding=\"0\" style=\"background:#ffffff; border-radius:10px; padding: 20px;\">\n\n        <!-- LOGO -->\n        <tr>\n          <td align=\"center\" style=\"padding: 20px 0;\">\n            <img src=\"https://i.imgur.com/bOQAdRF.png\" alt=\"CL Rodrigues\" width=\"352\" style=\"display:block;\">\n          </td>\n        </tr>\n\n        <!-- MENSAGEM DINÂMICA -->\n        <tr>\n          <td style=\"font-size:16px; color:#333333; line-height:1.6; padding: 10px 25px;\">\n            {{ $json.mensagem }}\n          </td>\n        </tr>\n\n        <!-- CONTATOS -->\n        <tr>\n          <td style=\"padding: 25px; font-size:14px; color:#444444; line-height:1.6; background:#f4f4f4; border-radius: 8px;\">\n\n            <strong style=\"font-size:16px; color:#000;\">Entre em contato conosco:</strong><br><br>\n\n            <strong>Whatsapp:</strong> 11 93079-2728<br>\n            <strong>E-mail:</strong> claudio.rodrigues@clrodrigues.com.br<br>\n            <strong>Instagram:</strong> @clrodrigues<br>\n            <strong>Site:</strong> www.clrodrigues.com.br\n          </td>\n        </tr>\n\n      </table>\n      <!-- FIM CONTAINER -->\n\n    </td>\n  </tr>\n</table>\n\n</body>\n</html>\n",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        400,
+        -352
+      ],
+      "id": "0fb2e79b-413a-4fce-8f56-5da393c21e78",
+      "name": "Send email",
+      "webhookId": "12904e54-3b79-496a-a237-87a8a15860f4",
+      "credentials": {
+        "smtp": {
+          "id": "YGDVnNcJBmD5ox5V",
+          "name": "SMTP account"
+        }
+      },
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "disparocampanhazap",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        448
+      ],
+      "id": "2b0181d2-d20c-41ff-89df-aef41dac8de3",
+      "name": "Webhook2",
+      "webhookId": "562cad35-99c8-4596-9eaf-2eab4c07769b",
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "de115a76-7ec1-40b4-bf7d-35cd14eb2daa",
+              "name": "telefone",
+              "value": "=+55{{ $json.body.contacts[0].phone }}",
+              "type": "string"
+            },
+            {
+              "id": "be856cf3-83aa-4945-bc90-a6bd4d1d011d",
+              "name": "mensagem",
+              "value": "={{ $json.body.message }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        208,
+        448
+      ],
+      "id": "7bd9b850-ec08-4ca4-b544-cd36604ef161",
+      "name": "Edit Fields2",
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        832,
+        448
+      ],
+      "id": "b491e461-415a-42ff-b175-f9490721b0f0",
+      "name": "Respond to Webhook2",
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "resource": "messages-api",
+        "instanceName": "senb",
+        "remoteJid": "={{ $json.telefone }}",
+        "messageText": "={{ $json.mensagem }}\n\nHavendo dúvidas, entre em contato comigo.\nEng Claudio Rodrigues\n---\n📞 *Whatsapp:* 11 93079-2728\n📧 *E-mail:* claudio.rodrigues@clrodrigues.com.br\n📢 *Instagram:* @clrodrigues\n🌍 *Site:* www.clrodrigues.com.br",
+        "options_message": {}
+      },
+      "type": "n8n-nodes-evolution-api.evolutionApi",
+      "typeVersion": 1,
+      "position": [
+        416,
+        448
+      ],
+      "id": "66a48796-d46d-4a44-bf9b-af3008f28a0c",
+      "name": "Enviar texto1",
+      "credentials": {
+        "evolutionApi": {
+          "id": "QjYjnNveZADqbd0Z",
+          "name": "Evolution account"
+        }
+      },
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "60140c5f-5747-4b34-b300-af33fe044f2f",
+              "name": "status",
+              "value": "ok",
+              "type": "string"
+            },
+            {
+              "id": "4755241a-51dd-4f54-8b39-e23cbf1da004",
+              "name": "type",
+              "value": "whatsapp",
+              "type": "string"
+            },
+            {
+              "id": "7323af61-7771-4305-bbf0-459a4e083712",
+              "name": "telefone",
+              "value": "={{$json.telefone}}",
+              "type": "string"
+            },
+            {
+              "id": "670b4db9-1f10-41cc-b859-08c4092c7099",
+              "name": "mensagem",
+              "value": "={{$json.mensagem}}",
+              "type": "string"
+            },
+            {
+              "id": "03aa697f-9650-4f57-8db1-b1c3fb4ef745",
+              "name": "resultado",
+              "value": "={{$node[\"Enviar texto\"].json}}",
+              "type": "object"
+            },
+            {
+              "id": "ca4f59e4-6e18-460d-98bd-fa6aff1a1c1d",
+              "name": "erro",
+              "value": false,
+              "type": "boolean"
+            },
+            {
+              "id": "f924d229-452d-4b2a-8088-4863046952cf",
+              "name": "timestamp",
+              "value": "={{$now}}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1376,
+        128
+      ],
+      "id": "6fff2aa9-6877-4a6c-87b1-caa92b944022",
+      "name": "Retorno Sucesso"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "f1ad18bb-df32-4cdc-a84c-6b6d5c7077d3",
+              "name": "status",
+              "value": "failed",
+              "type": "string"
+            },
+            {
+              "id": "b931b8bf-8514-4284-9877-578c82c53b1a",
+              "name": "type",
+              "value": "whatsapp",
+              "type": "string"
+            },
+            {
+              "id": "f8ed9bdd-bd5d-4ff1-a4f5-2de07f3d81f2",
+              "name": "telefone",
+              "value": "={{$json.telefone}}",
+              "type": "string"
+            },
+            {
+              "id": "fd7d5f13-1996-4f92-9b28-3d4a4ad540af",
+              "name": "mensagem",
+              "value": "={{$json.mensagem}}",
+              "type": "string"
+            },
+            {
+              "id": "5f823da7-1e22-47a5-b671-77c8c4049120",
+              "name": "erro",
+              "value": "true",
+              "type": "string"
+            },
+            {
+              "id": "4b6a53f8-3f6a-4f02-9931-b3e312a2449b",
+              "name": "detalhes",
+              "value": "={{$node[\"Enviar texto\"].json}}",
+              "type": "string"
+            },
+            {
+              "id": "7f9583f0-9a2f-4498-a8c2-2bc0c21c1d67",
+              "name": "timestamp",
+              "value": "={{$now}}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1376,
+        -16
+      ],
+      "id": "62f2e291-e27a-4f2b-83bf-23359a1b78bc",
+      "name": "Retorno Erro"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "f4001f6c-efaa-4561-9b8c-d31083673217",
+              "leftValue": "={{$json.error_bool}}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1168,
+        0
+      ],
+      "id": "9d223da5-8040-40fd-abd8-02cff2a90c90",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "4f797e34-fae4-4db0-a92a-494521ef674d",
+              "name": "error_bool",
+              "value": "={{$node[\"Enviar texto\"].json.error ? true : false}}",
+              "type": "boolean"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        848,
+        0
+      ],
+      "id": "ff26cd53-f0aa-4ac9-829f-9e056ce6cc96",
+      "name": "Tratar Erros"
+    },
+    {
+      "parameters": {
+        "content": "## FLUXO DE DISPARO WHATSAPP COM TRATAMENTO E RETORNO DE ERROS",
+        "height": 352,
+        "width": 2048,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -80,
+        -64
+      ],
+      "typeVersion": 1,
+      "id": "fe51f443-bc30-4627-9734-071aa3770506",
+      "name": "Sticky Note"
+    },
+    {
+      "parameters": {
+        "content": "## FLUXO ANTIGO - SEM TRATAMENTO E RETORNO DE ERROS - OBSOLETO",
+        "height": 352,
+        "width": 2048,
+        "color": 3
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -80,
+        320
+      ],
+      "typeVersion": 1,
+      "id": "e7e60413-ef45-48bc-a6fb-7b288b394ded",
+      "name": "Sticky Note1"
+    },
+    {
+      "parameters": {
+        "content": "## FLUXO EMAIL ANTIGO - SEM TRATAMENTO E RETORNO DE ERROS - OBSOLETO",
+        "height": 352,
+        "width": 2048,
+        "color": 3
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -80,
+        -448
+      ],
+      "typeVersion": 1,
+      "id": "7a999909-ecf3-45cb-b362-7b7b349323f9",
+      "name": "Sticky Note2"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "60140c5f-5747-4b34-b300-af33fe044f2f",
+              "name": "status",
+              "value": "ok",
+              "type": "string"
+            },
+            {
+              "id": "4755241a-51dd-4f54-8b39-e23cbf1da004",
+              "name": "type",
+              "value": "whatsapp",
+              "type": "string"
+            },
+            {
+              "id": "7323af61-7771-4305-bbf0-459a4e083712",
+              "name": "telefone",
+              "value": "={{$json.telefone}}",
+              "type": "string"
+            },
+            {
+              "id": "670b4db9-1f10-41cc-b859-08c4092c7099",
+              "name": "mensagem",
+              "value": "={{$json.mensagem}}",
+              "type": "string"
+            },
+            {
+              "id": "03aa697f-9650-4f57-8db1-b1c3fb4ef745",
+              "name": "resultado",
+              "value": "={{$node[\"Enviar texto\"].json}}",
+              "type": "object"
+            },
+            {
+              "id": "ca4f59e4-6e18-460d-98bd-fa6aff1a1c1d",
+              "name": "erro",
+              "value": false,
+              "type": "boolean"
+            },
+            {
+              "id": "f924d229-452d-4b2a-8088-4863046952cf",
+              "name": "timestamp",
+              "value": "={{$now}}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1232,
+        -224
+      ],
+      "id": "4af6bbcb-a8bd-4d31-b134-bba411bc0254",
+      "name": "Retorno Sucesso1",
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "f1ad18bb-df32-4cdc-a84c-6b6d5c7077d3",
+              "name": "status",
+              "value": "failed",
+              "type": "string"
+            },
+            {
+              "id": "b931b8bf-8514-4284-9877-578c82c53b1a",
+              "name": "type",
+              "value": "whatsapp",
+              "type": "string"
+            },
+            {
+              "id": "f8ed9bdd-bd5d-4ff1-a4f5-2de07f3d81f2",
+              "name": "telefone",
+              "value": "={{$json.telefone}}",
+              "type": "string"
+            },
+            {
+              "id": "fd7d5f13-1996-4f92-9b28-3d4a4ad540af",
+              "name": "mensagem",
+              "value": "={{$json.mensagem}}",
+              "type": "string"
+            },
+            {
+              "id": "5f823da7-1e22-47a5-b671-77c8c4049120",
+              "name": "erro",
+              "value": "true",
+              "type": "string"
+            },
+            {
+              "id": "4b6a53f8-3f6a-4f02-9931-b3e312a2449b",
+              "name": "detalhes",
+              "value": "={{$node[\"Enviar texto\"].json}}",
+              "type": "string"
+            },
+            {
+              "id": "7f9583f0-9a2f-4498-a8c2-2bc0c21c1d67",
+              "name": "timestamp",
+              "value": "={{$now}}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1232,
+        -368
+      ],
+      "id": "3582e0b4-fd9a-4d19-b372-6e27df58cb76",
+      "name": "Retorno Erro1",
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "f4001f6c-efaa-4561-9b8c-d31083673217",
+              "leftValue": "={{$json.error_bool}}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1024,
+        -352
+      ],
+      "id": "b4e055da-a0c7-43ba-a2d1-5a867d665d38",
+      "name": "If1",
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "4f797e34-fae4-4db0-a92a-494521ef674d",
+              "name": "error_bool",
+              "value": "={{$node[\"Enviar texto\"].json.error ? true : false}}",
+              "type": "boolean"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        704,
+        -352
+      ],
+      "id": "fd888cee-d9a0-4870-96d7-d08728b99a69",
+      "name": "Tratar Erros1",
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "disparocampanhamail",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -16,
+        -768
+      ],
+      "id": "5402617a-e49f-4d01-a9b7-abe578bbc1dc",
+      "name": "Webhook3",
+      "webhookId": "562cad35-99c8-4596-9eaf-2eab4c07769b"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "de115a76-7ec1-40b4-bf7d-35cd14eb2daa",
+              "name": "telefone",
+              "value": "=+55{{ $json.body.contacts[0].phone }}",
+              "type": "string"
+            },
+            {
+              "id": "be856cf3-83aa-4945-bc90-a6bd4d1d011d",
+              "name": "mensagem",
+              "value": "={{ $json.body.message }}",
+              "type": "string"
+            },
+            {
+              "id": "9cf02fdc-c1b5-44da-985c-ebdf11438725",
+              "name": "email",
+              "value": "={{ $json.body.contacts[0].email }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        192,
+        -768
+      ],
+      "id": "de7f99b5-47ad-4f8e-b30d-5882b2415e75",
+      "name": "Edit Fields3"
+    },
+    {
+      "parameters": {
+        "respondWith": "allIncomingItems",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        1776,
+        -768
+      ],
+      "id": "46ab6ed6-d336-4be5-be71-2651bff6acd6",
+      "name": "Respond to Webhook3"
+    },
+    {
+      "parameters": {
+        "fromEmail": "claudio.rodrigues@clrodrigues.com.br",
+        "toEmail": "={{ $json.email }}",
+        "subject": "Mais uma porção de Segurança do Trabalho - CL Rodrigues",
+        "html": "=<!DOCTYPE html>\n<html lang=\"pt-BR\">\n<head>\n<meta charset=\"UTF-8\" />\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />\n<title>Campanha CL Rodrigues</title>\n</head>\n\n<body style=\"margin:0; padding:0; background:#f9f9f9; font-family: Arial, Helvetica, sans-serif;\">\n\n<table width=\"100%\" border=\"0\" cellspacing=\"0\" cellpadding=\"0\" style=\"background:#f9f9f9; padding: 20px 0;\">\n  <tr>\n    <td align=\"center\">\n\n      <!-- CONTAINER -->\n      <table width=\"600\" border=\"0\" cellspacing=\"0\" cellpadding=\"0\" style=\"background:#ffffff; border-radius:10px; padding: 20px;\">\n\n        <!-- LOGO -->\n        <tr>\n          <td align=\"center\" style=\"padding: 20px 0;\">\n            <img src=\"https://i.imgur.com/bOQAdRF.png\" alt=\"CL Rodrigues\" width=\"352\" style=\"display:block;\">\n          </td>\n        </tr>\n\n        <!-- MENSAGEM DINÂMICA -->\n        <tr>\n          <td style=\"font-size:16px; color:#333333; line-height:1.6; padding: 10px 25px;\">\n            {{ $json.mensagem }}\n          </td>\n        </tr>\n\n        <!-- CONTATOS -->\n        <tr>\n          <td style=\"padding: 25px; font-size:14px; color:#444444; line-height:1.6; background:#f4f4f4; border-radius: 8px;\">\n\n            <strong style=\"font-size:16px; color:#000;\">Entre em contato conosco:</strong><br><br>\n\n            <strong>Whatsapp:</strong> 11 93079-2728<br>\n            <strong>E-mail:</strong> claudio.rodrigues@clrodrigues.com.br<br>\n            <strong>Instagram:</strong> @clrodrigues<br>\n            <strong>Site:</strong> www.clrodrigues.com.br\n          </td>\n        </tr>\n\n      </table>\n      <!-- FIM CONTAINER -->\n\n    </td>\n  </tr>\n</table>\n\n</body>\n</html>\n",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        400,
+        -768
+      ],
+      "id": "97137884-740d-4249-8027-e10136ee513f",
+      "name": "Send email1",
+      "webhookId": "12904e54-3b79-496a-a237-87a8a15860f4",
+      "credentials": {
+        "smtp": {
+          "id": "YGDVnNcJBmD5ox5V",
+          "name": "SMTP account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "## FLUXO DE DISPARO EMAILCOM TRATAMENTO E RETORNO DE ERROS",
+        "height": 352,
+        "width": 2048,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -80,
+        -848
+      ],
+      "typeVersion": 1,
+      "id": "aee201a2-5159-4dfc-8c86-ed6bbaf1cf89",
+      "name": "Sticky Note3"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "60140c5f-5747-4b34-b300-af33fe044f2f",
+              "name": "status",
+              "value": "ok",
+              "type": "string"
+            },
+            {
+              "id": "4755241a-51dd-4f54-8b39-e23cbf1da004",
+              "name": "type",
+              "value": "whatsapp",
+              "type": "string"
+            },
+            {
+              "id": "7323af61-7771-4305-bbf0-459a4e083712",
+              "name": "telefone",
+              "value": "={{$json.telefone}}",
+              "type": "string"
+            },
+            {
+              "id": "670b4db9-1f10-41cc-b859-08c4092c7099",
+              "name": "mensagem",
+              "value": "={{$json.mensagem}}",
+              "type": "string"
+            },
+            {
+              "id": "03aa697f-9650-4f57-8db1-b1c3fb4ef745",
+              "name": "resultado",
+              "value": "={{$node[\"Enviar texto\"].json}}",
+              "type": "object"
+            },
+            {
+              "id": "ca4f59e4-6e18-460d-98bd-fa6aff1a1c1d",
+              "name": "erro",
+              "value": false,
+              "type": "boolean"
+            },
+            {
+              "id": "f924d229-452d-4b2a-8088-4863046952cf",
+              "name": "timestamp",
+              "value": "={{$now}}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1232,
+        -640
+      ],
+      "id": "a49a9c66-21b1-4949-bdd4-b22868b2ec19",
+      "name": "Retorno Sucesso2"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "f1ad18bb-df32-4cdc-a84c-6b6d5c7077d3",
+              "name": "status",
+              "value": "failed",
+              "type": "string"
+            },
+            {
+              "id": "b931b8bf-8514-4284-9877-578c82c53b1a",
+              "name": "type",
+              "value": "whatsapp",
+              "type": "string"
+            },
+            {
+              "id": "f8ed9bdd-bd5d-4ff1-a4f5-2de07f3d81f2",
+              "name": "telefone",
+              "value": "={{$json.telefone}}",
+              "type": "string"
+            },
+            {
+              "id": "fd7d5f13-1996-4f92-9b28-3d4a4ad540af",
+              "name": "mensagem",
+              "value": "={{$json.mensagem}}",
+              "type": "string"
+            },
+            {
+              "id": "5f823da7-1e22-47a5-b671-77c8c4049120",
+              "name": "erro",
+              "value": "true",
+              "type": "string"
+            },
+            {
+              "id": "4b6a53f8-3f6a-4f02-9931-b3e312a2449b",
+              "name": "detalhes",
+              "value": "={{$node[\"Enviar texto\"].json}}",
+              "type": "string"
+            },
+            {
+              "id": "7f9583f0-9a2f-4498-a8c2-2bc0c21c1d67",
+              "name": "timestamp",
+              "value": "={{$now}}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1232,
+        -784
+      ],
+      "id": "e594745a-dc2b-40f6-a756-9e4d5f356f17",
+      "name": "Retorno Erro2"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "f4001f6c-efaa-4561-9b8c-d31083673217",
+              "leftValue": "={{$json.error_bool}}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1024,
+        -768
+      ],
+      "id": "d9fd7ff2-cd9d-40c2-91d3-91fe241607e8",
+      "name": "If2"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "4f797e34-fae4-4db0-a92a-494521ef674d",
+              "name": "error_bool",
+              "value": "={{$node[\"Enviar texto\"].json.error ? true : false}}",
+              "type": "boolean"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        704,
+        -768
+      ],
+      "id": "22ea05f8-3280-4e87-b720-01b308b55e7f",
+      "name": "Tratar Erros2"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields": {
+      "main": [
+        [
+          {
+            "node": "Enviar texto",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enviar texto": {
+      "main": [
+        [
+          {
+            "node": "Tratar Erros",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook1": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields1": {
+      "main": [
+        [
+          {
+            "node": "Send email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send email": {
+      "main": [
+        [
+          {
+            "node": "Tratar Erros1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook2": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields2": {
+      "main": [
+        [
+          {
+            "node": "Enviar texto1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enviar texto1": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Retorno Erro": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Retorno Sucesso": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Retorno Erro",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Retorno Sucesso",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tratar Erros": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Retorno Sucesso1": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Retorno Erro1": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If1": {
+      "main": [
+        [
+          {
+            "node": "Retorno Erro1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Retorno Sucesso1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tratar Erros1": {
+      "main": [
+        [
+          {
+            "node": "If1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook3": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields3": {
+      "main": [
+        [
+          {
+            "node": "Send email1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send email1": {
+      "main": [
+        [
+          {
+            "node": "Tratar Erros2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Retorno Sucesso2": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Retorno Erro2": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If2": {
+      "main": [
+        [
+          {
+            "node": "Retorno Erro2",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Retorno Sucesso2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tratar Erros2": {
+      "main": [
+        [
+          {
+            "node": "If2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "acb7bf51-da3e-4e0b-8736-7b8ffbe71b7c",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "b5a7d6d5c2c9b69b13ba27f780dc854f09bc62194d960ae7fd98cb6d9058c8c4"
+  },
+  "id": "07o0RQErQ1lQEMu2",
+  "tags": []
+}
