@@ -2,7 +2,10 @@
  * Utilitário para chamadas API ao Backend próprio
  */
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
+const API_URL = import.meta.env.VITE_API_URL ||
+    (import.meta.env.PROD
+        ? 'https://clrodrigues-sendmessage-backend.rsybpi.easypanel.host'
+        : 'http://localhost:4000');
 
 export async function apiFetch(endpoint: string, options: RequestInit = {}) {
     const token = localStorage.getItem('auth_token');

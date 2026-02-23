@@ -12,6 +12,8 @@ type AdminUsersPageProps = {
 type AdminUserProfile = {
   id: string
   displayName: string | null
+  userName: string | null
+  email: string | null
   groupId: string | null
   groupName: string | null
   useGlobalAi: boolean
@@ -136,6 +138,8 @@ export function AdminUsersPage({
       const mappedUsers: AdminUserProfile[] = (profilesData ?? []).map((u: any) => ({
         id: u.id,
         displayName: u.display_name ?? null,
+        userName: u.user_name ?? null,
+        email: u.email ?? null,
         groupId: u.group_id ?? null,
         groupName: u.group_name ?? null,
         useGlobalAi: u.use_global_ai ?? true,
@@ -359,7 +363,10 @@ export function AdminUsersPage({
                   {users.map((u) => (
                     <tr key={u.id} className="border-b border-slate-100 last:border-b-0 hover:bg-slate-100/60">
                       <td className="px-2 py-1 align-top text-slate-700">
-                        {u.displayName || <span className="text-slate-400">(sem nome)</span>}
+                        <div className="flex flex-col">
+                          <span className="font-medium">{u.displayName || u.userName || <span className="text-slate-400 font-normal italic">(sem nome)</span>}</span>
+                          <span className="text-[9px] text-slate-400 lowercase">{u.email}</span>
+                        </div>
                       </td>
                       {debugEnabled && (
                         <td className="px-2 py-1 align-top font-mono text-[10px] text-slate-500 break-all">
@@ -471,8 +478,8 @@ export function AdminUsersPage({
                           <button
                             type="button"
                             className={`px-2 py-0.5 rounded-md text-[10px] border ${impersonatedUserId === u.id
-                                ? 'bg-violet-600 text-white border-violet-700'
-                                : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                              ? 'bg-violet-600 text-white border-violet-700'
+                              : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
                               }`}
                             onClick={() =>
                               onImpersonateUser(impersonatedUserId === u.id ? null : u.id)
@@ -508,8 +515,8 @@ export function AdminUsersPage({
                     key={g.id}
                     type="button"
                     className={`w-full flex items-center justify-between gap-2 px-2 py-1.5 rounded-md text-[11px] border transition ${isSelected
-                        ? 'bg-violet-50 border-violet-300 text-violet-900'
-                        : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
+                      ? 'bg-violet-50 border-violet-300 text-violet-900'
+                      : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
                       }`}
                     onClick={() => setSelectedGroupId(g.id)}
                   >

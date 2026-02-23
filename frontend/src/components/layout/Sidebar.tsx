@@ -1,6 +1,6 @@
 import { useState } from 'react'
 
-export type SidebarPage = 'dashboard' | 'contacts' | 'campaigns' | 'schedules' | 'settings' | 'reports' | 'admin' | 'profile'
+export type SidebarPage = 'dashboard' | 'contacts' | 'campaigns' | 'schedules' | 'settings' | 'reports' | 'admin' | 'profile' | 'extract'
 
 type SidebarProps = {
   currentPage: SidebarPage
@@ -36,50 +36,51 @@ export function Sidebar({ currentPage, onChangePage, can, userEmail, userName, o
       </div>
       <nav className="flex-1 px-2 md:px-3 py-4 text-sm space-y-1">
         {canViewDashboard && (
-        <button
-          className={`w-full flex items-center justify-center md:justify-start gap-2 px-2 md:px-3 py-2 rounded-xl text-xs font-medium transition ${
-            currentPage === 'dashboard'
-              ? 'bg-violet-500/20 border border-violet-400/50 text-slate-50 shadow-sm shadow-violet-600/40'
-              : 'text-slate-400 hover:bg-slate-900/80 hover:text-slate-50'
-          }`}
-          onClick={() => onChangePage('dashboard')}
-          title="Dashboard"
-        >
-          <span className="h-6 w-6 rounded-lg bg-slate-900/80 flex items-center justify-center text-[11px]">🏠</span>
-          <span className="hidden md:inline text-xs">Dashboard</span>
-        </button>
+          <button
+            className={`w-full flex items-center justify-center md:justify-start gap-2 px-2 md:px-3 py-2 rounded-xl text-xs font-medium transition ${currentPage === 'dashboard'
+                ? 'bg-violet-500/20 border border-violet-400/50 text-slate-50 shadow-sm shadow-violet-600/40'
+                : 'text-slate-400 hover:bg-slate-900/80 hover:text-slate-50'
+              }`}
+            onClick={() => onChangePage('dashboard')}
+            title="Dashboard"
+          >
+            <span className="h-6 w-6 rounded-lg bg-slate-900/80 flex items-center justify-center text-[11px]">🏠</span>
+            <span className="hidden md:inline text-xs">Dashboard</span>
+          </button>
         )}
         {canViewReports && (
-        <button
-          className={`w-full flex items-center justify-center md:justify-start gap-2 px-2 md:px-3 py-2 rounded-xl text-xs font-medium transition ${
-            currentPage === 'reports'
-              ? 'bg-violet-500/20 border border-violet-400/50 text-slate-50 shadow-sm shadow-violet-600/40'
-              : 'text-slate-400 hover:bg-slate-900/80 hover:text-slate-50'
-          }`}
-          onClick={() => onChangePage('reports')}
-          title="Relatórios"
-        >
-          <span className="h-6 w-6 rounded-lg bg-slate-900/80 flex items-center justify-center text-[11px]">📊</span>
-          <span className="hidden md:inline text-xs">Relatórios</span>
-        </button>
+          <button
+            className={`w-full flex items-center justify-center md:justify-start gap-2 px-2 md:px-3 py-2 rounded-xl text-xs font-medium transition ${currentPage === 'reports'
+                ? 'bg-violet-500/20 border border-violet-400/50 text-slate-50 shadow-sm shadow-violet-600/40'
+                : 'text-slate-400 hover:bg-slate-900/80 hover:text-slate-50'
+              }`}
+            onClick={() => onChangePage('reports')}
+            title="Relatórios"
+          >
+            <span className="h-6 w-6 rounded-lg bg-slate-900/80 flex items-center justify-center text-[11px]">📊</span>
+            <span className="hidden md:inline text-xs">Relatórios</span>
+          </button>
         )}
         {canViewContacts && (
-        <button
-          className={`w-full flex items-center justify-center md:justify-start gap-2 px-2 md:px-3 py-2 rounded-xl text-xs font-medium transition ${
-            currentPage === 'contacts'
-              ? 'bg-violet-500/20 border border-violet-400/50 text-slate-50 shadow-sm shadow-violet-600/40'
-              : 'text-slate-400 hover:bg-slate-900/80 hover:text-slate-50'
-          }`}
-          onClick={() => onChangePage('contacts')}
-          title="Contatos"
-        >
-          <span className="h-6 w-6 rounded-lg bg-slate-900/80 flex items-center justify-center text-[11px]">👥</span>
-          <span className="hidden md:inline text-xs">Contatos</span>
-        </button>
+          <button
+            className={`w-full flex items-center justify-center md:justify-start gap-2 px-2 md:px-3 py-2 rounded-xl text-xs font-medium transition ${currentPage === 'contacts'
+                ? 'bg-violet-500/20 border border-violet-400/50 text-slate-50 shadow-sm shadow-violet-600/40'
+                : 'text-slate-400 hover:bg-slate-900/80 hover:text-slate-50'
+              }`}
+            onClick={() => onChangePage('contacts')}
+            title="Contatos"
+          >
+            <span className="h-6 w-6 rounded-lg bg-slate-900/80 flex items-center justify-center text-[11px]">👥</span>
+            <span className="hidden md:inline text-xs">Contatos</span>
+          </button>
         )}
         <button
-          className="w-full flex items-center justify-center md:justify-start gap-2 px-2 md:px-3 py-2 rounded-xl text-xs font-medium text-slate-500/80 hover:bg-slate-900/80 hover:text-slate-50"
-          title="Extrair"
+          className={`w-full flex items-center justify-center md:justify-start gap-2 px-2 md:px-3 py-2 rounded-xl text-xs font-medium transition ${currentPage === 'extract'
+              ? 'bg-violet-500/20 border border-violet-400/50 text-slate-50 shadow-sm shadow-violet-600/40'
+              : 'text-slate-400 hover:bg-slate-900/80 hover:text-slate-50'
+            }`}
+          onClick={() => onChangePage('extract')}
+          title="Extrair Contatos com IA"
         >
           <span className="h-6 w-6 rounded-lg bg-slate-900/80 flex items-center justify-center text-[11px]">📥</span>
           <span className="hidden md:inline text-xs">Extrair</span>
@@ -102,11 +103,10 @@ export function Sidebar({ currentPage, onChangePage, can, userEmail, userName, o
             {campaignsOpen && (
               <div className="ml-0 md:ml-6 space-y-1">
                 <button
-                  className={`w-full flex items-center justify-center md:justify-start gap-2 px-2 md:px-3 py-1.5 rounded-xl text-xs font-medium transition ${
-                    currentPage === 'campaigns'
+                  className={`w-full flex items-center justify-center md:justify-start gap-2 px-2 md:px-3 py-1.5 rounded-xl text-xs font-medium transition ${currentPage === 'campaigns'
                       ? 'bg-violet-500/20 border border-violet-400/50 text-slate-50 shadow-sm shadow-violet-600/40'
                       : 'text-slate-400 hover:bg-slate-900/80 hover:text-slate-50'
-                  }`}
+                    }`}
                   onClick={() => onChangePage('campaigns')}
                   title="Campanhas"
                 >
@@ -114,11 +114,10 @@ export function Sidebar({ currentPage, onChangePage, can, userEmail, userName, o
                 </button>
 
                 <button
-                  className={`w-full flex items-center justify-center md:justify-start gap-2 px-2 md:px-3 py-1.5 rounded-xl text-xs font-medium transition ${
-                    currentPage === 'schedules'
+                  className={`w-full flex items-center justify-center md:justify-start gap-2 px-2 md:px-3 py-1.5 rounded-xl text-xs font-medium transition ${currentPage === 'schedules'
                       ? 'bg-violet-500/20 border border-violet-400/50 text-slate-50 shadow-sm shadow-violet-600/40'
                       : 'text-slate-400 hover:bg-slate-900/80 hover:text-slate-50'
-                  }`}
+                    }`}
                   onClick={() => onChangePage('schedules')}
                   title="Agendamentos"
                 >
@@ -130,11 +129,10 @@ export function Sidebar({ currentPage, onChangePage, can, userEmail, userName, o
         )}
         {canViewSettings && (
           <button
-            className={`w-full flex items-center justify-center md:justify-start gap-2 px-2 md:px-3 py-2 rounded-xl text-xs font-medium transition ${
-              currentPage === 'settings'
+            className={`w-full flex items-center justify-center md:justify-start gap-2 px-2 md:px-3 py-2 rounded-xl text-xs font-medium transition ${currentPage === 'settings'
                 ? 'bg-violet-500/20 border border-violet-400/50 text-slate-50 shadow-sm shadow-violet-600/40'
                 : 'text-slate-400 hover:bg-slate-900/80 hover:text-slate-50'
-            }`}
+              }`}
             onClick={() => onChangePage('settings')}
             title="Configurações"
           >
@@ -144,11 +142,10 @@ export function Sidebar({ currentPage, onChangePage, can, userEmail, userName, o
         )}
         {canViewAdmin && (
           <button
-            className={`w-full flex items-center justify-center md:justify-start gap-2 px-2 md:px-3 py-2 rounded-xl text-xs font-medium transition ${
-              currentPage === 'admin'
+            className={`w-full flex items-center justify-center md:justify-start gap-2 px-2 md:px-3 py-2 rounded-xl text-xs font-medium transition ${currentPage === 'admin'
                 ? 'bg-violet-500/20 border border-violet-400/50 text-slate-50 shadow-sm shadow-violet-600/40'
                 : 'text-slate-400 hover:bg-slate-900/80 hover:text-slate-50'
-            }`}
+              }`}
             onClick={() => onChangePage('admin')}
             title="Usuários & Grupos"
           >

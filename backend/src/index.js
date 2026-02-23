@@ -819,9 +819,10 @@ app.get('/api/permissions/me', authenticateToken, async (req, res) => {
 app.get('/api/admin/users', authenticateToken, async (req, res) => {
   try {
     const result = await query(
-      `SELECT up.*, ug.name as group_name
+      `SELECT up.*, ug.name as group_name, u.name as user_name, u.email
        FROM user_profiles up
        LEFT JOIN user_groups ug ON up.group_id = ug.id
+       LEFT JOIN users u ON up.id = u.id
        ORDER BY up.id ASC`
     );
     res.json(result.rows);

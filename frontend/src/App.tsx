@@ -15,6 +15,7 @@ import {
   UserSettingsPage,
   ReportsPage,
   SchedulesPage,
+  ExtractPage,
 } from './pages'
 import { usePermissions } from './hooks/usePermissions'
 import { useAuth } from './hooks/useAuth'
@@ -119,7 +120,8 @@ function App() {
 
   const [updateAvailable, setUpdateAvailable] = useState(false)
   const [forceUpdate, setForceUpdate] = useState(false)
-  const APP_VERSION = '1.0.0'
+  const [isExtracting, setIsExtracting] = useState(false)
+  const APP_VERSION = '1.0.1'
 
   // Verificar versão e forçar atualização se necessário
   useEffect(() => {
@@ -438,7 +440,7 @@ function App() {
 
   // currentListId agora vem do hook useListsWithSupabase; mantemos apenas a persistência
   const [currentPage, setCurrentPage] = useState<
-    'dashboard' | 'contacts' | 'campaigns' | 'schedules' | 'settings' | 'reports' | 'admin' | 'profile'
+    'dashboard' | 'contacts' | 'campaigns' | 'schedules' | 'settings' | 'reports' | 'admin' | 'profile' | 'extract'
   >(() => {
     try {
       const stored = localStorage.getItem('sendmessage_currentPage') as
@@ -2318,13 +2320,12 @@ ${emojiRule}
           return
         }
 
-        setLastMoveMessage('IA analisando a imagem e extraindo os dados do contato...')
-
+        setIsExtracting(true)
         try {
           const resp = await fetch(`${BACKEND_URL}/api/ai/extract-contact`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ imageBase64: base64, geminiApiKey }),
+            body: JSON.stringify({ imageBase64: base64, geminiApiKey: effectiveAiKey }),
           })
           const data = await resp.json()
           if (!resp.ok || !data?.ok) {
@@ -2335,7 +2336,7 @@ ${emojiRule}
 
           const c = data.contact || {}
 
-          // Garante existÃªncia da lista "IA"
+          // Garante existência da lista "IA"
           setLists((prev) => {
             const exists = prev.some((l) => l.id === 'ia')
             if (exists) return prev
@@ -2361,15 +2362,22 @@ ${emojiRule}
           setContactFormRating('')
           setShowContactForm(true)
 
+          // Se estiver na página de extração, muda para contatos para ver o resultado
+          if (currentPage === 'extract') {
+            setCurrentPage('contacts')
+          }
+
           const el = document.getElementById('contact-form-section')
           if (el) {
             el.scrollIntoView({ behavior: 'smooth', block: 'start' })
           }
 
-          setLastMoveMessage('Dados extraÃ­dos pela IA. Revise e salve o contato na lista "IA".')
+          setLastMoveMessage('Dados extraídos pela IA. Revise e salve o contato na lista "IA".')
         } catch (err) {
           console.error('Erro ao chamar IA:', err)
           setLastMoveMessage('Erro inesperado ao chamar IA. Tente novamente.')
+        } finally {
+          setIsExtracting(false)
         }
       }
       reader.readAsDataURL(file)
@@ -3250,6 +3258,13 @@ ${emojiRule}
                 >
                   Atualizar agora
                 </button>
+                <button
+                  type="button"
+                  className="p-1 hover:bg-white/10 rounded-full transition-colors"
+                  onClick={() => setUpdateAvailable(false)}
+                >
+                  ✕
+                </button>
               </div>
             </div>
           </div>
@@ -3543,6 +3558,12 @@ ${emojiRule}
                 currentUserGroupName={permissions?.groupName ?? null}
                 impersonatedUserId={impersonatedUserId}
                 onImpersonateUser={setImpersonatedUserId}
+              />
+            ) : currentPage === 'extract' ? (
+              <ExtractPage
+                onAiExtractContact={handleAiExtractContact}
+                isExtracting={isExtracting}
+                lastMessage={lastMoveMessage}
               />
             ) : null}
           </div>
