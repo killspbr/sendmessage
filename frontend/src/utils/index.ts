@@ -1,11 +1,10 @@
 // Funções utilitárias compartilhadas
 
-// URL do backend - usa o mesmo hostname do frontend
-// Em ambiente local (HTTP) mantém a porta 4000.
-// Em produção (HTTPS) usa o mesmo host e protocolo da página, sem porta explícita, evitando Mixed Content.
-const protocol = window.location.protocol === 'https:' ? 'https:' : 'http:'
-const port = window.location.protocol === 'https:' ? '' : ':4000'
-export const BACKEND_URL = `${protocol}//${window.location.hostname}${port}`
+// URL do backend - prioritiza variável de ambiente VITE_API_URL
+export const BACKEND_URL = import.meta.env.VITE_API_URL ||
+  (import.meta.env.PROD
+    ? 'https://clrodrigues-sendmessage-backend.rsybpi.easypanel.host'
+    : 'http://localhost:4000');
 
 // Normaliza telefone removendo caracteres não numéricos
 export function normalizePhone(phone: string): string {
