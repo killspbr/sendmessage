@@ -467,6 +467,7 @@ app.post('/api/settings', authenticateToken, async (req, res) => {
       gemini_max_tokens,
       send_interval_min,
       send_interval_max,
+      google_maps_api_key,
     } = req.body;
 
     const check = await query('SELECT id FROM app_settings LIMIT 1');
@@ -484,22 +485,23 @@ app.post('/api/settings', authenticateToken, async (req, res) => {
           gemini_temperature = $7,
           gemini_max_tokens = $8,
           send_interval_min = $9,
-          send_interval_max = $10
+          send_interval_max = $10,
+          google_maps_api_key = $11
          RETURNING *`,
         [global_ai_api_key, evolution_api_url, evolution_api_key, evolution_shared_instance,
           gemini_model, gemini_api_version, gemini_temperature, gemini_max_tokens,
-          send_interval_min, send_interval_max]
+          send_interval_min, send_interval_max, google_maps_api_key]
       );
     } else {
       result = await query(
         `INSERT INTO app_settings 
           (global_ai_api_key, evolution_api_url, evolution_api_key, evolution_shared_instance,
            gemini_model, gemini_api_version, gemini_temperature, gemini_max_tokens,
-           send_interval_min, send_interval_max) 
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
+           send_interval_min, send_interval_max, google_maps_api_key) 
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING *`,
         [global_ai_api_key, evolution_api_url, evolution_api_key, evolution_shared_instance,
           gemini_model, gemini_api_version, gemini_temperature, gemini_max_tokens,
-          send_interval_min, send_interval_max]
+          send_interval_min, send_interval_max, google_maps_api_key]
       );
     }
 
@@ -525,6 +527,129 @@ app.post('/api/migrate', async (req, res) => {
     res.json({ ok: true, message: 'Migration executada com sucesso.' });
   } catch (e) {
     res.status(500).json({ error: 'Falha na migration', details: e.message });
+  }
+});
+
+// --- EXTRAÇÃO DO GOOGLE MAPS (Places API) ---
+
+// Busca de estabelecimentos
+app.post('/api/extract/maps/search', authenticateToken, async (req, res) => {
+  try {
+    const { query: searchTerm, location, radius = 10000 } = req.body;
+
+    if (!searchTerm || !location) {
+      return res.status(400).json({ error: 'query e location são obrigatórios' });
+    }
+
+    // Busca a chave da API nas configurações globais
+    const settingsResult = await query('SELECT google_maps_api_key FROM app_settings LIMIT 1');
+    const apiKey = settingsResult.rows[0]?.google_maps_api_key || process.env.GOOGLE_MAPS_API_KEY;
+
+    if (!apiKey) {
+      return res.status(400).json({ error: 'Chave da Google Maps API não configurada. Acesse Configurações para adicionar.' });
+    }
+
+    // Text Search na Places API
+    const searchQuery = encodeURIComponent(`${searchTerm} em ${location}`);
+    const url = `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${searchQuery}&language=pt-BR&region=br&key=${apiKey}`;
+
+    const response = await fetch(url);
+    const data = await response.json();
+
+    if (data.status !== 'OK' && data.status !== 'ZERO_RESULTS') {
+      console.error('[Maps] Erro Places API:', data.status, data.error_message);
+      return res.status(400).json({ error: `Erro na API do Google Maps: ${data.status}`, details: data.error_message });
+    }
+
+    const places = (data.results || []).map(place => ({
+      place_id: place.place_id,
+      name: place.name,
+      address: place.formatted_address || place.vicinity || '',
+      rating: place.rating || null,
+      total_ratings: place.user_ratings_total || 0,
+      category: place.types?.[0]?.replace(/_/g, ' ') || 'Estabelecimento',
+      location: place.geometry?.location || null,
+      // Dados detalhados vêm do endpoint de details
+      phone: null,
+      website: null,
+    }));
+
+    res.json({ places, nextPageToken: data.next_page_token || null });
+  } catch (error) {
+    console.error('[Maps] Erro ao buscar:', error);
+    res.status(500).json({ error: 'Erro ao buscar no Google Maps', details: error.message });
+  }
+});
+
+// Buscar mais resultados (paginação)
+app.post('/api/extract/maps/next-page', authenticateToken, async (req, res) => {
+  try {
+    const { pageToken } = req.body;
+    if (!pageToken) return res.status(400).json({ error: 'pageToken é obrigatório' });
+
+    const settingsResult = await query('SELECT google_maps_api_key FROM app_settings LIMIT 1');
+    const apiKey = settingsResult.rows[0]?.google_maps_api_key || process.env.GOOGLE_MAPS_API_KEY;
+
+    if (!apiKey) return res.status(400).json({ error: 'Chave da Google Maps API não configurada.' });
+
+    // Google exige 2s de espera para o próximo page token
+    await new Promise(r => setTimeout(r, 2100));
+
+    const url = `https://maps.googleapis.com/maps/api/place/textsearch/json?pagetoken=${pageToken}&key=${apiKey}`;
+    const response = await fetch(url);
+    const data = await response.json();
+
+    const places = (data.results || []).map(place => ({
+      place_id: place.place_id,
+      name: place.name,
+      address: place.formatted_address || place.vicinity || '',
+      rating: place.rating || null,
+      total_ratings: place.user_ratings_total || 0,
+      category: place.types?.[0]?.replace(/_/g, ' ') || 'Estabelecimento',
+      location: place.geometry?.location || null,
+      phone: null,
+      website: null,
+    }));
+
+    res.json({ places, nextPageToken: data.next_page_token || null });
+  } catch (error) {
+    res.status(500).json({ error: 'Erro ao buscar próxima página', details: error.message });
+  }
+});
+
+// Detalhes de um estabelecimento (telefone e site)
+app.get('/api/extract/maps/details/:placeId', authenticateToken, async (req, res) => {
+  try {
+    const { placeId } = req.params;
+
+    const settingsResult = await query('SELECT google_maps_api_key FROM app_settings LIMIT 1');
+    const apiKey = settingsResult.rows[0]?.google_maps_api_key || process.env.GOOGLE_MAPS_API_KEY;
+
+    if (!apiKey) return res.status(400).json({ error: 'Chave da Google Maps API não configurada.' });
+
+    const fields = 'name,formatted_phone_number,international_phone_number,website,formatted_address,rating,types';
+    const url = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${placeId}&fields=${fields}&language=pt-BR&key=${apiKey}`;
+
+    const response = await fetch(url);
+    const data = await response.json();
+
+    if (data.status !== 'OK') {
+      return res.status(400).json({ error: `Erro ao buscar detalhes: ${data.status}` });
+    }
+
+    const r = data.result;
+    res.json({
+      place_id: placeId,
+      name: r.name,
+      phone: r.international_phone_number || r.formatted_phone_number || null,
+      phone_local: r.formatted_phone_number || null,
+      website: r.website || null,
+      address: r.formatted_address || null,
+      rating: r.rating || null,
+      category: r.types?.[0]?.replace(/_/g, ' ') || 'Estabelecimento',
+    });
+  } catch (error) {
+    res.status(500).json({ error: 'Erro ao buscar detalhes do lugar', details: error.message });
   }
 });
 
@@ -1019,6 +1144,7 @@ async function runMigrations() {
     `ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS send_interval_min INTEGER DEFAULT 30`,
     `ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS send_interval_max INTEGER DEFAULT 90`,
     `ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP`,
+    `ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS google_maps_api_key TEXT`,
     `ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS global_ai_api_key TEXT`,
     `ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS evolution_api_url TEXT`,
     `ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS evolution_api_key TEXT`,

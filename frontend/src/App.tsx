@@ -171,6 +171,7 @@ function App() {
     evolution_api_url: string | null
     evolution_api_key: string | null
     evolution_shared_instance: string | null
+    google_maps_api_key: string | null
   }
 
   const [userSettings, setUserSettings] = useState<UserSettings | null>(null)
@@ -234,6 +235,7 @@ function App() {
         gemini_max_tokens: geminiMaxTokens,
         send_interval_min: sendIntervalMinSeconds,
         send_interval_max: sendIntervalMaxSeconds,
+        google_maps_api_key: googleMapsApiKey.trim() || null,
       }
 
       const data = await apiFetch('/api/settings', {
@@ -247,6 +249,7 @@ function App() {
         evolution_api_url: data.evolution_api_url ?? null,
         evolution_api_key: data.evolution_api_key ?? null,
         evolution_shared_instance: data.evolution_shared_instance ?? null,
+        google_maps_api_key: data.google_maps_api_key ?? null,
       })
 
       setLastMoveMessage('Configurações globais salvas com sucesso.')
@@ -338,6 +341,7 @@ function App() {
             evolution_api_url: data.evolution_api_url ?? null,
             evolution_api_key: data.evolution_api_key ?? null,
             evolution_shared_instance: data.evolution_shared_instance ?? null,
+            google_maps_api_key: data.google_maps_api_key ?? null,
           })
 
           // Popula estados locais com valores do servidor
@@ -351,6 +355,7 @@ function App() {
           if (data.gemini_max_tokens != null) setGeminiMaxTokens(Number(data.gemini_max_tokens))
           if (data.send_interval_min != null) setSendIntervalMinSeconds(Number(data.send_interval_min))
           if (data.send_interval_max != null) setSendIntervalMaxSeconds(Number(data.send_interval_max))
+          if (data.google_maps_api_key) setGoogleMapsApiKey(data.google_maps_api_key)
         } else {
           setGlobalSettings(null)
         }
@@ -397,6 +402,7 @@ function App() {
     (useGlobalAi && !!globalAiKey) || (!useGlobalAi && !!userAiKey)
 
 
+  const [googleMapsApiKey, setGoogleMapsApiKey] = useState<string>('')
   const [evolutionApiUrl, setEvolutionApiUrl] = useState<string>('')
   const [evolutionApiKey, setEvolutionApiKey] = useState<string>('')
   const [evolutionInstance, setEvolutionInstance] = useState<string>('')
@@ -1971,6 +1977,55 @@ function App() {
     }
   }
 
+  // Importação em lote a partir da extração do Google Maps
+  const handleImportFromMaps = async (
+    contacts: { name: string; phone: string; email: string; category: string; cep: string; rating: string }[],
+    listId: string
+  ) => {
+    if (!effectiveUserId || !listId) throw new Error('Usuário ou lista não definidos')
+
+    const results: Contact[] = []
+    const current = contactsByList[listId] ?? []
+    let maxId = current.reduce((m, c) => (c.id > m ? c.id : m), 0)
+
+    for (const contact of contacts) {
+      const phoneDigits = normalizePhone(contact.phone)
+      try {
+        const data = await apiFetch('/api/contacts', {
+          method: 'POST',
+          body: JSON.stringify({
+            list_id: listId,
+            user_id: effectiveUserId,
+            name: contact.name.trim(),
+            phone: phoneDigits || '',
+            email: contact.email || '',
+            category: contact.category || '',
+            cep: contact.cep || '',
+            rating: contact.rating || '',
+          }),
+        })
+        maxId += 1
+        results.push({
+          id: maxId,
+          supabaseId: data.id?.toString(),
+          name: data.name ?? contact.name,
+          phone: data.phone ?? phoneDigits,
+          email: data.email ?? '',
+          category: data.category ?? contact.category,
+          cep: data.cep ?? '',
+          rating: data.rating ?? contact.rating,
+        })
+      } catch { /* falha silenciosa por contato */ }
+    }
+
+    if (results.length > 0) {
+      setContactsByList(prev => ({
+        ...prev,
+        [listId]: [...results, ...(prev[listId] ?? [])],
+      }))
+    }
+  }
+
   const handleApplyImport = async () => {
     if (!importNewContacts && !importConflicts) return
 
@@ -3018,6 +3073,8 @@ function App() {
                 onChangeGeminiMaxTokens={setGeminiMaxTokens}
                 debugEnabled={debugEnabled}
                 onChangeDebugEnabled={setDebugEnabled}
+                googleMapsApiKey={googleMapsApiKey}
+                onChangeGoogleMapsApiKey={setGoogleMapsApiKey}
                 importPreview={importPreview}
                 onExportData={handleExportData}
                 onImportFile={handleImportFile}
@@ -3039,6 +3096,12 @@ function App() {
                 onAiExtractContact={handleAiExtractContact}
                 isExtracting={isExtracting}
                 lastMessage={lastMoveMessage}
+                lists={lists}
+                existingPhones={new Set(
+                  Object.values(contactsByList).flat().map(c => normalizePhone(c.phone)).filter(Boolean)
+                )}
+                googleMapsApiKey={googleMapsApiKey || globalSettings?.google_maps_api_key || undefined}
+                onImportContacts={handleImportFromMaps}
               />
             ) : null}
           </div>

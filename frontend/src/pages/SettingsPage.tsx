@@ -24,6 +24,10 @@ type SettingsPageProps = {
   debugEnabled: boolean
   onChangeDebugEnabled: (value: boolean) => void
 
+  // Google Maps
+  googleMapsApiKey: string
+  onChangeGoogleMapsApiKey: (value: string) => void
+
   // Backup
   importPreview: any | null
   onExportData: () => void
@@ -56,6 +60,8 @@ export function SettingsPage({
   onChangeEvolutionInstance,
   debugEnabled,
   onChangeDebugEnabled,
+  googleMapsApiKey,
+  onChangeGoogleMapsApiKey,
   importPreview,
   onExportData,
   onImportFile,
@@ -230,6 +236,32 @@ export function SettingsPage({
             </select>
           </div>
         </div>
+      </div>
+
+      <div className="border-t border-dashed border-slate-200 pt-3 mt-1 space-y-2">
+        <div>
+          <h3 className="text-xs font-semibold text-slate-800">Extração do Google Maps</h3>
+          <p className="text-[10px] text-slate-500">
+            Chave de API do Google Cloud com as APIs <strong>Places</strong> e <strong>Maps Embed</strong> habilitadas.
+            Usada no módulo de Extração para buscar empresas por localidade.
+          </p>
+        </div>
+        <div className="flex flex-col gap-1">
+          <label className="text-[10px] font-medium text-slate-600">Google Maps API Key</label>
+          <input
+            type="password"
+            value={googleMapsApiKey}
+            onChange={(e) => onChangeGoogleMapsApiKey(e.target.value.trim())}
+            placeholder="AIzaSy..."
+            className="h-9 w-full px-2 rounded-md border border-slate-200 bg-white text-[11px] text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-emerald-400/80"
+          />
+        </div>
+        <p className="text-[9px] text-slate-400">
+          <a href="https://console.cloud.google.com/apis/library" target="_blank" rel="noreferrer" className="text-emerald-600 underline">
+            Abrir Google Cloud Console
+          </a>
+          {' '}→ Ative: Places API + Maps Embed API
+        </p>
       </div>
 
       <div>
