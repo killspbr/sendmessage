@@ -1,35 +1,37 @@
-# Plano de Refatoração: IA e Dados da Empresa
+# Plano de Modularização: App.tsx
 
 ## 1. Objetivo
-Melhorar a geração de conteúdo usando IA (Gemini) permitindo que o usuário informe dados específicos da sua própria empresa (ex: nome, segmento, diferenciais, tom de voz) para que o conteúdo gerado seja mais personalizado e alinhado com o perfil do negócio.
+O arquivo principal `frontend/src/App.tsx` possui atualmente mais de 3700 linhas. Isso compromete seriamente a manutenibilidade, a facilidade de navegação e a colaboração no projeto. O objetivo deste plano é identificar componentes acoplados (como o Modal global, botões flutuantes, regras de negócio isoladas localmente) e lógicas de estado e refatorá-las em módulos e subcomponentes dedicados, utilizando boas práticas de arquitetura frontend.
 
-## 2. Escopo
-- **Backend (`backend/src/index.js`)**: 
-  - Adicionar um novo campo `company_info` (texto) na tabela `user_profiles`.
-  - Atualizar os endpoints `GET /api/profile`, `POST /api/profile` e `PUT /api/profile` para suportar o recebimento e retorno do `company_info`.
-- **Frontend (`frontend/src/App.tsx`, `frontend/src/pages/UserSettingsPage.tsx`, etc.)**:
-  - Atualizar o tipo `UserSettings` para incluir `company_info`.
-  - Na página de "Meu perfil" (`UserSettingsPage`), adicionar um campo de texto (`textarea`) para que o usuário informe os dados da sua empresa (ex: "Somos uma padaria focada em pães artesanais...").
-  - Na função de geração de prompt do Gemini (`callGeminiForCampaign` no `App.tsx`), incluir as instruções do `company_info` (caso exista) como contexto adicional no `prompt` fornecido à IA.
-- **Prompt da IA**:
-  - Modificar o template de sugestão e reescrita para considerar o contexto fornecido pelo usuário, como por exemplo:
-    `Contexto sobre a empresa remetente: [company_info]`
+## 2. Escopo da Fase 1: Identificação e Extração
+- **Criação de Contextos/Providers (`frontend/src/contexts/`)**:
+  - `SettingsContext.tsx` ou similar para manter os dados do `userSettings` e `globalSettings`.
+  - Extrair o hook massivo de estado principal (`App.tsx` possui estados para modais, chaves de API, instâncias de evolution).
+- **Extração de Componentes (`frontend/src/components/`)**:
+  - Componentes de Sidebar / Navegação (já há algo em App.tsx que dita como o menu é desenhado).
+  - Componentes Modais que são criados localmente (ex: `AddContactModal`, `NewCampaignModal`, `SettingsModal` - caso ainda estejam inline no App).
+- **Extração de Hooks Personalizados (`frontend/src/hooks/`)**:
+  - Refatorar lógicas de uso da Gemini AI para um `useGeminiAI.ts`.
+  - Mover lógica central de envio e orquestração de campanha para `useCampaignRunner.ts` ou algo equivalente, se ainda residir em App.tsx.
+- **Limpeza do `App.tsx`**:
+  - `App.tsx` ficará responsável **estritamente pelo roteamento global (Switch/Router layout)**, provedores de contexto, e montagem visual primária (Layout Skeleton).
 
 ## 3. Fases de Implementação (Orquestração Fase 2)
-### Grupo 1 (Database & Backend API)
-- **Agente Responsável**: `database-architect` / `backend-specialist`
-- Adicionar o campo na base (usando migration ou script de alteração na tabela `user_profiles`).
-- Alterar as queries SQL (`INSERT INTO user_profiles` e `UPDATE user_profiles`) para inserir ou atualizar o campo `company_info`.
+### Grupo 1: Levantamento Estrutural e Contextos
+- **Agente Responsável**: `project-planner` / `frontend-specialist`
+- Analisar quais hooks podem ser levados de `App.tsx` em segurança para `frontend/src/hooks/` sem quebrar ciclos de renderização.
+- Criar a camada global do(s) contexto(s).
 
-### Grupo 2 (Frontend UI & Integração)
+### Grupo 2: Modularização de UI e Serviços
 - **Agente Responsável**: `frontend-specialist`
-- Inserir campo `<textarea>` na `UserSettingsPage.tsx` e gerenciar estado no App.tsx.
-- Modificar o "prompt" enviado para a IA (`callGeminiForCampaign`) para incluir o texto de `company_info`.
+- Fatiar a interface JSX do `App.tsx` extraindo Componentes como `AppSidebar`, `TopBar` e separando modais, convertendo a montagem do "return" final num arquivo JSX limpo e direto.
+- Separar o serviço da LMM (Gemini AI text generator) que está "preso" hoje dentro de `callGeminiForCampaign` no `App.tsx`.
 
-### Grupo 3 (Testes)
-- **Agente Responsável**: `test-engineer`
-- Validar se o perfil do usuário salva a nova coluna sem quebrar os endpoints atuais.
-- Avaliar os prompts sendo enviados para a API do Gemini via depuração de log ou testes locais.
+### Grupo 3: Validação de Qualidade Otimizada
+- **Agente Responsável**: `test-engineer` / `performance-optimizer`
+- Avaliar re-renderizações desnecessárias. A quebra em contextos deve observar se um update numa variável de perfil não re-renderiza à toa uma página de contatos.
+- Rodar o lint (`npm run lint`), checar os imports cruzados.
+- Testar a aplicação (`npm run build`).
 
 ---
-**Observação**: Esse trabalho exigirá uma modificação de DDL na tabela. Se a tabela foi criada manual, deverá ser executado um `ALTER TABLE user_profiles ADD COLUMN company_info TEXT;`.
+**Observação**: Esse trabalho exigirá uma forte reorganização de imports ao redor de praticamente todas as `pages` do sistema (pois muitas recebiam os props em cascata que vinham originados no `App.tsx` injetado como drill down).

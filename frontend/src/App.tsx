@@ -23,6 +23,7 @@ import { useLists } from './hooks/useLists'
 import { useCampaigns } from './hooks/useCampaigns'
 import { useSendHistory } from './hooks/useSendHistory'
 import { useContacts } from './hooks/useContacts'
+import { useGeminiAI } from './hooks/useGeminiAI'
 import type {
   Contact,
   ContactList,
@@ -428,6 +429,13 @@ function App() {
 
   const effectiveAiKey = useGlobalAi ? globalAiKey : userAiKey || ''
 
+  const { callGeminiForCampaign } = useGeminiAI({
+    effectiveAiKey,
+    userCompanyInfo: userSettings?.company_info,
+    geminiTemperature,
+    geminiMaxTokens,
+  })
+
   const userHasConfiguredAi =
     (useGlobalAi && !!globalAiKey) || (!useGlobalAi && !!userAiKey)
 
@@ -813,182 +821,6 @@ function App() {
     return text.trim()
   }
 
-  const callGeminiForCampaign = async (params: {
-    mode: 'suggest' | 'rewrite'
-    currentContent: string
-    campaignName: string
-    listName: string
-    channels: CampaignChannel[]
-  }): Promise<string | null> => {
-    if (!effectiveAiKey) {
-      alert(
-        'Nenhuma API de IA está configurada. PeÃ§a ao administrador para definir uma chave global do Gemini ou informe sua prÃ³pria chave em "Meu perfil".',
-      )
-      return null
-    }
-
-    const { mode, currentContent, campaignName, listName, channels } = params
-
-    const channelsLabel =
-      channels.includes('whatsapp') && channels.includes('email')
-        ? 'WhatsApp e Email'
-        : channels.includes('whatsapp')
-          ? 'WhatsApp'
-          : channels.includes('email')
-            ? 'Email'
-            : 'mensagens'
-
-    const wantsEmojis = campaignName.toLowerCase().includes('emojis=sim')
-    const emojiRule = wantsEmojis
-      ? '- Use emojis relevantes ao contexto (sem exagero, 1 a 3 por parÃ¡grafo no mÃ¡ximo).'
-      : '- NÃ£o use emojis.'
-
-    const companyContext = userSettings?.company_info
-      ? `\nContexto sobre a empresa remetente:\n${userSettings.company_info}\n(Use essas informações para alinhar o conteúdo ao perfil do negócio.)\n`
-      : ''
-
-    let prompt: string
-
-    if (mode === 'suggest') {
-      prompt = `
-Você é um redator especializado em campanhas de marketing.
-
-Crie um texto COMPLETO para uma campanha de ${channelsLabel},
-comunicando-se de forma clara, amigável e objetiva.
-
-Detalhes:
-- Nome da campanha: "${campaignName || 'Campanha sem nome'}"
-- Lista: "${listName}"
-- Idioma: Português (Brasil)
-- Público: pequenas e médias empresas.${companyContext}
-
-Regras:
-- Use parágrafos curtos.
-- Pode usar listas com marcadores quando fizer sentido.
-${emojiRule}
-- Não use linguagem muito formal.
-- Respeite as instruções entre colchetes no nome da campanha (tom, objetivo, tipo, segmento, comprimento e emojis).
-
-Retorne APENAS o texto em HTML simples (tags <p>, <ul>, <li>, <strong>, <em>), sem explicações extras.
-      `
-    } else {
-      prompt = `
-Você é um redator especializado em campanhas de marketing.
-
-Reescreva o texto abaixo para ficar mais CLARO, PERSUASIVO e ORGANIZADO,
-mantendo o mesmo sentido geral.
-
-Nome da campanha (inclui instruções entre colchetes para o tom, objetivo, tipo, segmento, comprimento e uso de emojis):
-"${campaignName || 'Campanha sem nome'}"
-
-Texto original (HTML):
-${currentContent}
-${companyContext}
-Regras:
-- Respeite o idioma do texto original (português).
-- Use parágrafos curtos.
-- Pode usar listas com marcadores quando fizer sentido.
-${emojiRule}
-- Não invente ofertas nem preços que não existiam.
-- Respeite as instruções entre colchetes no nome da campanha (tom, objetivo, tipo, segmento, comprimento e emojis).
-- Retorne APENAS o texto reescrito em HTML simples (tags <p>, <ul>, <li>, <strong>, <em>), sem explicações extras.
-      `
-    }
-
-    try {
-      const forcedGeminiApiVersion = 'v1'
-      const forcedGeminiModel = 'gemini-2.5-flash'
-      const apiUrl = `https://generativelanguage.googleapis.com/${forcedGeminiApiVersion}/models/${forcedGeminiModel}:generateContent?key=${effectiveAiKey}`
-
-      const tempAdjust = mode === 'suggest' ? 0.1 : -0.1
-      const finalTemp = Math.max(0, Math.min(1, geminiTemperature + tempAdjust))
-
-      const response = await fetch(apiUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: {
-            temperature: finalTemp,
-            maxOutputTokens: geminiMaxTokens,
-          },
-        }),
-      })
-
-      if (!response.ok) {
-        const rawErrorText = await response.text()
-        console.error('Erro HTTP ao chamar Gemini:', response.status, rawErrorText)
-
-        // Tenta detectar erro de quota/429 para mostrar mensagem mais clara
-        try {
-          const parsed = JSON.parse(rawErrorText)
-          const status = parsed?.error?.status as string | undefined
-          const message = parsed?.error?.message as string | undefined
-
-          if (response.status === 429 || status === 'RESOURCE_EXHAUSTED') {
-            const quotaMsg =
-              'A cota gratuita do Gemini para esta chave/modelo foi atingida hoje (erro 429 / quota). ' +
-              'Lembre-se de que o limite diário (~20 requisições) é compartilhado entre todos os clientes. ' +
-              'Considere configurar uma API própria em “Meu perfil” ou ajustar o projeto com billing ativo em Configurações.'
-            alert(quotaMsg)
-            setLastMoveMessage(quotaMsg)
-            return null
-          }
-
-          if (message) {
-            const msg = `Erro ao chamar a IA (Gemini): ${message}`
-            alert(msg)
-            setLastMoveMessage(msg)
-            return null
-          }
-        } catch {
-          // Ignora erros de parse e cai no alerta genÃ©rico
-        }
-
-        const genericMsg = 'Erro ao chamar a IA (Gemini). Verifique a chave, o modelo e tente novamente.'
-        alert(genericMsg)
-        setLastMoveMessage(genericMsg)
-        return null
-      }
-
-      const data = await response.json()
-      console.log('Resposta bruta do Gemini:', data)
-        ; (window as any).__lastGeminiResponse = data
-
-      const candidates = Array.isArray(data?.candidates) ? data.candidates : []
-
-      let fullText = ''
-      if (candidates.length > 0) {
-        const firstCandidate = candidates[0]
-
-        // Em algumas versÃµes da API do Gemini, content vem como objeto;
-        // em outras, como array de conteÃºdos. Aqui tratamos os dois casos.
-        const rawContent = (firstCandidate as any)?.content
-        const content = Array.isArray(rawContent) ? rawContent[0] : rawContent
-
-        if (content?.parts) {
-          const parts = (content.parts as Array<{ text?: string }> | undefined) ?? []
-          fullText = parts
-            .map((p) => (typeof p.text === 'string' ? p.text : ''))
-            .join('\n')
-            .trim()
-        } else if (typeof content?.text === 'string') {
-          fullText = content.text.trim()
-        }
-      }
-
-      if (!fullText) {
-        alert('A IA nÃ£o retornou conteÃºdo vÃ¡lido. Veja o console (Resposta bruta do Gemini) para detalhes.')
-        return null
-      }
-
-      return fullText
-    } catch (e) {
-      console.error('Erro inesperado ao chamar Gemini:', e)
-      alert('Erro inesperado ao usar a IA. Tente novamente mais tarde.')
-      return null
-    }
-  }
 
   const handleGenerateCampaignContentWithAI = async (options: {
     mode: 'suggest' | 'rewrite'
