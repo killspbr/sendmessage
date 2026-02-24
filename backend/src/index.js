@@ -69,23 +69,29 @@ app.get('/api/profile/full', authenticateToken, async (req, res) => {
 app.post('/api/profile', authenticateToken, async (req, res) => {
   try {
     const {
-      webhook_whatsapp_url,
       webhook_email_url,
       use_global_ai,
       ai_api_key,
-      use_global_webhooks
+      use_global_webhooks,
+      evolution_url,
+      evolution_apikey,
+      evolution_instance,
+      company_info
     } = req.body;
 
     await query(
-      `INSERT INTO user_profiles (id, webhook_whatsapp_url, webhook_email_url, use_global_ai, ai_api_key, use_global_webhooks) 
-       VALUES ($1, $2, $3, $4, $5, $6) 
+      `INSERT INTO user_profiles (id, webhook_email_url, use_global_ai, ai_api_key, use_global_webhooks, evolution_url, evolution_apikey, evolution_instance, company_info) 
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) 
        ON CONFLICT (id) DO UPDATE SET 
-         webhook_whatsapp_url = EXCLUDED.webhook_whatsapp_url, 
          webhook_email_url = EXCLUDED.webhook_email_url,
          use_global_ai = EXCLUDED.use_global_ai,
          ai_api_key = EXCLUDED.ai_api_key,
-         use_global_webhooks = EXCLUDED.use_global_webhooks`,
-      [req.user.id, webhook_whatsapp_url, webhook_email_url, use_global_ai, ai_api_key, use_global_webhooks]
+         use_global_webhooks = EXCLUDED.use_global_webhooks,
+         evolution_url = EXCLUDED.evolution_url,
+         evolution_apikey = EXCLUDED.evolution_apikey,
+         evolution_instance = EXCLUDED.evolution_instance,
+         company_info = EXCLUDED.company_info`,
+      [req.user.id, webhook_email_url, use_global_ai, ai_api_key, use_global_webhooks, evolution_url, evolution_apikey, evolution_instance, company_info]
     );
     res.json({ ok: true });
   } catch (error) {
@@ -100,7 +106,11 @@ app.put('/api/profile', authenticateToken, async (req, res) => {
       webhook_email_url,
       use_global_ai,
       ai_api_key,
-      use_global_webhooks
+      use_global_webhooks,
+      evolution_url,
+      evolution_apikey,
+      evolution_instance,
+      company_info
     } = req.body;
 
     const fields = [];
@@ -132,6 +142,27 @@ app.put('/api/profile', authenticateToken, async (req, res) => {
       fields.push('use_global_webhooks');
       values.push(use_global_webhooks);
       setClause += `use_global_webhooks = $${count++}, `;
+    }
+
+    if (evolution_url !== undefined) {
+      fields.push('evolution_url');
+      values.push(evolution_url);
+      setClause += `evolution_url = $${count++}, `;
+    }
+    if (evolution_apikey !== undefined) {
+      fields.push('evolution_apikey');
+      values.push(evolution_apikey);
+      setClause += `evolution_apikey = $${count++}, `;
+    }
+    if (evolution_instance !== undefined) {
+      fields.push('evolution_instance');
+      values.push(evolution_instance);
+      setClause += `evolution_instance = $${count++}, `;
+    }
+    if (company_info !== undefined) {
+      fields.push('company_info');
+      values.push(company_info);
+      setClause += `company_info = $${count++}, `;
     }
 
     if (fields.length === 0) return res.status(400).json({ error: 'Nenhum campo para atualizar' });
@@ -453,7 +484,6 @@ app.post('/api/settings', authenticateToken, async (req, res) => {
   try {
     const {
       global_ai_api_key,
-      global_webhook_whatsapp_url,
       global_webhook_email_url,
       evolution_api_url,
       evolution_api_key,
@@ -467,20 +497,19 @@ app.post('/api/settings', authenticateToken, async (req, res) => {
       result = await query(
         `UPDATE app_settings SET 
           global_ai_api_key = $1, 
-          global_webhook_whatsapp_url = $2, 
-          global_webhook_email_url = $3,
-          evolution_api_url = $4,
-          evolution_api_key = $5,
-          evolution_shared_instance = $6,
+          global_webhook_email_url = $2,
+          evolution_api_url = $3,
+          evolution_api_key = $4,
+          evolution_shared_instance = $5,
           updated_at = CURRENT_TIMESTAMP 
          RETURNING *`,
-        [global_ai_api_key, global_webhook_whatsapp_url, global_webhook_email_url, evolution_api_url, evolution_api_key, evolution_shared_instance]
+        [global_ai_api_key, global_webhook_email_url, evolution_api_url, evolution_api_key, evolution_shared_instance]
       );
     } else {
       result = await query(
-        `INSERT INTO app_settings (global_ai_api_key, global_webhook_whatsapp_url, global_webhook_email_url, evolution_api_url, evolution_api_key, evolution_shared_instance) 
-         VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
-        [global_ai_api_key, global_webhook_whatsapp_url, global_webhook_email_url, evolution_api_url, evolution_api_key, evolution_shared_instance]
+        `INSERT INTO app_settings (global_ai_api_key, global_webhook_email_url, evolution_api_url, evolution_api_key, evolution_shared_instance) 
+         VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+        [global_ai_api_key, global_webhook_email_url, evolution_api_url, evolution_api_key, evolution_shared_instance]
       );
     }
 
@@ -598,16 +627,15 @@ app.post('/api/campaigns/:id/send', authenticateToken, async (req, res) => {
     const evolutionApiKey = (userProfile?.evolution_apikey || globalSettings.evolution_api_key || '').trim();
     const evolutionInstance = (userProfile?.evolution_instance || globalSettings.evolution_shared_instance || '').trim();
 
-    // Fallback para n8n se Evolution não estiver configurada (Transição)
-    const webhookUrlWhatsApp = userProfile?.webhook_whatsapp_url || globalSettings.global_webhook_whatsapp_url || process.env.WEBHOOK_WHATSAPP || '';
+    // Fallback para n8n apenas para Email
     const webhookUrlEmail = userProfile?.webhook_email_url || globalSettings.global_webhook_email_url || process.env.WEBHOOK_EMAIL || '';
 
     // 5) Determinar canais efetivos
     const channels = Array.isArray(campaign.channels) ? campaign.channels : [];
     const effectiveChannels = channels.filter((ch) => {
       if (ch === 'whatsapp') {
-        // Se temos Evolution configurada ou Webhook n8n
-        return (!!evolutionUrl && !!evolutionInstance) || !!webhookUrlWhatsApp.trim();
+        // Agora disparos de WhatsApp exigem Evolution API configurada
+        return (!!evolutionUrl && !!evolutionInstance);
       }
       return !!webhookUrlEmail.trim();
     });
@@ -615,7 +643,7 @@ app.post('/api/campaigns/:id/send', authenticateToken, async (req, res) => {
     if (effectiveChannels.length === 0) {
       return res.status(400).json({
         error:
-          'Nenhum serviço de envio configurado (Evolution ou Webhooks). Verifique as configurações globais ou do usuário.',
+          'Nenhum serviço de envio configurado. Verifique as configurações da Evolution API para WhatsApp ou Webhook para Email.',
       });
     }
 
@@ -665,7 +693,7 @@ app.post('/api/campaigns/:id/send', authenticateToken, async (req, res) => {
           const phone = normalizePhone(contact.phone);
           if (!phone) continue;
 
-          // DISPARO DIRETO VIA EVOLUTION API OU FALLBACK N8N
+          // DISPARO DIRETO VIA EVOLUTION API
           if (evolutionUrl && evolutionInstance) {
             try {
               const fullUrl = `${evolutionUrl}/message/sendText/${evolutionInstance}`;
@@ -689,23 +717,6 @@ app.post('/api/campaigns/:id/send', authenticateToken, async (req, res) => {
               }
             } catch (e) {
               console.error(`[Evolution] Falha na requisição para ${phone}:`, e);
-              errors++;
-            }
-          } else if (webhookUrlWhatsApp.trim()) {
-            // FALLBACK N8N (Temporário)
-            try {
-              const backendBase = process.env.BACKEND_PUBLIC_URL || process.env.BACKEND_PUBLIC_URI || `http://localhost:${port}`;
-              await fetch(`${backendBase}/api/n8n/trigger`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  webhookUrl: webhookUrlWhatsApp.trim(),
-                  message: htmlToWhatsapp(messageHtml),
-                  contacts: [contact],
-                  meta: { campaignId: campaign.id, contactIndex, totalContacts: contacts.length }
-                }),
-              });
-            } catch (e) {
               errors++;
             }
           }
@@ -980,7 +991,7 @@ app.put('/api/admin/users/:id/settings', authenticateToken, async (req, res) => 
   try {
     const { id } = req.params;
     const fields = req.body;
-    const allowedFields = ['use_global_ai', 'use_global_webhooks', 'webhook_whatsapp_url', 'webhook_email_url', 'display_name'];
+    const allowedFields = ['use_global_ai', 'use_global_webhooks', 'webhook_email_url', 'display_name', 'evolution_url', 'evolution_apikey', 'evolution_instance', 'company_info'];
 
     let queryText = 'UPDATE user_profiles SET ';
     const queryValues = [];

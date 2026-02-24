@@ -9,17 +9,17 @@ type DashboardPageProps = {
   campaigns: Campaign[]
   sendHistory: SendHistoryItem[]
   campaignSendLog: Record<string, CampaignSendLog>
-  
+
   // Estado de envio
   sendingCampaignId: string | null
   sendingCurrentIndex: number
   sendingTotal: number
   sendingErrors: number
-  
-  // Webhooks
-  webhookUrlWhatsApp: string
+
+  // Webhooks/APIs
+  hasEvolutionConfigured: boolean
   webhookUrlEmail: string
-  
+
   // Handlers
   onNavigate: (page: 'dashboard' | 'contacts' | 'campaigns' | 'settings') => void
   onCreateCampaign: () => void
@@ -40,7 +40,7 @@ export function DashboardPage({
   sendingCurrentIndex,
   sendingTotal,
   sendingErrors,
-  webhookUrlWhatsApp,
+  hasEvolutionConfigured,
   webhookUrlEmail,
   onNavigate,
   onCreateCampaign,
@@ -66,10 +66,10 @@ export function DashboardPage({
     recentSuccessRate == null
       ? 'Sem dados'
       : recentSuccessRate >= 90
-      ? 'Bom'
-      : recentSuccessRate >= 70
-      ? 'Atenção'
-      : 'Crítico'
+        ? 'Bom'
+        : recentSuccessRate >= 70
+          ? 'Atenção'
+          : 'Crítico'
 
   if (!canViewDashboard) {
     return (
@@ -130,15 +130,14 @@ export function DashboardPage({
           </span>
         </div>
         <div
-          className={`bg-white rounded-2xl border shadow-sm p-3 flex flex-col gap-1 ${
-            recentSuccessRate == null
+          className={`bg-white rounded-2xl border shadow-sm p-3 flex flex-col gap-1 ${recentSuccessRate == null
               ? 'border-slate-100'
               : recentSuccessRate >= 90
-              ? 'border-emerald-200'
-              : recentSuccessRate >= 70
-              ? 'border-amber-200'
-              : 'border-rose-200'
-          }`}
+                ? 'border-emerald-200'
+                : recentSuccessRate >= 70
+                  ? 'border-amber-200'
+                  : 'border-rose-200'
+            }`}
         >
           <div className="flex items-center justify-between">
             <span
@@ -148,15 +147,14 @@ export function DashboardPage({
               Qualidade dos envios recentes
             </span>
             <span
-              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium ${
-                recentSuccessRate == null
+              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium ${recentSuccessRate == null
                   ? 'bg-slate-500/10 text-slate-600'
                   : recentSuccessRate >= 90
-                  ? 'bg-emerald-500/10 text-emerald-700'
-                  : recentSuccessRate >= 70
-                  ? 'bg-amber-500/10 text-amber-700'
-                  : 'bg-rose-500/10 text-rose-700'
-              }`}
+                    ? 'bg-emerald-500/10 text-emerald-700'
+                    : recentSuccessRate >= 70
+                      ? 'bg-amber-500/10 text-amber-700'
+                      : 'bg-rose-500/10 text-rose-700'
+                }`}
             >
               {recentSuccessRate == null
                 ? 'Sem dados'
@@ -199,11 +197,10 @@ export function DashboardPage({
                 <div className="flex flex-col min-w-0">
                   <div className="flex items-center gap-1.5 min-w-0">
                     <span
-                      className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-medium border ${
-                        item.ok
+                      className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-medium border ${item.ok
                           ? 'bg-emerald-50 text-emerald-700 border-emerald-100'
                           : 'bg-rose-50 text-rose-700 border-rose-100'
-                      }`}
+                        }`}
                     >
                       {item.ok ? 'OK' : 'Erro'}
                     </span>
@@ -214,7 +211,7 @@ export function DashboardPage({
                   <span className="text-[10px] text-slate-500 truncate max-w-[260px]">
                     {item.ok
                       ? `HTTP ${item.status || 200}`
-                      : `HTTP ${item.status || (item.errorCount > 0 ? 500 : 0)}`} 
+                      : `HTTP ${item.status || (item.errorCount > 0 ? 500 : 0)}`}
                     · {item.errorCount}/{item.total} contatos com erro · {item.runAt}
                   </span>
                 </div>
@@ -261,9 +258,8 @@ export function DashboardPage({
                       {(() => {
                         const log = campaignSendLog[camp.id]
                         if (log) {
-                          return `Último envio: ${
-                            log.lastOk ? 'OK' : `Erro ${log.lastErrorCount > 0 ? 500 : 0}`
-                          } · ${log.lastRunAt}`
+                          return `Último envio: ${log.lastOk ? 'OK' : `Erro ${log.lastErrorCount > 0 ? 500 : 0}`
+                            } · ${log.lastRunAt}`
                         }
 
                         const historyForCamp = sendHistory.filter(
@@ -301,23 +297,22 @@ export function DashboardPage({
                   </div>
                   <div className="flex items-center gap-1.5">
                     <span
-                      className={`px-1.5 py-0.5 rounded-full text-[9px] border ${
-                        camp.status === 'enviada'
+                      className={`px-1.5 py-0.5 rounded-full text-[9px] border ${camp.status === 'enviada'
                           ? 'bg-emerald-50 text-emerald-700 border-emerald-100'
                           : camp.status === 'enviada_com_erros'
-                          ? 'bg-amber-50 text-amber-700 border-amber-100'
-                          : camp.status === 'agendada'
-                          ? 'bg-sky-50 text-sky-700 border-sky-100'
-                          : 'bg-slate-50 text-slate-600 border-slate-200'
-                      }`}
+                            ? 'bg-amber-50 text-amber-700 border-amber-100'
+                            : camp.status === 'agendada'
+                              ? 'bg-sky-50 text-sky-700 border-sky-100'
+                              : 'bg-slate-50 text-slate-600 border-slate-200'
+                        }`}
                     >
                       {camp.status === 'enviada'
                         ? 'Enviada'
                         : camp.status === 'enviada_com_erros'
-                        ? 'Enviada com erros'
-                        : camp.status === 'agendada'
-                        ? 'Agendada'
-                        : 'Rascunho'}
+                          ? 'Enviada com erros'
+                          : camp.status === 'agendada'
+                            ? 'Agendada'
+                            : 'Rascunho'}
                     </span>
                     <button
                       type="button"
@@ -404,9 +399,9 @@ export function DashboardPage({
                       width:
                         sendingTotal > 0
                           ? `${Math.min(
-                              100,
-                              Math.max(0, (sendingCurrentIndex / sendingTotal) * 100),
-                            )}%`
+                            100,
+                            Math.max(0, (sendingCurrentIndex / sendingTotal) * 100),
+                          )}%`
                           : '0%',
                     }}
                   />
@@ -426,30 +421,28 @@ export function DashboardPage({
             <div className="mt-2 border-t border-slate-800 pt-2 text-[10px] space-y-1.5">
               <div className="flex items-center justify-between gap-2">
                 <div className="flex items-center gap-1.5">
-                  <span className="text-slate-300">Webhook WhatsApp</span>
+                  <span className="text-slate-300">Evolution API (WhatsApp)</span>
                   <span
-                    className={`px-1.5 py-0.5 rounded-full border text-[9px] font-medium ${
-                      webhookUrlWhatsApp
+                    className={`px-1.5 py-0.5 rounded-full border text-[9px] font-medium ${hasEvolutionConfigured
                         ? 'bg-emerald-500/10 text-emerald-300 border-emerald-400/40'
                         : 'bg-amber-500/10 text-amber-200 border-amber-400/40'
-                    }`}
+                      }`}
                   >
-                    {webhookUrlWhatsApp ? 'Ativo' : 'Não configurado'}
+                    {hasEvolutionConfigured ? 'Ativo' : 'Não configurado'}
                   </span>
                 </div>
                 <span className="max-w-[150px] truncate text-slate-200 text-[9px] text-right">
-                  {webhookUrlWhatsApp || '—'}
+                  {hasEvolutionConfigured ? 'Configurado' : '—'}
                 </span>
               </div>
               <div className="flex items-center justify-between gap-2">
                 <div className="flex items-center gap-1.5">
                   <span className="text-slate-300">Webhook Email</span>
                   <span
-                    className={`px-1.5 py-0.5 rounded-full border text-[9px] font-medium ${
-                      webhookUrlEmail
+                    className={`px-1.5 py-0.5 rounded-full border text-[9px] font-medium ${webhookUrlEmail
                         ? 'bg-sky-500/10 text-sky-200 border-sky-400/40'
                         : 'bg-amber-500/10 text-amber-200 border-amber-400/40'
-                    }`}
+                      }`}
                   >
                     {webhookUrlEmail ? 'Ativo' : 'Não configurado'}
                   </span>
@@ -500,10 +493,10 @@ export function DashboardPage({
                       {camp.status === 'enviada'
                         ? 'Campanha enviada'
                         : camp.status === 'enviada_com_erros'
-                        ? 'Campanha enviada com erros'
-                        : camp.status === 'agendada'
-                        ? 'Campanha agendada'
-                        : 'Rascunho de campanha'}
+                          ? 'Campanha enviada com erros'
+                          : camp.status === 'agendada'
+                            ? 'Campanha agendada'
+                            : 'Rascunho de campanha'}
                     </span>
                     <span className="text-slate-400">·</span>
                     <span>

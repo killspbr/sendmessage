@@ -32,7 +32,7 @@ type CampaignsPageProps = {
   sendConfirmCampaignId: string | null
 
   // Configurações
-  webhookUrlWhatsApp: string
+  hasEvolutionConfigured: boolean
   webhookUrlEmail: string
   sendIntervalMinSeconds: number
   sendIntervalMaxSeconds: number
@@ -106,7 +106,7 @@ export function CampaignsPage({
   sendingErrors,
   sendingNextDelaySeconds,
   sendConfirmCampaignId,
-  webhookUrlWhatsApp,
+  hasEvolutionConfigured,
   webhookUrlEmail,
   sendIntervalMinSeconds,
   sendIntervalMaxSeconds,
@@ -935,7 +935,7 @@ export function CampaignsPage({
                 const listIdForCamp = listForCamp?.id ?? 'default'
                 const contactsForCampList = contactsByList[listIdForCamp] ?? []
                 const effectiveChannelsForCamp: CampaignChannel[] = campToSend.channels.filter((ch) =>
-                  ch === 'whatsapp' ? !!webhookUrlWhatsApp.trim() : !!webhookUrlEmail.trim(),
+                  ch === 'whatsapp' ? hasEvolutionConfigured : !!webhookUrlEmail.trim(),
                 )
 
                 const min = campToSend.intervalMinSeconds ?? 30

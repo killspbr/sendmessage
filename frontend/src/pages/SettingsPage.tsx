@@ -1,8 +1,6 @@
 type SettingsPageProps = {
   // Webhooks
-  webhookUrlWhatsApp: string
   webhookUrlEmail: string
-  onChangeWebhookWhatsApp: (value: string) => void
   onChangeWebhookEmail: (value: string) => void
 
   // Gemini
@@ -43,9 +41,7 @@ type SettingsPageProps = {
 }
 
 export function SettingsPage({
-  webhookUrlWhatsApp,
   webhookUrlEmail,
-  onChangeWebhookWhatsApp,
   onChangeWebhookEmail,
   geminiApiKey,
   onChangeGeminiApiKey,
@@ -87,23 +83,9 @@ export function SettingsPage({
   return (
     <section className="bg-white rounded-2xl border border-slate-200 shadow-md p-4 md:p-5 flex flex-col gap-4 max-w-xl">
       <div>
-        <h2 className="text-sm font-semibold text-slate-800">Configurações de integração</h2>
+        <h2 className="text-sm font-semibold text-slate-800">Configurações de integração (Legado n8n)</h2>
         <p className="text-[11px] text-slate-500">
-          Defina abaixo os endereços de webhook do n8n para cada canal de envio.
-        </p>
-      </div>
-
-      <div className="flex flex-col gap-2">
-        <label className="text-[10px] font-medium text-slate-600">Webhook WhatsApp</label>
-        <input
-          type="text"
-          value={webhookUrlWhatsApp}
-          onChange={(e) => onChangeWebhookWhatsApp(e.target.value)}
-          placeholder="https://seu-n8n.com/webhook/disparo-whatsapp"
-          className="h-9 w-full px-2 rounded-md border border-slate-200 bg-white text-[11px] text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-violet-400/80"
-        />
-        <p className="text-[10px] text-slate-400">
-          Usado para campanhas com canal WhatsApp marcado.
+          Defina abaixo o endereço de webhook do n8n para o canal de e-mail. O WhatsApp agora usa a Evolution API.
         </p>
       </div>
 
@@ -181,8 +163,8 @@ export function SettingsPage({
             type="button"
             onClick={() => onChangeDebugEnabled(!debugEnabled)}
             className={`relative inline-flex h-5 w-9 items-center rounded-full border transition-colors ${debugEnabled
-                ? 'bg-emerald-500 border-emerald-600'
-                : 'bg-slate-200 border-slate-300'
+              ? 'bg-emerald-500 border-emerald-600'
+              : 'bg-slate-200 border-slate-300'
               }`}
             aria-pressed={debugEnabled}
           >
@@ -264,7 +246,7 @@ export function SettingsPage({
           </div>
 
           <div className="flex flex-col gap-1">
-            <label className="text-[10px] font-medium text-slate-600">Tamanho máximo</label>
+            <label className="text-[10px) font-medium text-slate-600">Tamanho máximo</label>
             <select
               value={geminiMaxTokens}
               onChange={(e) => onChangeGeminiMaxTokens(parseInt(e.target.value, 10))}

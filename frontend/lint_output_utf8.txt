@@ -1,0 +1,217 @@
+﻿
+> frontend@1.0.0 lint
+> eslint .
+
+
+G:\Dev\sendmessage\frontend\src\App.tsx
+     6:10  error    'ContactForm' is defined but never used                                                                               @typescript-eslint/no-unused-vars
+     7:10  error    'ContactsHeader' is defined but never used                                                                            @typescript-eslint/no-unused-vars
+    34:3   error    'CampaignSendLog' is defined but never used                                                                           @typescript-eslint/no-unused-vars
+    38:7   error    '_defaultContacts' is assigned a value but never used                                                                 @typescript-eslint/no-unused-vars
+    95:7   error    '_initialLists' is assigned a value but never used                                                                    @typescript-eslint/no-unused-vars
+   193:22  error    Unexpected any. Specify a different type                                                                              @typescript-eslint/no-explicit-any
+   362:14  error    'permissionsLoading' is assigned a value but never used                                                               @typescript-eslint/no-unused-vars
+   363:12  error    'permissionsError' is assigned a value but never used                                                                 @typescript-eslint/no-unused-vars
+   366:5   error    'canAny' is assigned a value but never used                                                                           @typescript-eslint/no-unused-vars
+   367:5   error    'canAll' is assigned a value but never used                                                                           @typescript-eslint/no-unused-vars
+   404:13  error    Empty block statement                                                                                                 no-empty
+   415:13  error    Empty block statement                                                                                                 no-empty
+   475:13  error    Empty block statement                                                                                                 no-empty
+   485:13  error    Empty block statement                                                                                                 no-empty
+   498:13  error    Empty block statement                                                                                                 no-empty
+   683:10  error    '_deleteCampaignId' is assigned a value but never used                                                                @typescript-eslint/no-unused-vars
+   684:10  error    '_deleteListId' is assigned a value but never used                                                                    @typescript-eslint/no-unused-vars
+   684:25  error    '_setDeleteListId' is assigned a value but never used                                                                 @typescript-eslint/no-unused-vars
+   685:54  error    Unexpected any. Specify a different type                                                                              @typescript-eslint/no-explicit-any
+   690:10  error    '_backfillProcessed' is assigned a value but never used                                                               @typescript-eslint/no-unused-vars
+   691:10  error    '_backfillTotal' is assigned a value but never used                                                                   @typescript-eslint/no-unused-vars
+   712:10  error    '_confirmCancelSendOpen' is assigned a value but never used                                                           @typescript-eslint/no-unused-vars
+   712:34  error    '_setConfirmCancelSendOpen' is assigned a value but never used                                                        @typescript-eslint/no-unused-vars
+   727:46  error    'reloadContacts' is assigned a value but never used                                                                   @typescript-eslint/no-unused-vars
+   947:22  error    Unexpected any. Specify a different type                                                                              @typescript-eslint/no-explicit-any
+   957:47  error    Unexpected any. Specify a different type                                                                              @typescript-eslint/no-explicit-any
+   998:39  error    Unexpected any. Specify a different type                                                                              @typescript-eslint/no-explicit-any
+  1005:33  error    Unexpected any. Specify a different type                                                                              @typescript-eslint/no-explicit-any
+  1033:35  error    Unexpected any. Specify a different type                                                                              @typescript-eslint/no-explicit-any
+  1257:9   error    '_handleConfirmDeleteCampaign' is assigned a value but never used                                                     @typescript-eslint/no-unused-vars
+  1302:58  error    Unexpected any. Specify a different type                                                                              @typescript-eslint/no-explicit-any
+  1392:9   error    '_lastBackendStatus' is assigned a value but never used                                                               @typescript-eslint/no-unused-vars
+  1393:9   error    '_lastBackendOk' is assigned a value but never used                                                                   @typescript-eslint/no-unused-vars
+  1475:68  error    Unexpected any. Specify a different type                                                                              @typescript-eslint/no-explicit-any
+  1490:21  error    Empty block statement                                                                                                 no-empty
+  1493:41  error    Unexpected any. Specify a different type                                                                              @typescript-eslint/no-explicit-any
+  1505:27  error    Empty block statement                                                                                                 no-empty
+  1550:18  error    'err' is defined but never used                                                                                       @typescript-eslint/no-unused-vars
+  1569:11  error    '_finishedAt' is assigned a value but never used                                                                      @typescript-eslint/no-unused-vars
+  1742:68  error    Unexpected any. Specify a different type                                                                              @typescript-eslint/no-explicit-any
+  1758:19  error    Empty block statement                                                                                                 no-empty
+  1761:39  error    Unexpected any. Specify a different type                                                                              @typescript-eslint/no-explicit-any
+  1773:25  error    Empty block statement                                                                                                 no-empty
+  2068:6   warning  React Hook useEffect has a missing dependency: 'setContactsByList'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+  2273:62  error    Unexpected any. Specify a different type                                                                              @typescript-eslint/no-explicit-any
+  2298:18  error    'err' is defined but never used                                                                                       @typescript-eslint/no-unused-vars
+  2624:58  error    Unexpected any. Specify a different type                                                                              @typescript-eslint/no-explicit-any
+  2704:9   error    '_handlePreviewPayload' is assigned a value but never used                                                            @typescript-eslint/no-unused-vars
+  2843:38  error    Unexpected any. Specify a different type                                                                              @typescript-eslint/no-explicit-any
+  2861:83  error    Unexpected any. Specify a different type                                                                              @typescript-eslint/no-explicit-any
+  2893:43  error    Unexpected any. Specify a different type                                                                              @typescript-eslint/no-explicit-any
+  2930:54  error    Unexpected any. Specify a different type                                                                              @typescript-eslint/no-explicit-any
+  3069:34  error    '_' is assigned a value but never used                                                                                @typescript-eslint/no-unused-vars
+  3131:17  error    Unexpected any. Specify a different type                                                                              @typescript-eslint/no-explicit-any
+  3540:70  error    Unexpected any. Specify a different type                                                                              @typescript-eslint/no-explicit-any
+  3541:68  error    Unexpected any. Specify a different type                                                                              @typescript-eslint/no-explicit-any
+  3544:76  error    Unexpected any. Specify a different type                                                                              @typescript-eslint/no-explicit-any
+  3545:75  error    Unexpected any. Specify a different type                                                                              @typescript-eslint/no-explicit-any
+  3549:75  error    Unexpected any. Specify a different type                                                                              @typescript-eslint/no-explicit-any
+  3550:78  error    Unexpected any. Specify a different type                                                                              @typescript-eslint/no-explicit-any
+  3551:80  error    Unexpected any. Specify a different type                                                                              @typescript-eslint/no-explicit-any
+
+G:\Dev\sendmessage\frontend\src\api.ts
+  16:33  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+G:\Dev\sendmessage\frontend\src\hooks\useAuth.ts
+   9:18  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  10:26  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  11:24  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  18:52  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  42:39  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  53:21  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  61:37  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  72:21  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+G:\Dev\sendmessage\frontend\src\hooks\useCampaigns.ts
+  29:61  error    Unexpected any. Specify a different type                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 @typescript-eslint/no-explicit-any
+  63:14  error    Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+G:\Dev\sendmessage\frontend\src\hooks\useCampaigns.ts:63:14
+  61 |
+  62 |     useEffect(() => {
+> 63 |         void loadCampaigns()
+     |              ^^^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  64 |     }, [effectiveUserId])
+  65 |
+  66 |     return {  react-hooks/set-state-in-effect
+  64:8   warning  React Hook useEffect has a missing dependency: 'loadCampaigns'. Either include it or remove the dependency array                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         react-hooks/exhaustive-deps
+
+G:\Dev\sendmessage\frontend\src\hooks\useContacts.ts
+  26:62  error    Unexpected any. Specify a different type                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             @typescript-eslint/no-explicit-any
+  49:14  error    Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+G:\Dev\sendmessage\frontend\src\hooks\useContacts.ts:49:14
+  47 |
+  48 |     useEffect(() => {
+> 49 |         void loadContacts()
+     |              ^^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  50 |     }, [effectiveUserId, currentListId])
+  51 |
+  52 |     return {  react-hooks/set-state-in-effect
+  50:8   warning  React Hook useEffect has a missing dependency: 'loadContacts'. Either include it or remove the dependency array                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      react-hooks/exhaustive-deps
+
+G:\Dev\sendmessage\frontend\src\hooks\useLists.ts
+  48:42  error    Unexpected any. Specify a different type                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     @typescript-eslint/no-explicit-any
+  58:14  error    Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+G:\Dev\sendmessage\frontend\src\hooks\useLists.ts:58:14
+  56 |
+  57 |     useEffect(() => {
+> 58 |         void loadLists()
+     |              ^^^^^^^^^ Avoid calling setState() directly within an effect
+  59 |     }, [effectiveUserId])
+  60 |
+  61 |     return {  react-hooks/set-state-in-effect
+  59:8   warning  React Hook useEffect has a missing dependency: 'loadLists'. Either include it or remove the dependency array                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 react-hooks/exhaustive-deps
+
+G:\Dev\sendmessage\frontend\src\hooks\usePermissions.ts
+  66:17  error    Unexpected any. Specify a different type                                                                 @typescript-eslint/no-explicit-any
+  77:6   warning  React Hook useEffect has a missing dependency: 'load'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+G:\Dev\sendmessage\frontend\src\hooks\useSendHistory.ts
+  38:74  error  Unexpected any. Specify a different type                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  @typescript-eslint/no-explicit-any
+  74:14  error  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+G:\Dev\sendmessage\frontend\src\hooks\useSendHistory.ts:74:14
+  72 |
+  73 |     useEffect(() => {
+> 74 |         void reloadContactSendHistory()
+     |              ^^^^^^^^^^^^^^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  75 |     }, [reloadContactSendHistory])
+  76 |
+  77 |     return {  react-hooks/set-state-in-effect
+
+G:\Dev\sendmessage\frontend\src\pages\AdminUsersPage.tsx
+  104:69  error    Unexpected any. Specify a different type                                                                          @typescript-eslint/no-explicit-any
+  116:72  error    Unexpected any. Specify a different type                                                                          @typescript-eslint/no-explicit-any
+  138:76  error    Unexpected any. Specify a different type                                                                          @typescript-eslint/no-explicit-any
+  162:6   warning  React Hook useEffect has a missing dependency: 'loadAdminData'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+  179:94  error    Unexpected any. Specify a different type                                                                          @typescript-eslint/no-explicit-any
+  387:80  error    Unexpected any. Specify a different type                                                                          @typescript-eslint/no-explicit-any
+
+G:\Dev\sendmessage\frontend\src\pages\CampaignsPage.tsx
+   140:3   error  'userHasConfiguredAi' is defined but never used  @typescript-eslint/no-unused-vars
+   191:94  error  Unexpected any. Specify a different type         @typescript-eslint/no-explicit-any
+  1311:47  error  Unnecessary escape character: \-                 no-useless-escape
+
+G:\Dev\sendmessage\frontend\src\pages\ContactsPage.tsx
+    4:40  error  'BACKEND_URL' is defined but never used                 @typescript-eslint/no-unused-vars
+  140:3   error  'geminiApiKey' is defined but never used                @typescript-eslint/no-unused-vars
+  176:3   error  'onSetLists' is defined but never used                  @typescript-eslint/no-unused-vars
+  177:3   error  'onSetContactsByList' is defined but never used         @typescript-eslint/no-unused-vars
+  178:3   error  'onSetCurrentListId' is defined but never used          @typescript-eslint/no-unused-vars
+  179:3   error  'onSetEditingContactId' is defined but never used       @typescript-eslint/no-unused-vars
+  180:3   error  'onSetContactFormName' is defined but never used        @typescript-eslint/no-unused-vars
+  181:3   error  'onSetContactFormPhone' is defined but never used       @typescript-eslint/no-unused-vars
+  182:3   error  'onSetContactFormEmail' is defined but never used       @typescript-eslint/no-unused-vars
+  183:3   error  'onSetContactFormCategory' is defined but never used    @typescript-eslint/no-unused-vars
+  184:3   error  'onSetContactFormCep' is defined but never used         @typescript-eslint/no-unused-vars
+  185:3   error  'onSetContactFormAddress' is defined but never used     @typescript-eslint/no-unused-vars
+  186:3   error  'onSetContactFormCity' is defined but never used        @typescript-eslint/no-unused-vars
+  187:3   error  'onSetContactFormRating' is defined but never used      @typescript-eslint/no-unused-vars
+  188:3   error  'onSetLastMoveMessage' is defined but never used        @typescript-eslint/no-unused-vars
+  197:9   error  'canExportContacts' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+G:\Dev\sendmessage\frontend\src\pages\ReportsPage.tsx
+  202:72  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+G:\Dev\sendmessage\frontend\src\pages\SchedulesPage.tsx
+   38:17  error    Unexpected any. Specify a different type                                                                     @typescript-eslint/no-explicit-any
+   48:6   warning  React Hook useEffect has a missing dependency: 'loadJobs'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+  188:27  error    Unexpected any. Specify a different type                                                                     @typescript-eslint/no-explicit-any
+  216:72  error    Unexpected any. Specify a different type                                                                     @typescript-eslint/no-explicit-any
+  232:68  error    Unexpected any. Specify a different type                                                                     @typescript-eslint/no-explicit-any
+  308:41  error    Unexpected any. Specify a different type                                                                     @typescript-eslint/no-explicit-any
+
+G:\Dev\sendmessage\frontend\src\pages\SettingsPage.tsx
+  31:18  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+G:\Dev\sendmessage\frontend\src\utils\index.ts
+  48:5  warning  Unused eslint-disable directive (no problems were reported from 'no-console')
+  51:5  warning  Unused eslint-disable directive (no problems were reported from 'no-console')
+  54:5  warning  Unused eslint-disable directive (no problems were reported from 'no-console')
+
+Ô£û 119 problems (109 errors, 10 warnings)
+  0 errors and 3 warnings potentially fixable with the `--fix` option.
+
