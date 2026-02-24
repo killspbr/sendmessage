@@ -515,6 +515,20 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', service: 'sendmessage-backend' });
 });
 
+// --- ENDPOINT DE MIGRATION (protegido por chave secreta) ---
+app.post('/api/migrate', async (req, res) => {
+  const secret = req.headers['x-migrate-key'];
+  if (secret !== (process.env.MIGRATE_SECRET || 'sendmessage-migrate-2024')) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+  try {
+    await runMigrations();
+    res.json({ ok: true, message: 'Migration executada com sucesso.' });
+  } catch (e) {
+    res.status(500).json({ error: 'Falha na migration', details: e.message });
+  }
+});
+
 // Completar endereço a partir de CEP usando ViaCEP (sem IA)
 app.post('/api/ai/address-from-cep', async (req, res) => {
   try {
