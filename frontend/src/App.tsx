@@ -1274,12 +1274,12 @@ function App() {
 
   const handleSendCampaignToN8n = async (camp: Campaign) => {
     if (!currentUser) {
-      setLastMoveMessage('Ã‰ necessÃ¡rio estar logado para enviar campanhas.')
+      setLastMoveMessage('É necessário estar logado para enviar campanhas.')
       return
     }
 
     if (sendingCampaignId && sendingCampaignId !== camp.id) {
-      setLastMoveMessage('JÃ¡ existe uma campanha sendo enviada. Aguarde finalizar para iniciar outra.')
+      setLastMoveMessage('Já existe uma campanha sendo enviada. Aguarde finalizar para iniciar outra.')
       return
     }
 
@@ -1292,23 +1292,16 @@ function App() {
     const contactsForList = contactsByList[listId] ?? []
 
     if (contactsForList.length === 0) {
-      setLastMoveMessage('Esta lista nÃ£o possui contatos para enviar.')
+      setLastMoveMessage('Esta lista não possui contatos para enviar.')
       return
     }
 
-    const effectiveChannels: CampaignChannel[] = camp.channels.filter((ch) => {
-      if (ch === 'whatsapp') {
-        const hasEvolution = (!!userSettings?.evolution_url || !!globalSettings?.evolution_api_url) &&
-          (!!userSettings?.evolution_instance || !!globalSettings?.evolution_shared_instance)
-        return hasEvolution
-      }
-      return false
-    })
+    const hasEvolution =
+      (!!userSettings?.evolution_url || !!globalSettings?.evolution_api_url) &&
+      (!!userSettings?.evolution_instance || !!globalSettings?.evolution_shared_instance)
 
-    if (effectiveChannels.length === 0) {
-      setLastMoveMessage(
-        'Nenhum serviço de envio (Evolution API) está configurado. Ajuste em Configurações.',
-      )
+    if (!hasEvolution) {
+      setLastMoveMessage('Nenhum serviço de envio (Evolution API) está configurado. Ajuste em Configurações.')
       return
     }
 
@@ -1319,295 +1312,95 @@ function App() {
 
     console.log('[DEBUG] Iniciando disparo de campanha:', {
       campaignName: camp.name,
-      listName: list.name,
+      listName: list?.name,
       totalContacts: contactsForList.length,
-      effectiveChannels,
     })
 
-    let errorCount = 0
-    let _lastBackendStatus2 = 0
-    let _lastBackendOk2: boolean | null = null
-
-    for (let i = 0; i < contactsForList.length; i++) {
-      const contact = contactsForList[i]
-      const contactIndex = i + 1
-      setSendingCurrentIndex(contactIndex)
-
-      const messageHtmlRaw = camp.message || ''
-      const messageHtml = messageHtmlRaw.trim().startsWith('<')
-        ? messageHtmlRaw
-        : `<p style="margin:0; font-size:14px; line-height:1.5; color:#111827;">${messageHtmlRaw
-          .split('\n')
-          .map((line) => (line.trim().length === 0 ? '&nbsp;' : line))
-          .join('<br />')}</p>`
-
-      const messageText = htmlToText(messageHtml)
-
-      const sendPromises = effectiveChannels.map(async (channel) => {
-        // sÃ³ envia para canais que o contato realmente possui dado
-        if (channel === 'whatsapp') {
-          const phone = normalizePhone(contact.phone)
-          if (!phone) return
-        }
-
-        if (channel === 'email') {
-          const email = (contact.email ?? '').trim()
-          if (!email) return
-        }
-
-        const isEmailChannel = channel === 'email'
-
-        const payload = {
-          meta: {
-            source: 'sendmessage',
-            trigger: 'campaign',
-            campaignId: camp.id,
-            campaignName: camp.name,
-            listId,
-            listName: list.name,
-            channels: [channel],
-            createdAt: camp.createdAt,
-            contactIndex,
-            totalContacts: contactsForList.length,
-          },
-          // Para email, message vai em HTML; para WhatsApp, em formato compatÃ­vel com o WhatsApp
-          message: isEmailChannel ? messageHtml : htmlToWhatsapp(messageHtml),
-          messageText,
-          messageHtml,
-          contacts: [
-            {
-              id: contact.id,
-              name: contact.name,
-              phone: normalizePhone(contact.phone),
-              email: contact.email,
-              category: contact.category,
-              rating: Number(formatRating(contact.rating) || 0),
-              cep: contact.cep,
-            },
-          ],
-        }
-
-        try {
-          console.log('[DEBUG] Enviando para backend:', {
-            backendUrl: BACKEND_URL,
-            channel,
-            contactName: contact.name,
-            contactPhone: contact.phone,
-          })
-
-          const response = await fetch(`${BACKEND_URL}/api/campaigns/${camp.id}/send`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ ...payload }),
-          })
-
-          console.log('[DEBUG] Resposta do backend:', {
-            status: response.status,
-            ok: response.ok,
-            statusText: response.statusText,
-          })
-
-          const result = await response.json().catch(() => null as any)
-
-          console.log('[DEBUG] Resultado parseado:', result)
-
-          const { backendOk, backendStatus } = parseBackendResult(result, response)
-
-          _lastBackendOk2 = backendOk
-          _lastBackendStatus2 = backendStatus
-
-          // Extrai informaÃ§Ãµes detalhadas do resultado
-          let providerStatus: string | undefined
-          let errorDetail: string | undefined
-          let payloadRaw: string | undefined
-
-          try {
-            payloadRaw = JSON.stringify(result, null, 2)
-          } catch { }
-
-          if (Array.isArray(result) && result.length > 0) {
-            const item = result[0] as any
-            const dataStatus = item.resultado?.data?.status
-            if (typeof dataStatus === 'string') {
-              providerStatus = dataStatus
-            }
-
-            if (!backendOk) {
-              if (typeof item.detalhes === 'string') {
-                errorDetail = item.detalhes
-              } else if (item.detalhes != null) {
-                try {
-                  errorDetail = JSON.stringify(item.detalhes)
-                } catch { }
-              }
-            }
-          }
-
-          // registra histórico por contato/canal
-          setContactSendHistory((prev) => {
-            const phoneKey = normalizePhone(contact.phone)
-            if (!phoneKey) return prev
-
-            const entry: ContactSendHistoryItem = {
-              id: `${camp.id}-${contact.id}-${Date.now()}-${channel}`,
-              contactId: contact.id,
-              contactName: contact.name,
-              phoneKey,
-              campaignId: camp.id,
-              campaignName: camp.name,
-              channel,
-              status: backendStatus,
-              ok: backendOk,
-              runAt: new Date().toLocaleString('pt-BR', {
-                day: '2-digit',
-                month: 'short',
-                hour: '2-digit',
-                minute: '2-digit',
-              }),
-              providerStatus,
-              errorDetail,
-              payloadRaw,
-            }
-            const next = [entry, ...prev]
-            return next.slice(0, 1000)
-          })
-
-          // Salva no backend
-          const phoneKeyForDb = normalizePhone(contact.phone)
-          if (phoneKeyForDb) {
-            saveSendHistory({
-              campaignId: camp.id,
-              contactName: contact.name,
-              phoneKey: phoneKeyForDb,
-              channel,
-              ok: backendOk,
-              status: backendStatus,
-            })
-          }
-
-          if (!backendOk) {
-            console.error(
-              'Erro ao enviar contato da campanha:',
-              { status: backendStatus, result },
-            )
-            errorCount += 1
-            setSendingErrors((prev) => prev + 1)
-          }
-        } catch (error) {
-          console.error('Erro de rede ao enviar contato da campanha:', error)
-          errorCount += 1
-          setSendingErrors((prev) => prev + 1)
-        }
-      })
-
-      // envia canais em paralelo para este contato
-      await Promise.all(sendPromises)
-
-      // intervalo entre contatos (independente da quantidade de canais), especÃ­fico por campanha
-      if (i < contactsForList.length - 1) {
-        const minSeconds = Math.max(0, camp.intervalMinSeconds ?? 30)
-        const maxSeconds = Math.max(minSeconds, camp.intervalMaxSeconds ?? 90)
-        const delaySeconds = minSeconds + Math.random() * (maxSeconds - minSeconds)
-        const rounded = Math.max(1, Math.round(delaySeconds))
-        setSendingNextDelaySeconds(rounded)
-        const delayMs = delaySeconds * 1000
-        await new Promise((resolve) => setTimeout(resolve, delayMs))
-        setSendingNextDelaySeconds(0)
-      }
-    }
-
-    const finishedAt = new Date().toLocaleString('pt-BR', {
-      day: '2-digit',
-      month: 'short',
-      hour: '2-digit',
-      minute: '2-digit',
-    })
-
-    setCampaignSendLog((prev) => ({
-      ...prev,
-      [camp.id]: {
-        lastStatus: _lastBackendStatus2,
-        lastOk: _lastBackendOk2 ?? errorCount === 0,
-        lastErrorCount: errorCount,
-        lastTotal: contactsForList.length,
-        lastRunAt: finishedAt,
-      },
-    }))
-
-    setSendHistory((prev) => {
-      const entry: SendHistoryItem = {
-        id: `${camp.id}-${Date.now()}`,
-        campaignId: camp.id,
-        campaignName: camp.name,
-        status: _lastBackendStatus2,
-        ok: (_lastBackendOk2 ?? errorCount === 0) === true,
-        total: contactsForList.length,
-        errorCount,
-        runAt: finishedAt,
-      }
-      const next = [entry, ...prev]
-      return next.slice(0, 50)
-    })
-
-    // Grava histÃ³rico agregado do disparo no backend
     try {
-      await apiFetch('/api/campaigns/history', {
+      // Uma única chamada autenticada ao backend — ele faz o loop e os intervalos
+      const result = await apiFetch(`/api/campaigns/${camp.id}/send`, {
         method: 'POST',
-        body: JSON.stringify({
-          campaign_id: camp.id,
-          status: _lastBackendStatus2,
-          ok: (_lastBackendOk2 ?? errorCount === 0) === true,
-          total: contactsForList.length,
-          error_count: errorCount,
-          run_at: new Date().toISOString(),
-        })
+        body: JSON.stringify({}),
       })
-    } catch (e) {
-      console.error('Erro ao gravar histÃ³rico agregado no backend', e)
-    }
 
-    // Notificação WhatsApp n8n removida (Evolution API ativo)
+      console.log('[DEBUG] Resultado do backend:', result)
 
-    if (errorCount === 0) {
-      // Marca a campanha como "enviada" em caso de sucesso total
-      setCampaigns((prev) =>
-        prev.map((c) =>
-          c.id === camp.id
-            ? {
-              ...c,
-              status: 'enviada',
-            }
-            : c,
-        ),
-      )
-      setLastMoveMessage(
-        `Campanha "${camp.name}" disparada com sucesso para ${contactsForList.length} contato(s).`,
-      )
-    } else if (errorCount < contactsForList.length) {
-      // Sucesso parcial: alguns contatos com erro
-      setCampaigns((prev) =>
-        prev.map((c) =>
-          c.id === camp.id
-            ? {
-              ...c,
-              status: 'enviada_com_erros',
-            }
-            : c,
-        ),
-      )
-      setLastMoveMessage(
-        `Campanha "${camp.name}" disparada com falhas em ${errorCount} de ${contactsForList.length} contato(s).`,
-      )
-    } else {
-      setLastMoveMessage(
-        `Não foi possível disparar a campanha. Todos os ${contactsForList.length} disparos retornaram erro.`,
-      )
+      const errorCount = result?.errors ?? 0
+      const total = result?.contactsCount ?? contactsForList.length
+
+      setSendingCurrentIndex(total)
+      setSendingErrors(errorCount)
+
+      const finishedAt = new Date().toLocaleString('pt-BR', {
+        day: '2-digit',
+        month: 'short',
+        hour: '2-digit',
+        minute: '2-digit',
+      })
+
+      setCampaignSendLog((prev) => ({
+        ...prev,
+        [camp.id]: {
+          lastStatus: errorCount === 0 ? 200 : 207,
+          lastOk: errorCount === 0,
+          lastErrorCount: errorCount,
+          lastTotal: total,
+          lastRunAt: finishedAt,
+        },
+      }))
+
+      setSendHistory((prev) => {
+        const entry: SendHistoryItem = {
+          id: `${camp.id}-${Date.now()}`,
+          campaignId: camp.id,
+          campaignName: camp.name,
+          status: errorCount === 0 ? 200 : 207,
+          ok: errorCount === 0,
+          total,
+          errorCount,
+          runAt: finishedAt,
+        }
+        return [entry, ...prev].slice(0, 50)
+      })
+
+      // Grava histórico agregado
+      try {
+        await apiFetch('/api/campaigns/history', {
+          method: 'POST',
+          body: JSON.stringify({
+            campaign_id: camp.id,
+            status: errorCount === 0 ? 200 : 207,
+            ok: errorCount === 0,
+            total,
+            error_count: errorCount,
+            run_at: new Date().toISOString(),
+          })
+        })
+      } catch (e) {
+        console.error('Erro ao gravar histórico agregado no backend', e)
+      }
+
+      if (errorCount === 0) {
+        setCampaigns((prev) =>
+          prev.map((c) => (c.id === camp.id ? { ...c, status: 'enviada' } : c))
+        )
+        setLastMoveMessage(`Campanha "${camp.name}" disparada com sucesso para ${total} contato(s).`)
+      } else {
+        setCampaigns((prev) =>
+          prev.map((c) => (c.id === camp.id ? { ...c, status: 'enviada_com_erros' } : c))
+        )
+        setLastMoveMessage(`Campanha "${camp.name}" concluída com ${errorCount} erro(s) em ${total} contato(s).`)
+      }
+
+      await reloadContactSendHistory()
+    } catch (err: any) {
+      console.error('Erro ao disparar campanha:', err)
+      setLastMoveMessage(`Erro ao disparar campanha: ${err?.message ?? 'Falha desconhecida'}`)
     }
 
     setSendingNextDelaySeconds(null)
     setSendingCampaignId(null)
+
   }
 
   const contacts = contactsByList[currentListId] ?? []
