@@ -56,7 +56,6 @@ export type ContactSendHistoryItem = {
   status: number
   ok: boolean
   runAt: string
-  webhookOk: boolean
   providerStatus?: string
   errorDetail?: string
   payloadRaw?: string
@@ -91,7 +90,6 @@ export type SupabaseContactSendHistoryRow = {
   channel: CampaignChannel
   ok: boolean
   status: number | null
-  webhook_ok: boolean | null
   run_at: string | null
 }
 

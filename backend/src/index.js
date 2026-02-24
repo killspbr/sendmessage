@@ -5,9 +5,6 @@ import { login, signup, authenticateToken } from './auth.js';
 
 const app = express();
 const port = process.env.PORT || 4000;
-const N8N_WEBHOOK_URL =
-  process.env.N8N_WEBHOOK_URL ||
-  'https://automacao-n8n.rsybpi.easypanel.host/webhook-test/disparocampanhazap';
 
 app.use(cors());
 app.use(express.json({ limit: '20mb' }));
@@ -870,45 +867,6 @@ Retorne APENAS um JSON válido, sem texto extra, exatamente no formato:
   }
 });
 
-app.post('/api/n8n/trigger', async (req, res) => {
-  try {
-    const targetUrl = req.body?.webhookUrl || N8N_WEBHOOK_URL;
-    const triggerType = req.body?.meta?.trigger || 'unknown';
-    const campaignName = req.body?.meta?.campaignName || 'N/A';
-    const contactIndex = req.body?.meta?.contactIndex || 0;
-    const totalContacts = req.body?.meta?.totalContacts || 0;
-
-    if (!targetUrl) {
-      return res.status(500).json({ error: 'Nenhum webhook configurado para envio.' });
-    }
-
-    console.log(`[n8n] Trigger: ${triggerType} | Campanha: ${campaignName} | Contato: ${contactIndex}/${totalContacts}`);
-
-    const response = await fetch(targetUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(req.body ?? {}),
-    });
-
-    const text = await response.text();
-    let data = null;
-    try {
-      data = JSON.parse(text);
-    } catch {
-      data = text;
-    }
-
-    console.log('[n8n] Resposta do webhook:', response.status);
-
-    res.status(response.status).json({ ok: response.ok, status: response.status, data });
-  } catch (error) {
-    console.error('Erro ao chamar webhook n8n:', error);
-    res.status(500).json({ error: 'Falha ao chamar webhook n8n.', details: error.message });
-  }
-});
-
 // --- PERMISSÕES E ADMIN ---
 
 // Retorna as permissões do usuário logado
@@ -991,7 +949,7 @@ app.put('/api/admin/users/:id/settings', authenticateToken, async (req, res) => 
   try {
     const { id } = req.params;
     const fields = req.body;
-    const allowedFields = ['use_global_ai', 'use_global_webhooks', 'webhook_email_url', 'display_name', 'evolution_url', 'evolution_apikey', 'evolution_instance', 'company_info'];
+    const allowedFields = ['use_global_ai', 'display_name', 'evolution_url', 'evolution_apikey', 'evolution_instance', 'company_info'];
 
     let queryText = 'UPDATE user_profiles SET ';
     const queryValues = [];

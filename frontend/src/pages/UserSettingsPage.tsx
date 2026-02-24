@@ -6,11 +6,7 @@ type UserSettingsPageProps = {
   onChangeUseGlobalAi: (val: boolean) => void
   onChangeUserAiKey: (val: string) => void
   onChangeUserCompanyInfo: (val: string) => void
-  // Webhooks/Email
-  useGlobalWebhooks: boolean
-  userWebhookEmail: string
-  onChangeUseGlobalWebhooks: (val: boolean) => void
-  onChangeUserWebhookEmail: (val: string) => void
+
   // Evolution (Por usuário)
   userEvolutionUrl: string
   userEvolutionApiKey: string
@@ -20,12 +16,11 @@ type UserSettingsPageProps = {
   onChangeUserEvolutionInstance: (val: string) => void
   // Ações
   onSave: (overrides: {
-    aiApiKey: string | null
-    webhookEmailUrl?: string | null
+    aiApiKey?: string | null
+    companyInfo?: string | null
     evolutionUrl?: string | null
     evolutionApiKey?: string | null
     evolutionInstance?: string | null
-    companyInfo?: string | null
   }) => Promise<void>
 }
 
@@ -36,10 +31,6 @@ export function UserSettingsPage({
   onChangeUserAiKey,
   userCompanyInfo,
   onChangeUserCompanyInfo,
-  useGlobalWebhooks,
-  userWebhookEmail,
-  onChangeUseGlobalWebhooks,
-  onChangeUserWebhookEmail,
   userEvolutionUrl,
   userEvolutionApiKey,
   userEvolutionInstance,
@@ -51,11 +42,10 @@ export function UserSettingsPage({
   const handleSave = async () => {
     await onSave({
       aiApiKey: useGlobalAi ? null : userAiKey,
-      webhookEmailUrl: useGlobalWebhooks ? undefined : userWebhookEmail,
+      companyInfo: userCompanyInfo?.trim() || undefined,
       evolutionUrl: userEvolutionUrl.trim() || undefined,
       evolutionApiKey: userEvolutionApiKey.trim() || undefined,
       evolutionInstance: userEvolutionInstance.trim() || undefined,
-      companyInfo: userCompanyInfo?.trim() || undefined,
     })
   }
 
@@ -109,50 +99,6 @@ export function UserSettingsPage({
               />
             </div>
           </div>
-        </div>
-      </div>
-
-      {/* Webhooks / Email */}
-      <div className="space-y-4 pt-4 border-t border-slate-100">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-violet-100 flex items-center justify-center text-violet-600">
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-            </svg>
-          </div>
-          <div>
-            <h2 className="text-lg font-bold text-slate-800 tracking-tight">Email (n8n Webhook)</h2>
-            <p className="text-xs text-slate-500 font-medium">Configure seu próprio fluxo de e-mail se desejar.</p>
-          </div>
-        </div>
-
-        <div className="space-y-4 p-5 rounded-2xl bg-slate-50 border border-slate-100">
-          <label className="flex items-center gap-3 cursor-pointer group">
-            <div className="relative">
-              <input
-                type="checkbox"
-                checked={useGlobalWebhooks}
-                onChange={(e) => onChangeUseGlobalWebhooks(e.target.checked)}
-                className="sr-only"
-              />
-              <div className={`w-10 h-6 rounded-full transition-colors ${useGlobalWebhooks ? 'bg-violet-500' : 'bg-slate-300'}`} />
-              <div className={`absolute left-1 top-1 w-4 h-4 rounded-full bg-white shadow transition-transform ${useGlobalWebhooks ? 'translate-x-4' : 'translate-x-0'}`} />
-            </div>
-            <span className="text-sm font-bold text-slate-700 group-hover:text-slate-900 transition-colors">Usar webhook de e-mail global</span>
-          </label>
-
-          {!useGlobalWebhooks && (
-            <div className="flex flex-col gap-1.5 animate-in fade-in slide-in-from-top-2">
-              <label className="text-xs font-bold text-slate-700 ml-1">Meu Webhook Email</label>
-              <input
-                type="text"
-                value={userWebhookEmail}
-                onChange={(e) => onChangeUserWebhookEmail(e.target.value)}
-                placeholder="https://seu-n8n.com/..."
-                className="h-11 w-full px-4 rounded-xl border border-slate-200 bg-white text-sm text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500 transition-all shadow-sm"
-              />
-            </div>
-          )}
         </div>
       </div>
 

@@ -33,7 +33,6 @@ type CampaignsPageProps = {
 
   // Configurações
   hasEvolutionConfigured: boolean
-  webhookUrlEmail: string
   sendIntervalMinSeconds: number
   sendIntervalMaxSeconds: number
   onChangeSendIntervalMinSeconds: (value: number) => void
@@ -107,7 +106,6 @@ export function CampaignsPage({
   sendingNextDelaySeconds,
   sendConfirmCampaignId,
   hasEvolutionConfigured,
-  webhookUrlEmail,
   sendIntervalMinSeconds,
   sendIntervalMaxSeconds,
   onChangeSendIntervalMinSeconds,
@@ -935,7 +933,7 @@ export function CampaignsPage({
                 const listIdForCamp = listForCamp?.id ?? 'default'
                 const contactsForCampList = contactsByList[listIdForCamp] ?? []
                 const effectiveChannelsForCamp: CampaignChannel[] = campToSend.channels.filter((ch) =>
-                  ch === 'whatsapp' ? hasEvolutionConfigured : !!webhookUrlEmail.trim(),
+                  ch === 'whatsapp' ? hasEvolutionConfigured : false,
                 )
 
                 const min = campToSend.intervalMinSeconds ?? 30
@@ -1271,7 +1269,6 @@ export function CampaignsPage({
                             'telefone',
                             'canal',
                             'status_ok',
-                            'webhook_ok',
                             'data_hora',
                           ]
 
@@ -1281,7 +1278,6 @@ export function CampaignsPage({
                             entry.phoneKey,
                             entry.channel,
                             entry.ok ? '1' : '0',
-                            entry.webhookOk === false ? '0' : '1',
                             entry.runAt,
                           ])
 
@@ -1355,19 +1351,6 @@ export function CampaignsPage({
                                       </td>
                                       <td className="py-1 pr-2">
                                         <div className="flex items-center gap-1.5">
-                                          <span
-                                            className={`px-1.5 py-0.5 rounded-full text-[9px] font-medium flex items-center justify-center ${entry.webhookOk === false
-                                              ? 'bg-red-50 text-red-700 border border-red-200'
-                                              : 'bg-sky-50 text-sky-700 border border-sky-200'
-                                              }`}
-                                            title={
-                                              entry.webhookOk === false
-                                                ? 'Webhook não funcionou.'
-                                                : 'Webhook funcionou.'
-                                            }
-                                          >
-                                            <span aria-hidden="true">🔌</span>
-                                          </span>
                                           <span
                                             className={`px-1.5 py-0.5 rounded-full text-[9px] font-medium cursor-help flex items-center justify-center ${entry.ok
                                               ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'

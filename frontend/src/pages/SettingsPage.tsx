@@ -1,7 +1,4 @@
 type SettingsPageProps = {
-  // Webhooks
-  webhookUrlEmail: string
-  onChangeWebhookEmail: (value: string) => void
 
   // Gemini
   geminiApiKey: string
@@ -41,8 +38,6 @@ type SettingsPageProps = {
 }
 
 export function SettingsPage({
-  webhookUrlEmail,
-  onChangeWebhookEmail,
   geminiApiKey,
   onChangeGeminiApiKey,
   geminiModel,
@@ -83,73 +78,49 @@ export function SettingsPage({
   return (
     <section className="bg-white rounded-2xl border border-slate-200 shadow-md p-4 md:p-5 flex flex-col gap-4 max-w-xl">
       <div>
-        <h2 className="text-sm font-semibold text-slate-800">Configurações de integração (Legado n8n)</h2>
+        <h2 className="text-sm font-semibold text-slate-800">Integração Direta Evolution API (WhatsApp)</h2>
         <p className="text-[11px] text-slate-500">
-          Defina abaixo o endereço de webhook do n8n para o canal de e-mail. O WhatsApp agora usa a Evolution API.
+          Configure abaixo os dados globais da sua Evolution API para o envio de mensagens.
         </p>
       </div>
 
-      <div className="flex flex-col gap-2">
-        <label className="text-[10px] font-medium text-slate-600">Webhook Email</label>
+      <div className="flex flex-col gap-1">
+        <label className="text-[10px] font-medium text-slate-600">Evolution API URL</label>
         <input
           type="text"
-          value={webhookUrlEmail}
-          onChange={(e) => onChangeWebhookEmail(e.target.value)}
-          placeholder="https://seu-n8n.com/webhook/disparo-email"
+          value={evolutionApiUrl}
+          onChange={(e) => onChangeEvolutionApiUrl(e.target.value.trim())}
+          placeholder="https://api.sua-evolution.com"
           className="h-9 w-full px-2 rounded-md border border-slate-200 bg-white text-[11px] text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-violet-400/80"
         />
-        <p className="text-[10px] text-slate-400">
-          Usado para campanhas com canal Email marcado.
-        </p>
       </div>
 
-      <div className="border-t border-dashed border-slate-200 pt-3 mt-1 space-y-2">
-        <div>
-          <h3 className="text-xs font-semibold text-slate-800">Integração Direta Evolution API (WhatsApp)</h3>
-          <p className="text-[10px] text-slate-500">
-            Configure abaixo os dados da sua Evolution API para eliminar a dependência do n8n no WhatsApp.
-          </p>
-        </div>
-
+      <div className="grid grid-cols-2 gap-3 mt-1">
         <div className="flex flex-col gap-1">
-          <label className="text-[10px] font-medium text-slate-600">Evolution API URL</label>
+          <label className="text-[10px] font-medium text-slate-600">Global API Key</label>
           <input
-            type="text"
-            value={evolutionApiUrl}
-            onChange={(e) => onChangeEvolutionApiUrl(e.target.value.trim())}
-            placeholder="https://api.sua-evolution.com"
+            type="password"
+            value={evolutionApiKey}
+            onChange={(e) => onChangeEvolutionApiKey(e.target.value.trim())}
+            placeholder="sua_chave_global"
             className="h-9 w-full px-2 rounded-md border border-slate-200 bg-white text-[11px] text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-violet-400/80"
           />
         </div>
 
-        <div className="grid grid-cols-2 gap-3 mt-1">
-          <div className="flex flex-col gap-1">
-            <label className="text-[10px] font-medium text-slate-600">Global API Key</label>
-            <input
-              type="password"
-              value={evolutionApiKey}
-              onChange={(e) => onChangeEvolutionApiKey(e.target.value.trim())}
-              placeholder="sua_chave_global"
-              className="h-9 w-full px-2 rounded-md border border-slate-200 bg-white text-[11px] text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-violet-400/80"
-            />
-          </div>
-
-          <div className="flex flex-col gap-1">
-            <label className="text-[10px] font-medium text-slate-600">Instância Compartilhada</label>
-            <input
-              type="text"
-              value={evolutionInstance}
-              onChange={(e) => onChangeEvolutionInstance(e.target.value.trim())}
-              placeholder="ex: admin_zap"
-              className="h-9 w-full px-2 rounded-md border border-slate-200 bg-white text-[11px] text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-violet-400/80"
-            />
-          </div>
+        <div className="flex flex-col gap-1">
+          <label className="text-[10px] font-medium text-slate-600">Instância Compartilhada</label>
+          <input
+            type="text"
+            value={evolutionInstance}
+            onChange={(e) => onChangeEvolutionInstance(e.target.value.trim())}
+            placeholder="ex: admin_zap"
+            className="h-9 w-full px-2 rounded-md border border-slate-200 bg-white text-[11px] text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-violet-400/80"
+          />
         </div>
-        <p className="text-[10px] text-amber-600">
-          Certifique-se de que a instância informada já esteja criada e com WhatsApp conectado no painel da Evolution.
-        </p>
       </div>
-
+      <p className="text-[10px] text-amber-600">
+        Certifique-se de que a instância informada já esteja criada e com WhatsApp conectado no painel da Evolution.
+      </p>
       <div className="border-t border-dashed border-slate-200 pt-3 mt-1 space-y-2">
         <div>
           <h3 className="text-xs font-semibold text-slate-800">Modo debug</h3>
@@ -337,6 +308,6 @@ export function SettingsPage({
           </div>
         )}
       </div>
-    </section>
+    </section >
   )
 }

@@ -139,7 +139,6 @@ export function ReportsPage({ campaigns, contactSendHistory }: ReportsPageProps)
       'canal',
       'status_http',
       'status_ok',
-      'webhook_ok',
       'data_hora',
     ]
 
@@ -150,7 +149,6 @@ export function ReportsPage({ campaigns, contactSendHistory }: ReportsPageProps)
       entry.channel,
       String(entry.status || 0),
       entry.ok ? '1' : '0',
-      entry.webhookOk === false ? '0' : '1',
       entry.runAt,
     ])
 
@@ -179,10 +177,10 @@ export function ReportsPage({ campaigns, contactSendHistory }: ReportsPageProps)
   const successRateColor = totals.total === 0
     ? 'text-slate-500'
     : totals.successRate >= 90
-    ? 'text-emerald-600'
-    : totals.successRate >= 70
-    ? 'text-amber-600'
-    : 'text-rose-600'
+      ? 'text-emerald-600'
+      : totals.successRate >= 70
+        ? 'text-amber-600'
+        : 'text-rose-600'
 
   return (
     <section className="bg-white rounded-2xl border border-slate-200 shadow-md p-4 md:p-5 flex flex-col gap-4">

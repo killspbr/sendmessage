@@ -1,37 +1,36 @@
-# Plano de Modularização: App.tsx
+# Plano Lógico: Remoção Completa do n8n e Integração Direta com Evolution API
 
 ## 1. Objetivo
-O arquivo principal `frontend/src/App.tsx` possui atualmente mais de 3700 linhas. Isso compromete seriamente a manutenibilidade, a facilidade de navegação e a colaboração no projeto. O objetivo deste plano é identificar componentes acoplados (como o Modal global, botões flutuantes, regras de negócio isoladas localmente) e lógicas de estado e refatorá-las em módulos e subcomponentes dedicados, utilizando boas práticas de arquitetura frontend.
+O usuário deseja remover completamente qualquer dependência, menção e integração com o webhook do **n8n** do sistema, passando a utilizar **integração direta** com a Evolution API (e possivelmente chamadas diretas ou SMTP/API próprias para emails caso existam) em todas as telas, configurações e lógicas de disparo. Esse plano guiará as mudanças nos aplicativos Frontend e Backend.
 
-## 2. Escopo da Fase 1: Identificação e Extração
-- **Criação de Contextos/Providers (`frontend/src/contexts/`)**:
-  - `SettingsContext.tsx` ou similar para manter os dados do `userSettings` e `globalSettings`.
-  - Extrair o hook massivo de estado principal (`App.tsx` possui estados para modais, chaves de API, instâncias de evolution).
-- **Extração de Componentes (`frontend/src/components/`)**:
-  - Componentes de Sidebar / Navegação (já há algo em App.tsx que dita como o menu é desenhado).
-  - Componentes Modais que são criados localmente (ex: `AddContactModal`, `NewCampaignModal`, `SettingsModal` - caso ainda estejam inline no App).
-- **Extração de Hooks Personalizados (`frontend/src/hooks/`)**:
-  - Refatorar lógicas de uso da Gemini AI para um `useGeminiAI.ts`.
-  - Mover lógica central de envio e orquestração de campanha para `useCampaignRunner.ts` ou algo equivalente, se ainda residir em App.tsx.
-- **Limpeza do `App.tsx`**:
-  - `App.tsx` ficará responsável **estritamente pelo roteamento global (Switch/Router layout)**, provedores de contexto, e montagem visual primária (Layout Skeleton).
+## 2. Escopo da Transformação
 
-## 3. Fases de Implementação (Orquestração Fase 2)
-### Grupo 1: Levantamento Estrutural e Contextos
-- **Agente Responsável**: `project-planner` / `frontend-specialist`
-- Analisar quais hooks podem ser levados de `App.tsx` em segurança para `frontend/src/hooks/` sem quebrar ciclos de renderização.
-- Criar a camada global do(s) contexto(s).
+### Fase 1: Backend (`backend-specialist`)
+1. **Remover Endpoints Legados:**
+   - Excluir o endpoint `POST /api/n8n/trigger` do arquivo `backend/src/index.js`.
+2. **Atualização da Tabela de Usuários / Perfil:**
+   - Remover os campos ligados ao n8n nas chamadas de `allowedFields` no PUT de `/api/admin/users/:id/settings`. (ex: `webhook_email_url` caso dependa do n8n). Se for necessário migrar para um SMTP direto, será avaliado, mas a meta atual é remover o n8n.
+3. **Limpeza de Variáveis de Ambiente:**
+   - Remover validações e fallback para `N8N_WEBHOOK_URL`.
 
-### Grupo 2: Modularização de UI e Serviços
-- **Agente Responsável**: `frontend-specialist`
-- Fatiar a interface JSX do `App.tsx` extraindo Componentes como `AppSidebar`, `TopBar` e separando modais, convertendo a montagem do "return" final num arquivo JSX limpo e direto.
-- Separar o serviço da LMM (Gemini AI text generator) que está "preso" hoje dentro de `callGeminiForCampaign` no `App.tsx`.
+### Fase 2: Frontend (`frontend-specialist`)
+1. **Configurações de Usuário (`UserSettingsPage.tsx`) e Admin (`SettingsPage.tsx`):**
+   - Remover completamente a seção "Webhooks/Email (n8n Webhook)"
+   - Remover textos de ajuda e placeholders referenciando n8n.
+   - Omitir o campo de URL de webhook das chamadas à API de perfil visual.
+2. **Lógica de Disparo (`App.tsx` / `useCampaigns.ts`):**
+   - Na função `handleContinueCampaign` (onde os disparos acontecem), substituir a montagem do payload que enviava para `endpoint: '/api/n8n/trigger'` e fazer com que todo o tráfego ("whatsapp" e possivelmente outros canais suportados) funcione acionando exclusivamente a rota `/api/campaigns/:id/send` ou rotas da Evolution API.
+   - O código que faz o fallback dependendo de Webhook precisa de revisão.
+3. **Página de Contatos / Campanhas (`ContactsPage.tsx`, `CampaignsPage.tsx` etc.):**
+   - Remover qualquer botão de "Pré-visualizar payload n8n".
+   - Ajustar as strings informativas e as exibições no fluxo de envio.
 
-### Grupo 3: Validação de Qualidade Otimizada
-- **Agente Responsável**: `test-engineer` / `performance-optimizer`
-- Avaliar re-renderizações desnecessárias. A quebra em contextos deve observar se um update numa variável de perfil não re-renderiza à toa uma página de contatos.
-- Rodar o lint (`npm run lint`), checar os imports cruzados.
-- Testar a aplicação (`npm run build`).
+### Fase 3: Revisão e Validação (`test-engineer`, `security-auditor`)
+1. Verificar todo o código restante usando scripts como `lint_runner.py` e `security_scan.py`.
+2. Garantir que a build conclui com sucesso (`npm run build`).
+3. Checar dependências ociosas.
 
----
-**Observação**: Esse trabalho exigirá uma forte reorganização de imports ao redor de praticamente todas as `pages` do sistema (pois muitas recebiam os props em cascata que vinham originados no `App.tsx` injetado como drill down).
+## 3. Critérios de Conclusão e Teste
+- [ ] A aplicação transpila, rodando `vite build`.
+- [ ] Nenhum texto com base em `n8n` deve ser observado na interface.
+- [ ] O disparo de WhatsApp será validado como funcional sendo processado estritamente pelas APIs de Envio configuradas, sem proxy de webhooks n8n.

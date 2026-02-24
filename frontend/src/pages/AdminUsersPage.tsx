@@ -17,9 +17,6 @@ type AdminUserProfile = {
   groupId: string | null
   groupName: string | null
   useGlobalAi: boolean
-  useGlobalWebhooks: boolean
-  webhookWhatsappUrl: string | null
-  webhookEmailUrl: string | null
 }
 
 type AdminGroup = {
@@ -54,13 +51,10 @@ export function AdminUsersPage({
   const [savingPermission, setSavingPermission] = useState<boolean>(false)
   const [savingUserGroupId, setSavingUserGroupId] = useState<string | null>(null)
   const [savingUserSettingsId, setSavingUserSettingsId] = useState<string | null>(null)
-  const [editingWebhookUserId, setEditingWebhookUserId] = useState<string | null>(null)
-  const [webhookWhatsappInput, setWebhookWhatsappInput] = useState('')
-  const [webhookEmailInput, setWebhookEmailInput] = useState('')
 
   const handleToggleUserSetting = async (
     userId: string,
-    field: 'use_global_ai' | 'use_global_webhooks',
+    field: 'use_global_ai',
     nextValue: boolean,
   ) => {
     if (savingUserSettingsId) return
@@ -80,8 +74,6 @@ export function AdminUsersPage({
             ? {
               ...u,
               useGlobalAi: field === 'use_global_ai' ? nextValue : u.useGlobalAi,
-              useGlobalWebhooks:
-                field === 'use_global_webhooks' ? nextValue : u.useGlobalWebhooks,
             }
             : u,
         ),
@@ -143,9 +135,6 @@ export function AdminUsersPage({
         groupId: u.group_id ?? null,
         groupName: u.group_name ?? null,
         useGlobalAi: u.use_global_ai ?? true,
-        useGlobalWebhooks: u.use_global_webhooks ?? true,
-        webhookWhatsappUrl: u.webhook_whatsapp_url ?? null,
-        webhookEmailUrl: u.webhook_email_url ?? null,
       }))
       setUsers(mappedUsers)
     } catch (e) {
@@ -263,55 +252,6 @@ export function AdminUsersPage({
     }
   }
 
-  const handleSaveWebhooks = async (userId: string) => {
-    if (!userId) return
-
-    setSavingUserSettingsId(userId)
-    setError(null)
-
-    try {
-      await apiFetch(`/api/admin/users/${userId}/settings`, {
-        method: 'PUT',
-        body: JSON.stringify({
-          webhook_whatsapp_url: webhookWhatsappInput.trim() || null,
-          webhook_email_url: webhookEmailInput.trim() || null,
-        })
-      })
-
-      setUsers((prev) =>
-        prev.map((u) =>
-          u.id === userId
-            ? {
-              ...u,
-              webhookWhatsappUrl: webhookWhatsappInput.trim() || null,
-              webhookEmailUrl: webhookEmailInput.trim() || null,
-            }
-            : u,
-        ),
-      )
-
-      setEditingWebhookUserId(null)
-      setWebhookWhatsappInput('')
-      setWebhookEmailInput('')
-    } catch (e) {
-      console.error('Erro ao atualizar webhooks do usuário:', e)
-      setError('Erro ao atualizar webhooks do usuário.')
-    } finally {
-      setSavingUserSettingsId(null)
-    }
-  }
-
-  const handleStartEditWebhooks = (user: AdminUserProfile) => {
-    setEditingWebhookUserId(user.id)
-    setWebhookWhatsappInput(user.webhookWhatsappUrl || '')
-    setWebhookEmailInput(user.webhookEmailUrl || '')
-  }
-
-  const handleCancelEditWebhooks = () => {
-    setEditingWebhookUserId(null)
-    setWebhookWhatsappInput('')
-    setWebhookEmailInput('')
-  }
 
   return (
     <section className="bg-white rounded-2xl border border-slate-200 shadow-md p-4 md:p-5 flex flex-col gap-4">
@@ -355,7 +295,6 @@ export function AdminUsersPage({
                     )}
                     <th className="px-2 py-1 text-left font-medium text-slate-600">Grupo</th>
                     <th className="px-2 py-1 text-left font-medium text-slate-600">IA global</th>
-                    <th className="px-2 py-1 text-left font-medium text-slate-600">Webhooks</th>
                     <th className="px-2 py-1 text-left font-medium text-slate-600">Ver como</th>
                   </tr>
                 </thead>
@@ -409,70 +348,7 @@ export function AdminUsersPage({
                           <span>Usar global</span>
                         </label>
                       </td>
-                      <td className="px-2 py-1 align-top text-slate-700">
-                        {editingWebhookUserId === u.id ? (
-                          <div className="flex flex-col gap-1.5 min-w-[200px]">
-                            <input
-                              type="text"
-                              placeholder="Webhook WhatsApp"
-                              value={webhookWhatsappInput}
-                              onChange={(e) => setWebhookWhatsappInput(e.target.value)}
-                              className="h-7 px-2 rounded-md border border-slate-200 bg-white text-[10px] text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-violet-400/80"
-                            />
-                            <input
-                              type="text"
-                              placeholder="Webhook Email"
-                              value={webhookEmailInput}
-                              onChange={(e) => setWebhookEmailInput(e.target.value)}
-                              className="h-7 px-2 rounded-md border border-slate-200 bg-white text-[10px] text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-violet-400/80"
-                            />
-                            <div className="flex gap-1">
-                              <button
-                                type="button"
-                                onClick={() => handleSaveWebhooks(u.id)}
-                                disabled={savingUserSettingsId === u.id}
-                                className="px-2 py-0.5 rounded-md text-[10px] bg-emerald-500 text-white border border-emerald-600 hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed"
-                              >
-                                Salvar
-                              </button>
-                              <button
-                                type="button"
-                                onClick={handleCancelEditWebhooks}
-                                disabled={savingUserSettingsId === u.id}
-                                className="px-2 py-0.5 rounded-md text-[10px] bg-slate-100 text-slate-700 border border-slate-200 hover:bg-slate-200 disabled:opacity-50 disabled:cursor-not-allowed"
-                              >
-                                Cancelar
-                              </button>
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="flex flex-col gap-0.5">
-                            <div className="text-[10px] text-slate-600">
-                              <span className="font-medium">WhatsApp:</span>{' '}
-                              {u.webhookWhatsappUrl ? (
-                                <span className="text-slate-700 break-all">{u.webhookWhatsappUrl}</span>
-                              ) : (
-                                <span className="text-slate-400 italic">não configurado</span>
-                              )}
-                            </div>
-                            <div className="text-[10px] text-slate-600">
-                              <span className="font-medium">Email:</span>{' '}
-                              {u.webhookEmailUrl ? (
-                                <span className="text-slate-700 break-all">{u.webhookEmailUrl}</span>
-                              ) : (
-                                <span className="text-slate-400 italic">não configurado</span>
-                              )}
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => handleStartEditWebhooks(u)}
-                              className="mt-1 px-2 py-0.5 rounded-md text-[10px] bg-white text-slate-700 border border-slate-200 hover:bg-slate-100 self-start"
-                            >
-                              Editar webhooks
-                            </button>
-                          </div>
-                        )}
-                      </td>
+
                       <td className="px-2 py-1 align-top text-slate-700">
                         {onImpersonateUser && (
                           <button

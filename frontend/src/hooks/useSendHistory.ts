@@ -45,7 +45,6 @@ export function useSendHistory({ effectiveUserId }: UseSendHistoryOptions): UseS
                     channel: row.channel as 'whatsapp' | 'email',
                     ok: row.ok,
                     status: row.status || 0,
-                    webhookOk: row.webhook_ok ?? true,
                     runAt: row.run_at ? new Date(row.run_at).toLocaleString('pt-BR') : '',
                 }))
 

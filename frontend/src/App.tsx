@@ -159,8 +159,6 @@ function App() {
   type UserSettings = {
     use_global_ai: boolean
     ai_api_key: string | null
-    use_global_webhooks: boolean
-    webhook_email_url: string | null
     evolution_url: string | null
     evolution_apikey: string | null
     evolution_instance: string | null
@@ -170,7 +168,6 @@ function App() {
   type GlobalSettings = {
     id: string | number | null
     global_ai_api_key: string | null
-    global_webhook_email_url: string | null
     evolution_api_url: string | null
     evolution_api_key: string | null
     evolution_shared_instance: string | null
@@ -180,8 +177,7 @@ function App() {
   const [globalSettings, setGlobalSettings] = useState<GlobalSettings | null>(null)
 
   const handleSaveUserOverrides = async (overrides: {
-    aiApiKey: string | null
-    webhookEmailUrl?: string | null
+    aiApiKey?: string | null
     evolutionUrl?: string | null
     evolutionApiKey?: string | null
     evolutionInstance?: string | null
@@ -191,19 +187,16 @@ function App() {
 
     try {
       const nextUseGlobalAi = overrides.aiApiKey == null
-      const nextUseGlobalWebhooks = overrides.webhookEmailUrl === undefined
 
       const payload: any = {
         use_global_ai: nextUseGlobalAi,
         ai_api_key: overrides.aiApiKey,
       }
 
-      if (overrides.webhookEmailUrl !== undefined) payload.webhook_email_url = overrides.webhookEmailUrl
       if (overrides.evolutionUrl !== undefined) payload.evolution_url = overrides.evolutionUrl
       if (overrides.evolutionApiKey !== undefined) payload.evolution_apikey = overrides.evolutionApiKey
       if (overrides.evolutionInstance !== undefined) payload.evolution_instance = overrides.evolutionInstance
       if (overrides.companyInfo !== undefined) payload.company_info = overrides.companyInfo
-      if (!nextUseGlobalWebhooks) payload.use_global_webhooks = false
 
       await apiFetch('/api/profile', {
         method: 'PUT',
@@ -215,8 +208,7 @@ function App() {
           ? {
             ...prev,
             use_global_ai: nextUseGlobalAi,
-            ai_api_key: overrides.aiApiKey,
-            webhook_email_url: overrides.webhookEmailUrl !== undefined ? overrides.webhookEmailUrl : prev.webhook_email_url,
+            ai_api_key: overrides.aiApiKey !== undefined ? overrides.aiApiKey : prev.ai_api_key,
             evolution_url: overrides.evolutionUrl !== undefined ? overrides.evolutionUrl : prev.evolution_url,
             evolution_apikey: overrides.evolutionApiKey !== undefined ? overrides.evolutionApiKey : prev.evolution_apikey,
             evolution_instance: overrides.evolutionInstance !== undefined ? overrides.evolutionInstance : prev.evolution_instance,
@@ -233,7 +225,6 @@ function App() {
     try {
       const payload = {
         global_ai_api_key: geminiApiKey.trim() || null,
-        global_webhook_email_url: webhookUrlEmail.trim() || null,
         evolution_api_url: evolutionApiUrl.trim() || null,
         evolution_api_key: evolutionApiKey.trim() || null,
         evolution_shared_instance: evolutionInstance.trim() || null,
@@ -247,7 +238,6 @@ function App() {
       setGlobalSettings({
         id: data.id ?? null,
         global_ai_api_key: data.global_ai_api_key ?? null,
-        global_webhook_email_url: data.global_webhook_email_url ?? null,
         evolution_api_url: data.evolution_api_url ?? null,
         evolution_api_key: data.evolution_api_key ?? null,
         evolution_shared_instance: data.evolution_shared_instance ?? null,
@@ -309,8 +299,6 @@ function App() {
           setUserSettings({
             use_global_ai: data.use_global_ai ?? true,
             ai_api_key: data.ai_api_key ?? null,
-            use_global_webhooks: data.use_global_webhooks ?? true,
-            webhook_email_url: data.webhook_email_url ?? null,
             evolution_url: data.evolution_url ?? null,
             evolution_apikey: data.evolution_apikey ?? null,
             evolution_instance: data.evolution_instance ?? null,
@@ -341,14 +329,12 @@ function App() {
           setGlobalSettings({
             id: data.id ?? null,
             global_ai_api_key: data.global_ai_api_key ?? null,
-            global_webhook_email_url: data.global_webhook_email_url ?? null,
             evolution_api_url: data.evolution_api_url ?? null,
             evolution_api_key: data.evolution_api_key ?? null,
             evolution_shared_instance: data.evolution_shared_instance ?? null,
           })
 
           // Sincroniza estados locais se estiverem vazios
-          if (data.global_webhook_email_url) setWebhookUrlEmail(data.global_webhook_email_url)
           if (data.global_ai_api_key) setGeminiApiKey(data.global_ai_api_key)
           if (data.evolution_api_url) setEvolutionApiUrl(data.evolution_api_url)
           if (data.evolution_api_key) setEvolutionApiKey(data.evolution_api_key)
@@ -439,13 +425,6 @@ function App() {
   const userHasConfiguredAi =
     (useGlobalAi && !!globalAiKey) || (!useGlobalAi && !!userAiKey)
 
-  const [webhookUrlEmail, setWebhookUrlEmail] = useState<string>(() => {
-    try {
-      return localStorage.getItem('sendmessage_webhookUrl_email') ?? ''
-    } catch {
-      return ''
-    }
-  })
 
   const [evolutionApiUrl, setEvolutionApiUrl] = useState<string>(() => {
     try {
@@ -470,14 +449,6 @@ function App() {
       return ''
     }
   })
-
-  // Webhooks efetivos considerando configurações globais x por usuário
-  const globalWebhookEmail = globalSettings?.global_webhook_email_url || ''
-
-  // Prioridade: webhooks do perfil do usuário (configurados pelo admin) > webhooks globais > webhooks locais
-  const userWebhookEmail = userSettings?.webhook_email_url || null
-
-  const effectiveWebhookEmail = userWebhookEmail || globalWebhookEmail || webhookUrlEmail
 
   // Persistir configurações da Evolution no localStorage
   useEffect(() => {
@@ -839,8 +810,6 @@ function App() {
   const parseBackendResult = (result: any, response: Response) => {
     let backendOk: boolean
     let backendStatus: number
-    // webhookOk: sucesso da chamada HTTP + wrapper (sem olhar o status interno da mensagem)
-    let webhookOk: boolean = response.ok
 
     if (Array.isArray(result) && result.length > 0) {
       const item = result[0] as any
@@ -855,19 +824,11 @@ function App() {
         !hasExplicitError &&
         (typeof successFlag === 'boolean' ? successFlag === true : true)
 
-      // Webhook considerado ok se HTTP foi bem-sucedido
-      webhookOk = response.ok
-      // Sucesso real da mensagem sÃ³ quando o HTTP deu certo E o payload indica sucesso
       backendOk = response.ok && payloadOk
       backendStatus = backendOk ? 200 : 500
     } else if (result && typeof result.ok === 'boolean') {
-      // Formato { ok: boolean, status?: number, data?: any }
-      // Webhook considerado ok se HTTP foi bem-sucedido e wrapper ok === true
-      webhookOk = response.ok && Boolean(result.ok)
-
       let payloadOk = Boolean(result.ok)
 
-      // Se houver campo data com itens de webhook, inspeciona cada um
       const data = result.data
       if (Array.isArray(data) && data.length > 0) {
         for (const rawItem of data) {
@@ -896,23 +857,20 @@ function App() {
           : 200
         : 500
     } else {
-      webhookOk = response.ok
       backendOk = response.ok
       backendStatus = response.status || 0
     }
 
-    return { backendOk, backendStatus, webhookOk }
+    return { backendOk, backendStatus }
   }
-
   // FunÃ§Ã£o para salvar histÃ³rico de envio no backend
   const saveSendHistory = async (entry: {
     campaignId: string
     contactName: string
     phoneKey: string
-    channel: 'whatsapp' | 'email'
+    channel: CampaignChannel
     ok: boolean
     status?: number
-    webhookOk?: boolean
   }) => {
     if (!currentUser) return
 
@@ -926,7 +884,6 @@ function App() {
           channel: entry.channel,
           ok: entry.ok,
           status: entry.status,
-          webhook_ok: entry.webhookOk,
           run_at: new Date().toISOString(),
         })
       })
@@ -1179,7 +1136,7 @@ function App() {
 
     const hasEvolutionConfigured = (!!userSettings?.evolution_url || !!globalSettings?.evolution_api_url) && (!!userSettings?.evolution_instance || !!globalSettings?.evolution_shared_instance)
     const effectiveChannels: CampaignChannel[] = camp.channels.filter((ch) =>
-      ch === 'whatsapp' ? hasEvolutionConfigured : !!effectiveWebhookEmail.trim(),
+      ch === 'whatsapp' ? hasEvolutionConfigured : false,
     )
 
     // Filtra contatos que ainda nÃ£o receberam em TODOS os canais configurados
@@ -1219,7 +1176,7 @@ function App() {
 
     if (effectiveChannels.length === 0) {
       setLastMoveMessage(
-        'Nenhum webhook (global ou pessoal) está configurado para os canais desta campanha. Ajuste em Configurações ou em Meu perfil.',
+        'Nenhuma integração está configurada para os canais desta campanha. Ajuste em Configurações ou em Meu perfil.',
       )
       return
     }
@@ -1259,7 +1216,6 @@ function App() {
         if (channel === 'whatsapp' && !phoneKey) return
         if (channel === 'email' && !(contact.email ?? '').trim()) return
 
-        const targetEmailWebhookUrl = effectiveWebhookEmail.trim()
         const isEmailChannel = channel === 'email'
 
         const payload = {
@@ -1307,14 +1263,16 @@ function App() {
             // Melhor: Chamar o backend apenas uma vez no início.
           }
 
+          // We shouldn't loop sending if the backend endpoint loops!
+          // BUT since the loop exists, we temporarily skip if whatsapp and only hit once if possible:
           const response = await fetch(endpoint, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(channel === 'whatsapp' ? {} : { webhookUrl: targetEmailWebhookUrl, ...payload }),
+            body: JSON.stringify({ ...payload }),
           })
 
           const result = await response.json().catch(() => null as any)
-          const { backendOk, backendStatus, webhookOk } = parseBackendResult(result, response)
+          const { backendOk, backendStatus } = parseBackendResult(result, response)
 
           _lastBackendOk = backendOk
           _lastBackendStatus = backendStatus
@@ -1364,7 +1322,6 @@ function App() {
                 hour: '2-digit',
                 minute: '2-digit',
               }),
-              webhookOk,
               providerStatus,
               errorDetail,
               payloadRaw,
@@ -1381,7 +1338,6 @@ function App() {
             channel,
             ok: backendOk,
             status: backendStatus,
-            webhookOk,
           })
 
           if (!backendOk) {
@@ -1467,12 +1423,12 @@ function App() {
           (!!userSettings?.evolution_instance || !!globalSettings?.evolution_shared_instance)
         return hasEvolution
       }
-      return !!effectiveWebhookEmail.trim()
+      return false
     })
 
     if (effectiveChannels.length === 0) {
       setLastMoveMessage(
-        'Nenhum serviço de envio (Evolution API ou Email) está configurado. Ajuste em Configurações ou em Meu perfil.',
+        'Nenhum serviço de envio (Evolution API) está configurado. Ajuste em Configurações.',
       )
       return
     }
@@ -1487,8 +1443,6 @@ function App() {
       listName: list.name,
       totalContacts: contactsForList.length,
       effectiveChannels,
-      userWebhookEmail,
-      globalWebhookEmail,
     })
 
     let errorCount = 0
@@ -1522,7 +1476,6 @@ function App() {
           if (!email) return
         }
 
-        const targetWebhookUrl = effectiveWebhookEmail.trim()
         const isEmailChannel = channel === 'email'
 
         const payload = {
@@ -1558,20 +1511,17 @@ function App() {
         try {
           console.log('[DEBUG] Enviando para backend:', {
             backendUrl: BACKEND_URL,
-            endpoint: '/api/n8n/trigger',
-            fullUrl: `${BACKEND_URL}/api/n8n/trigger`,
-            targetWebhookUrl,
             channel,
             contactName: contact.name,
             contactPhone: contact.phone,
           })
 
-          const response = await fetch(`${BACKEND_URL}/api/n8n/trigger`, {
+          const response = await fetch(`${BACKEND_URL}/api/campaigns/${camp.id}/send`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
             },
-            body: JSON.stringify({ webhookUrl: targetWebhookUrl, ...payload }),
+            body: JSON.stringify({ ...payload }),
           })
 
           console.log('[DEBUG] Resposta do backend:', {
@@ -1584,7 +1534,7 @@ function App() {
 
           console.log('[DEBUG] Resultado parseado:', result)
 
-          const { backendOk, backendStatus, webhookOk } = parseBackendResult(result, response)
+          const { backendOk, backendStatus } = parseBackendResult(result, response)
 
           _lastBackendOk2 = backendOk
           _lastBackendStatus2 = backendStatus
@@ -1637,7 +1587,6 @@ function App() {
                 hour: '2-digit',
                 minute: '2-digit',
               }),
-              webhookOk,
               providerStatus,
               errorDetail,
               payloadRaw,
@@ -1656,20 +1605,19 @@ function App() {
               channel,
               ok: backendOk,
               status: backendStatus,
-              webhookOk,
             })
           }
 
           if (!backendOk) {
             console.error(
-              'Erro ao enviar contato da campanha para n8n:',
+              'Erro ao enviar contato da campanha:',
               { status: backendStatus, result },
             )
             errorCount += 1
             setSendingErrors((prev) => prev + 1)
           }
         } catch (error) {
-          console.error('Erro de rede ao enviar contato da campanha para n8n:', error)
+          console.error('Erro de rede ao enviar contato da campanha:', error)
           errorCount += 1
           setSendingErrors((prev) => prev + 1)
         }
@@ -1831,15 +1779,6 @@ function App() {
     }
   }, [campaigns])
 
-  // persist webhookUrlWhatsApp removed
-
-  useEffect(() => {
-    try {
-      localStorage.setItem('sendmessage_webhookUrl_email', webhookUrlEmail)
-    } catch {
-      // ignore
-    }
-  }, [webhookUrlEmail])
 
   // Normaliza contatos existentes na inicializaÃ§Ã£o:
   // - Remove duplicados por telefone normalizado em cada lista (mantÃ©m o primeiro)
@@ -2797,8 +2736,6 @@ function App() {
         await reloadContactSendHistory()
       }
 
-      // 8) Demais dados (webhooks, intervalos) continuam locais
-      if (d.webhookUrlEmail != null) setWebhookUrlEmail(d.webhookUrlEmail)
       if (d.sendIntervalMinSeconds != null) setSendIntervalMinSeconds(d.sendIntervalMinSeconds)
       if (d.sendIntervalMaxSeconds != null) setSendIntervalMaxSeconds(d.sendIntervalMaxSeconds)
 
@@ -2991,7 +2928,6 @@ function App() {
         campaigns,
         sendHistory,
         contactSendHistory,
-        webhookUrlEmail,
         sendIntervalMinSeconds,
         sendIntervalMaxSeconds,
       }
@@ -3213,7 +3149,6 @@ function App() {
                 sendingTotal={sendingTotal}
                 sendingErrors={sendingErrors}
                 hasEvolutionConfigured={(!!userSettings?.evolution_url || !!globalSettings?.evolution_api_url) && (!!userSettings?.evolution_instance || !!globalSettings?.evolution_shared_instance)}
-                webhookUrlEmail={effectiveWebhookEmail}
                 onNavigate={setCurrentPage}
                 onCreateCampaign={() => {
                   setCurrentPage('campaigns')
@@ -3330,7 +3265,6 @@ function App() {
                 sendingNextDelaySeconds={sendingNextDelaySeconds}
                 sendConfirmCampaignId={sendConfirmCampaignId}
                 hasEvolutionConfigured={(!!userSettings?.evolution_url || !!globalSettings?.evolution_api_url) && (!!userSettings?.evolution_instance || !!globalSettings?.evolution_shared_instance)}
-                webhookUrlEmail={effectiveWebhookEmail}
                 sendIntervalMinSeconds={sendIntervalMinSeconds}
                 sendIntervalMaxSeconds={sendIntervalMaxSeconds}
                 onChangeSendIntervalMinSeconds={setSendIntervalMinSeconds}
@@ -3382,10 +3316,7 @@ function App() {
                 onChangeUseGlobalAi={(val) => setUserSettings((prev: any) => ({ ...prev, use_global_ai: val }))}
                 onChangeUserAiKey={(val) => setUserSettings((prev: any) => ({ ...prev, ai_api_key: val }))}
                 onChangeUserCompanyInfo={(val) => setUserSettings((prev: any) => ({ ...prev, company_info: val }))}
-                useGlobalWebhooks={userSettings?.use_global_webhooks ?? true}
-                userWebhookEmail={userSettings?.webhook_email_url ?? ''}
-                onChangeUseGlobalWebhooks={(val) => setUserSettings((prev: any) => ({ ...prev, use_global_webhooks: val }))}
-                onChangeUserWebhookEmail={(val) => setUserSettings((prev: any) => ({ ...prev, webhook_email_url: val }))}
+
                 userEvolutionUrl={userSettings?.evolution_url ?? ''}
                 userEvolutionApiKey={userSettings?.evolution_apikey ?? ''}
                 userEvolutionInstance={userSettings?.evolution_instance ?? ''}
@@ -3396,8 +3327,7 @@ function App() {
               />
             ) : currentPage === 'settings' ? (
               <SettingsPage
-                webhookUrlEmail={webhookUrlEmail}
-                onChangeWebhookEmail={setWebhookUrlEmail}
+
                 evolutionApiUrl={evolutionApiUrl}
                 evolutionApiKey={evolutionApiKey}
                 evolutionInstance={evolutionInstance}

@@ -16,9 +16,8 @@ type DashboardPageProps = {
   sendingTotal: number
   sendingErrors: number
 
-  // Webhooks/APIs
+  // APIs
   hasEvolutionConfigured: boolean
-  webhookUrlEmail: string
 
   // Handlers
   onNavigate: (page: 'dashboard' | 'contacts' | 'campaigns' | 'settings') => void
@@ -41,7 +40,6 @@ export function DashboardPage({
   sendingTotal,
   sendingErrors,
   hasEvolutionConfigured,
-  webhookUrlEmail,
   onNavigate,
   onCreateCampaign,
   onEditCampaign,
@@ -131,12 +129,12 @@ export function DashboardPage({
         </div>
         <div
           className={`bg-white rounded-2xl border shadow-sm p-3 flex flex-col gap-1 ${recentSuccessRate == null
-              ? 'border-slate-100'
-              : recentSuccessRate >= 90
-                ? 'border-emerald-200'
-                : recentSuccessRate >= 70
-                  ? 'border-amber-200'
-                  : 'border-rose-200'
+            ? 'border-slate-100'
+            : recentSuccessRate >= 90
+              ? 'border-emerald-200'
+              : recentSuccessRate >= 70
+                ? 'border-amber-200'
+                : 'border-rose-200'
             }`}
         >
           <div className="flex items-center justify-between">
@@ -148,12 +146,12 @@ export function DashboardPage({
             </span>
             <span
               className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium ${recentSuccessRate == null
-                  ? 'bg-slate-500/10 text-slate-600'
-                  : recentSuccessRate >= 90
-                    ? 'bg-emerald-500/10 text-emerald-700'
-                    : recentSuccessRate >= 70
-                      ? 'bg-amber-500/10 text-amber-700'
-                      : 'bg-rose-500/10 text-rose-700'
+                ? 'bg-slate-500/10 text-slate-600'
+                : recentSuccessRate >= 90
+                  ? 'bg-emerald-500/10 text-emerald-700'
+                  : recentSuccessRate >= 70
+                    ? 'bg-amber-500/10 text-amber-700'
+                    : 'bg-rose-500/10 text-rose-700'
                 }`}
             >
               {recentSuccessRate == null
@@ -198,8 +196,8 @@ export function DashboardPage({
                   <div className="flex items-center gap-1.5 min-w-0">
                     <span
                       className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-medium border ${item.ok
-                          ? 'bg-emerald-50 text-emerald-700 border-emerald-100'
-                          : 'bg-rose-50 text-rose-700 border-rose-100'
+                        ? 'bg-emerald-50 text-emerald-700 border-emerald-100'
+                        : 'bg-rose-50 text-rose-700 border-rose-100'
                         }`}
                     >
                       {item.ok ? 'OK' : 'Erro'}
@@ -298,12 +296,12 @@ export function DashboardPage({
                   <div className="flex items-center gap-1.5">
                     <span
                       className={`px-1.5 py-0.5 rounded-full text-[9px] border ${camp.status === 'enviada'
-                          ? 'bg-emerald-50 text-emerald-700 border-emerald-100'
-                          : camp.status === 'enviada_com_erros'
-                            ? 'bg-amber-50 text-amber-700 border-amber-100'
-                            : camp.status === 'agendada'
-                              ? 'bg-sky-50 text-sky-700 border-sky-100'
-                              : 'bg-slate-50 text-slate-600 border-slate-200'
+                        ? 'bg-emerald-50 text-emerald-700 border-emerald-100'
+                        : camp.status === 'enviada_com_erros'
+                          ? 'bg-amber-50 text-amber-700 border-amber-100'
+                          : camp.status === 'agendada'
+                            ? 'bg-sky-50 text-sky-700 border-sky-100'
+                            : 'bg-slate-50 text-slate-600 border-slate-200'
                         }`}
                     >
                       {camp.status === 'enviada'
@@ -424,8 +422,8 @@ export function DashboardPage({
                   <span className="text-slate-300">Evolution API (WhatsApp)</span>
                   <span
                     className={`px-1.5 py-0.5 rounded-full border text-[9px] font-medium ${hasEvolutionConfigured
-                        ? 'bg-emerald-500/10 text-emerald-300 border-emerald-400/40'
-                        : 'bg-amber-500/10 text-amber-200 border-amber-400/40'
+                      ? 'bg-emerald-500/10 text-emerald-300 border-emerald-400/40'
+                      : 'bg-amber-500/10 text-amber-200 border-amber-400/40'
                       }`}
                   >
                     {hasEvolutionConfigured ? 'Ativo' : 'Não configurado'}
@@ -433,22 +431,6 @@ export function DashboardPage({
                 </div>
                 <span className="max-w-[150px] truncate text-slate-200 text-[9px] text-right">
                   {hasEvolutionConfigured ? 'Configurado' : '—'}
-                </span>
-              </div>
-              <div className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-1.5">
-                  <span className="text-slate-300">Webhook Email</span>
-                  <span
-                    className={`px-1.5 py-0.5 rounded-full border text-[9px] font-medium ${webhookUrlEmail
-                        ? 'bg-sky-500/10 text-sky-200 border-sky-400/40'
-                        : 'bg-amber-500/10 text-amber-200 border-amber-400/40'
-                      }`}
-                  >
-                    {webhookUrlEmail ? 'Ativo' : 'Não configurado'}
-                  </span>
-                </div>
-                <span className="max-w-[150px] truncate text-slate-200 text-[9px] text-right">
-                  {webhookUrlEmail || '—'}
                 </span>
               </div>
               <button
