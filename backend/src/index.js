@@ -994,6 +994,58 @@ app.delete('/api/admin/group-permissions', authenticateToken, async (req, res) =
   }
 });
 
-app.listen(port, '0.0.0.0', () => {
+
+// --- AUTO-MIGRATION: roda na inicialização para garantir schema atualizado ---
+async function runMigrations() {
+  const migrations = [
+    // app_settings: colunas de IA e intervalos
+    `ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS gemini_model TEXT DEFAULT 'gemini-1.5-flash-latest'`,
+    `ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS gemini_api_version TEXT DEFAULT 'v1'`,
+    `ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS gemini_temperature NUMERIC(3,2) DEFAULT 0.7`,
+    `ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS gemini_max_tokens INTEGER DEFAULT 1024`,
+    `ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS send_interval_min INTEGER DEFAULT 30`,
+    `ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS send_interval_max INTEGER DEFAULT 90`,
+    // user_profiles: colunas de IA, Evolution e intervalos
+    `ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS ai_api_key TEXT`,
+    `ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS evolution_url TEXT`,
+    `ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS evolution_apikey TEXT`,
+    `ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS evolution_instance TEXT`,
+    `ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS company_info TEXT`,
+    `ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS gemini_model TEXT DEFAULT 'gemini-1.5-flash-latest'`,
+    `ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS gemini_api_version TEXT DEFAULT 'v1'`,
+    `ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS gemini_temperature NUMERIC(3,2) DEFAULT 0.7`,
+    `ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS gemini_max_tokens INTEGER DEFAULT 1024`,
+    `ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS send_interval_min INTEGER DEFAULT 30`,
+    `ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS send_interval_max INTEGER DEFAULT 90`,
+    // app_settings: garantir que a tabela exista mesmo que nunca tenha sido criada
+    `CREATE TABLE IF NOT EXISTS app_settings (
+      id SERIAL PRIMARY KEY,
+      global_ai_api_key TEXT,
+      evolution_api_url TEXT,
+      evolution_api_key TEXT,
+      evolution_shared_instance TEXT,
+      gemini_model TEXT DEFAULT 'gemini-1.5-flash-latest',
+      gemini_api_version TEXT DEFAULT 'v1',
+      gemini_temperature NUMERIC(3,2) DEFAULT 0.7,
+      gemini_max_tokens INTEGER DEFAULT 1024,
+      send_interval_min INTEGER DEFAULT 30,
+      send_interval_max INTEGER DEFAULT 90,
+      updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    )`,
+  ];
+
+  for (const sql of migrations) {
+    try {
+      await query(sql);
+    } catch (e) {
+      console.warn('[Migration] Aviso ao executar:', sql.slice(0, 80), '|', e.message);
+    }
+  }
+
+  console.log('[Migration] Schema atualizado com sucesso.');
+}
+
+app.listen(port, '0.0.0.0', async () => {
   console.log(`Backend listening on port ${port} (all interfaces)`);
+  await runMigrations();
 });
