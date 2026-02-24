@@ -649,7 +649,15 @@ app.post('/api/campaigns/:id/send', authenticateToken, async (req, res) => {
 
     const normalizePhone = (phone) => {
       const digits = (phone || '').replace(/\D/g, '');
+      // Remove DDI 55 se presente para ter somente o número local (DDD + número)
       return digits.startsWith('55') ? digits.substring(2) : digits;
+    };
+
+    const toEvolutionNumber = (phone) => {
+      const local = normalizePhone(phone);
+      if (!local) return null;
+      // Formato esperado pela Evolution API: 55 + DDD + número (sem @s.whatsapp.net)
+      return `55${local}`;
     };
 
     const htmlToWhatsapp = (html) => {
@@ -687,58 +695,51 @@ app.post('/api/campaigns/:id/send', authenticateToken, async (req, res) => {
 
       for (const channel of effectiveChannels) {
         if (channel === 'whatsapp') {
-          const phone = normalizePhone(contact.phone);
-          if (!phone) continue;
+          const evolutionNumber = toEvolutionNumber(contact.phone);
+          if (!evolutionNumber) {
+            console.warn(`[Evolution] Contato sem telefone válido: ${contact.name}`);
+            continue;
+          }
 
-          // DISPARO DIRETO VIA EVOLUTION API
           if (evolutionUrl && evolutionInstance) {
             try {
               const fullUrl = `${evolutionUrl}/message/sendText/${evolutionInstance}`;
+              const bodyPayload = {
+                number: evolutionNumber,
+                text: htmlToWhatsapp(messageHtml),
+              };
+
+              console.log(`[Evolution] Enviando para ${evolutionNumber} (${contact.name}) | URL: ${fullUrl}`);
+
               const response = await fetch(fullUrl, {
                 method: 'POST',
                 headers: {
                   'Content-Type': 'application/json',
                   'apikey': evolutionApiKey
                 },
-                body: JSON.stringify({
-                  number: `55${phone}`, // Assume Brazil if not present
-                  text: htmlToWhatsapp(messageHtml),
-                  linkPreview: true
-                }),
+                body: JSON.stringify(bodyPayload),
               });
 
+              const responseText = await response.text();
+              console.log(`[Evolution] Resposta ${response.status} para ${evolutionNumber}:`, responseText.slice(0, 300));
+
               if (!response.ok) {
-                const errorData = await response.json().catch(() => ({}));
-                console.error(`[Evolution] Erro ao enviar para ${phone}:`, errorData);
+                console.error(`[Evolution] Erro ao enviar para ${evolutionNumber}:`, responseText);
                 errors++;
               }
             } catch (e) {
-              console.error(`[Evolution] Falha na requisição para ${phone}:`, e);
+              console.error(`[Evolution] Falha na requisição para ${evolutionNumber}:`, e.message);
               errors++;
             }
+          } else {
+            console.warn('[Evolution] URL ou instance não configurados. Pulando envio WhatsApp.');
           }
         }
 
         if (channel === 'email') {
-          const email = (contact.email || '').trim();
-          if (!email) continue;
-
-          // EMAIL CONTINUA VIA N8N POR ENQUANTO
-          try {
-            const backendBase = process.env.BACKEND_PUBLIC_URL || process.env.BACKEND_PUBLIC_URI || `http://localhost:${port}`;
-            await fetch(`${backendBase}/api/n8n/trigger`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                webhookUrl: webhookUrlEmail.trim(),
-                message: messageHtml,
-                contacts: [contact],
-                meta: { channel: 'email', campaignId: campaign.id, contactIndex, totalContacts: contacts.length }
-              }),
-            });
-          } catch (e) {
-            errors++;
-          }
+          // Email não está mais suportado sem integração externa.
+          // Ignorar silenciosamente para não causar erros desnecessários.
+          console.warn(`[Email] Canal email não suportado nesta versão. Contato: ${contact.name}`);
         }
       }
 
