@@ -484,8 +484,7 @@ app.post('/api/settings', authenticateToken, async (req, res) => {
           gemini_temperature = $7,
           gemini_max_tokens = $8,
           send_interval_min = $9,
-          send_interval_max = $10,
-          updated_at = CURRENT_TIMESTAMP 
+          send_interval_max = $10
          RETURNING *`,
         [global_ai_api_key, evolution_api_url, evolution_api_key, evolution_shared_instance,
           gemini_model, gemini_api_version, gemini_temperature, gemini_max_tokens,
@@ -507,7 +506,7 @@ app.post('/api/settings', authenticateToken, async (req, res) => {
     res.json(result.rows[0]);
   } catch (error) {
     console.error('Erro ao salvar configurações globais:', error);
-    res.status(500).json({ error: 'Erro ao salvar configurações globais' });
+    res.status(500).json({ error: 'Erro ao salvar configurações globais', details: error.message });
   }
 });
 
@@ -1019,6 +1018,11 @@ async function runMigrations() {
     `ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS gemini_max_tokens INTEGER DEFAULT 1024`,
     `ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS send_interval_min INTEGER DEFAULT 30`,
     `ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS send_interval_max INTEGER DEFAULT 90`,
+    `ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP`,
+    `ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS global_ai_api_key TEXT`,
+    `ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS evolution_api_url TEXT`,
+    `ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS evolution_api_key TEXT`,
+    `ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS evolution_shared_instance TEXT`,
     // user_profiles: colunas de IA, Evolution e intervalos
     `ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS ai_api_key TEXT`,
     `ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS evolution_url TEXT`,
