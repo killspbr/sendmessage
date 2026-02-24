@@ -228,6 +228,12 @@ function App() {
         evolution_api_url: evolutionApiUrl.trim() || null,
         evolution_api_key: evolutionApiKey.trim() || null,
         evolution_shared_instance: evolutionInstance.trim() || null,
+        gemini_model: geminiModel || null,
+        gemini_api_version: geminiApiVersion || null,
+        gemini_temperature: geminiTemperature,
+        gemini_max_tokens: geminiMaxTokens,
+        send_interval_min: sendIntervalMinSeconds,
+        send_interval_max: sendIntervalMaxSeconds,
       }
 
       const data = await apiFetch('/api/settings', {
@@ -319,7 +325,7 @@ function App() {
     }
   }, [effectiveUserId])
 
-  // Carrega configurações globais de integração (webhooks / IA) de app_settings
+  // Carrega configurações globais de integração (IA / Evolution) de app_settings
   useEffect(() => {
     const loadGlobalSettings = async () => {
       try {
@@ -334,11 +340,17 @@ function App() {
             evolution_shared_instance: data.evolution_shared_instance ?? null,
           })
 
-          // Sincroniza estados locais se estiverem vazios
+          // Popula estados locais com valores do servidor
           if (data.global_ai_api_key) setGeminiApiKey(data.global_ai_api_key)
           if (data.evolution_api_url) setEvolutionApiUrl(data.evolution_api_url)
           if (data.evolution_api_key) setEvolutionApiKey(data.evolution_api_key)
           if (data.evolution_shared_instance) setEvolutionInstance(data.evolution_shared_instance)
+          if (data.gemini_model) setGeminiModel(data.gemini_model)
+          if (data.gemini_api_version) setGeminiApiVersion(data.gemini_api_version)
+          if (data.gemini_temperature != null) setGeminiTemperature(Number(data.gemini_temperature))
+          if (data.gemini_max_tokens != null) setGeminiMaxTokens(Number(data.gemini_max_tokens))
+          if (data.send_interval_min != null) setSendIntervalMinSeconds(Number(data.send_interval_min))
+          if (data.send_interval_max != null) setSendIntervalMaxSeconds(Number(data.send_interval_max))
         } else {
           setGlobalSettings(null)
         }
@@ -361,52 +373,11 @@ function App() {
 
   const { lists, currentListId, setCurrentListId, reloadLists, setLists } = useLists({ effectiveUserId })
 
-  const [geminiApiKey, setGeminiApiKey] = useState<string>(() => {
-    try {
-      return localStorage.getItem('sendmessage_geminiApiKey') || ''
-    } catch (e) {
-      logError('gemini.loadApiKey', 'Erro ao ler Gemini API Key do localStorage', e)
-      return ''
-    }
-  })
-
-  const [geminiModel, setGeminiModel] = useState<string>(() => {
-    try {
-      return localStorage.getItem('sendmessage_geminiModel') || 'gemini-1.5-flash-latest'
-    } catch {
-      return 'gemini-1.5-flash-latest'
-    }
-  })
-
-  const [geminiApiVersion, setGeminiApiVersion] = useState<string>(() => {
-    try {
-      return localStorage.getItem('sendmessage_geminiApiVersion') || 'v1'
-    } catch {
-      return 'v1'
-    }
-  })
-
-  const [geminiTemperature, setGeminiTemperature] = useState<number>(() => {
-    try {
-      const stored = localStorage.getItem('sendmessage_geminiTemperature')
-      if (stored) {
-        const val = parseFloat(stored)
-        if (!isNaN(val) && val >= 0 && val <= 1) return val
-      }
-    } catch { }
-    return 0.7
-  })
-
-  const [geminiMaxTokens, setGeminiMaxTokens] = useState<number>(() => {
-    try {
-      const stored = localStorage.getItem('sendmessage_geminiMaxTokens')
-      if (stored) {
-        const val = parseInt(stored, 10)
-        if (!isNaN(val) && val > 0) return val
-      }
-    } catch { }
-    return 1024
-  })
+  const [geminiApiKey, setGeminiApiKey] = useState<string>('')
+  const [geminiModel, setGeminiModel] = useState<string>('gemini-1.5-flash-latest')
+  const [geminiApiVersion, setGeminiApiVersion] = useState<string>('v1')
+  const [geminiTemperature, setGeminiTemperature] = useState<number>(0.7)
+  const [geminiMaxTokens, setGeminiMaxTokens] = useState<number>(1024)
 
   // IA efetiva considerando configurações globais x por usuário
   const globalAiKey = globalSettings?.global_ai_api_key || geminiApiKey || ''
@@ -426,48 +397,11 @@ function App() {
     (useGlobalAi && !!globalAiKey) || (!useGlobalAi && !!userAiKey)
 
 
-  const [evolutionApiUrl, setEvolutionApiUrl] = useState<string>(() => {
-    try {
-      return localStorage.getItem('sendmessage_evolution_api_url') ?? ''
-    } catch {
-      return ''
-    }
-  })
+  const [evolutionApiUrl, setEvolutionApiUrl] = useState<string>('')
+  const [evolutionApiKey, setEvolutionApiKey] = useState<string>('')
+  const [evolutionInstance, setEvolutionInstance] = useState<string>('')
 
-  const [evolutionApiKey, setEvolutionApiKey] = useState<string>(() => {
-    try {
-      return localStorage.getItem('sendmessage_evolution_api_key') ?? ''
-    } catch {
-      return ''
-    }
-  })
-
-  const [evolutionInstance, setEvolutionInstance] = useState<string>(() => {
-    try {
-      return localStorage.getItem('sendmessage_evolution_instance') ?? ''
-    } catch {
-      return ''
-    }
-  })
-
-  // Persistir configurações da Evolution no localStorage
-  useEffect(() => {
-    try {
-      localStorage.setItem('sendmessage_evolution_api_url', evolutionApiUrl)
-      localStorage.setItem('sendmessage_evolution_api_key', evolutionApiKey)
-      localStorage.setItem('sendmessage_evolution_instance', evolutionInstance)
-    } catch { }
-  }, [evolutionApiUrl, evolutionApiKey, evolutionInstance])
-
-  // Persistir configuraÃ§Ãµes do Gemini no localStorage
-  useEffect(() => {
-    try {
-      localStorage.setItem('sendmessage_geminiModel', geminiModel)
-      localStorage.setItem('sendmessage_geminiApiVersion', geminiApiVersion)
-      localStorage.setItem('sendmessage_geminiTemperature', String(geminiTemperature))
-      localStorage.setItem('sendmessage_geminiMaxTokens', String(geminiMaxTokens))
-    } catch { }
-  }, [geminiModel, geminiApiVersion, geminiTemperature, geminiMaxTokens])
+  // debugEnabled pode ficar local (preferência de UI por máquina)
   const [debugEnabled, setDebugEnabled] = useState<boolean>(() => {
     try {
       return localStorage.getItem('sendmessage_debugEnabled') === 'true'
@@ -530,33 +464,8 @@ function App() {
   const [sendingErrors, setSendingErrors] = useState<number>(0)
   const [sendingNextDelaySeconds, setSendingNextDelaySeconds] = useState<number | null>(null)
 
-  const [sendIntervalMinSeconds, setSendIntervalMinSeconds] = useState<number>(() => {
-    try {
-      const stored = localStorage.getItem('sendmessage_sendIntervalMin')
-      if (stored != null) {
-        const value = Number(stored)
-        if (!Number.isNaN(value) && value >= 0) return value
-      }
-    } catch (e) {
-      logError('sendInterval.loadMin', 'Erro ao ler intervalo mínimo do localStorage', e)
-    }
-    // Padrão global: 30 segundos
-    return 30
-  })
-
-  const [sendIntervalMaxSeconds, setSendIntervalMaxSeconds] = useState<number>(() => {
-    try {
-      const stored = localStorage.getItem('sendmessage_sendIntervalMax')
-      if (stored != null) {
-        const value = Number(stored)
-        if (!Number.isNaN(value) && value >= 0) return value
-      }
-    } catch (e) {
-      logError('sendInterval.loadMax', 'Erro ao ler intervalo máximo do localStorage', e)
-    }
-    // Padrão global: 90 segundos
-    return 90
-  })
+  const [sendIntervalMinSeconds, setSendIntervalMinSeconds] = useState<number>(30)
+  const [sendIntervalMaxSeconds, setSendIntervalMaxSeconds] = useState<number>(90)
 
   const {
     sendHistory,
@@ -568,36 +477,6 @@ function App() {
     reloadContactSendHistory,
   } = useSendHistory({ effectiveUserId })
 
-  useEffect(() => {
-    try {
-      localStorage.setItem('sendmessage_sendIntervalMin', String(sendIntervalMinSeconds))
-      localStorage.setItem('sendmessage_sendIntervalMax', String(sendIntervalMaxSeconds))
-    } catch (e) {
-      logError('sendInterval.save', 'Erro ao salvar intervalos de envio no localStorage', e)
-    }
-  }, [sendIntervalMinSeconds, sendIntervalMaxSeconds])
-
-  useEffect(() => {
-    try {
-      localStorage.setItem('sendmessage_currentPage', currentPage)
-    } catch (e) {
-      logError('ui.saveCurrentPage', 'Erro ao salvar página atual no localStorage', e)
-    }
-  }, [currentPage])
-
-  // Carregamento de campanhas agora é feito pelo hook useCampaignsWithSupabase
-
-  useEffect(() => {
-    try {
-      if (geminiApiKey) {
-        localStorage.setItem('sendmessage_geminiApiKey', geminiApiKey)
-      } else {
-        localStorage.removeItem('sendmessage_geminiApiKey')
-      }
-    } catch (e) {
-      logError('gemini.saveApiKey', 'Erro ao salvar Gemini API Key no localStorage', e)
-    }
-  }, [geminiApiKey])
 
   useEffect(() => {
     if (!sendingCampaignId || sendingNextDelaySeconds == null || sendingNextDelaySeconds <= 0) return

@@ -99,15 +99,18 @@ app.post('/api/profile', authenticateToken, async (req, res) => {
 app.put('/api/profile', authenticateToken, async (req, res) => {
   try {
     const {
-      webhook_whatsapp_url,
-      webhook_email_url,
       use_global_ai,
       ai_api_key,
-      use_global_webhooks,
       evolution_url,
       evolution_apikey,
       evolution_instance,
-      company_info
+      company_info,
+      gemini_model,
+      gemini_api_version,
+      gemini_temperature,
+      gemini_max_tokens,
+      send_interval_min,
+      send_interval_max,
     } = req.body;
 
     const fields = [];
@@ -115,54 +118,27 @@ app.put('/api/profile', authenticateToken, async (req, res) => {
     let setClause = '';
     let count = 1;
 
-    if (webhook_whatsapp_url !== undefined) {
-      fields.push('webhook_whatsapp_url');
-      values.push(webhook_whatsapp_url);
-      setClause += `webhook_whatsapp_url = $${count++}, `;
-    }
-    if (webhook_email_url !== undefined) {
-      fields.push('webhook_email_url');
-      values.push(webhook_email_url);
-      setClause += `webhook_email_url = $${count++}, `;
-    }
-    if (use_global_ai !== undefined) {
-      fields.push('use_global_ai');
-      values.push(use_global_ai);
-      setClause += `use_global_ai = $${count++}, `;
-    }
-    if (ai_api_key !== undefined) {
-      fields.push('ai_api_key');
-      values.push(ai_api_key);
-      setClause += `ai_api_key = $${count++}, `;
-    }
-    if (use_global_webhooks !== undefined) {
-      fields.push('use_global_webhooks');
-      values.push(use_global_webhooks);
-      setClause += `use_global_webhooks = $${count++}, `;
-    }
+    const addField = (col, val) => {
+      if (val !== undefined) {
+        setClause += `${col} = $${count++}, `;
+        values.push(val);
+      }
+    };
 
-    if (evolution_url !== undefined) {
-      fields.push('evolution_url');
-      values.push(evolution_url);
-      setClause += `evolution_url = $${count++}, `;
-    }
-    if (evolution_apikey !== undefined) {
-      fields.push('evolution_apikey');
-      values.push(evolution_apikey);
-      setClause += `evolution_apikey = $${count++}, `;
-    }
-    if (evolution_instance !== undefined) {
-      fields.push('evolution_instance');
-      values.push(evolution_instance);
-      setClause += `evolution_instance = $${count++}, `;
-    }
-    if (company_info !== undefined) {
-      fields.push('company_info');
-      values.push(company_info);
-      setClause += `company_info = $${count++}, `;
-    }
+    addField('use_global_ai', use_global_ai);
+    addField('ai_api_key', ai_api_key);
+    addField('evolution_url', evolution_url);
+    addField('evolution_apikey', evolution_apikey);
+    addField('evolution_instance', evolution_instance);
+    addField('company_info', company_info);
+    addField('gemini_model', gemini_model);
+    addField('gemini_api_version', gemini_api_version);
+    addField('gemini_temperature', gemini_temperature);
+    addField('gemini_max_tokens', gemini_max_tokens);
+    addField('send_interval_min', send_interval_min);
+    addField('send_interval_max', send_interval_max);
 
-    if (fields.length === 0) return res.status(400).json({ error: 'Nenhum campo para atualizar' });
+    if (count === 1) return res.status(400).json({ error: 'Nenhum campo para atualizar' });
 
     setClause = setClause.slice(0, -2);
     values.push(req.user.id);
@@ -173,6 +149,7 @@ app.put('/api/profile', authenticateToken, async (req, res) => {
     );
     res.json({ ok: true });
   } catch (error) {
+    console.error('Erro ao atualizar perfil:', error);
     res.status(500).json({ error: 'Erro ao atualizar perfil' });
   }
 });
@@ -481,10 +458,15 @@ app.post('/api/settings', authenticateToken, async (req, res) => {
   try {
     const {
       global_ai_api_key,
-      global_webhook_email_url,
       evolution_api_url,
       evolution_api_key,
-      evolution_shared_instance
+      evolution_shared_instance,
+      gemini_model,
+      gemini_api_version,
+      gemini_temperature,
+      gemini_max_tokens,
+      send_interval_min,
+      send_interval_max,
     } = req.body;
 
     const check = await query('SELECT id FROM app_settings LIMIT 1');
@@ -494,24 +476,37 @@ app.post('/api/settings', authenticateToken, async (req, res) => {
       result = await query(
         `UPDATE app_settings SET 
           global_ai_api_key = $1, 
-          global_webhook_email_url = $2,
-          evolution_api_url = $3,
-          evolution_api_key = $4,
-          evolution_shared_instance = $5,
+          evolution_api_url = $2,
+          evolution_api_key = $3,
+          evolution_shared_instance = $4,
+          gemini_model = $5,
+          gemini_api_version = $6,
+          gemini_temperature = $7,
+          gemini_max_tokens = $8,
+          send_interval_min = $9,
+          send_interval_max = $10,
           updated_at = CURRENT_TIMESTAMP 
          RETURNING *`,
-        [global_ai_api_key, global_webhook_email_url, evolution_api_url, evolution_api_key, evolution_shared_instance]
+        [global_ai_api_key, evolution_api_url, evolution_api_key, evolution_shared_instance,
+          gemini_model, gemini_api_version, gemini_temperature, gemini_max_tokens,
+          send_interval_min, send_interval_max]
       );
     } else {
       result = await query(
-        `INSERT INTO app_settings (global_ai_api_key, global_webhook_email_url, evolution_api_url, evolution_api_key, evolution_shared_instance) 
-         VALUES ($1, $2, $3, $4, $5) RETURNING *`,
-        [global_ai_api_key, global_webhook_email_url, evolution_api_url, evolution_api_key, evolution_shared_instance]
+        `INSERT INTO app_settings 
+          (global_ai_api_key, evolution_api_url, evolution_api_key, evolution_shared_instance,
+           gemini_model, gemini_api_version, gemini_temperature, gemini_max_tokens,
+           send_interval_min, send_interval_max) 
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
+        [global_ai_api_key, evolution_api_url, evolution_api_key, evolution_shared_instance,
+          gemini_model, gemini_api_version, gemini_temperature, gemini_max_tokens,
+          send_interval_min, send_interval_max]
       );
     }
 
     res.json(result.rows[0]);
   } catch (error) {
+    console.error('Erro ao salvar configurações globais:', error);
     res.status(500).json({ error: 'Erro ao salvar configurações globais' });
   }
 });
