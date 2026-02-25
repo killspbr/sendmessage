@@ -23,16 +23,21 @@
             sendResponse({ ok: true })
         }
         if (msg.action === 'openSidebar') {
-            config = msg.config || config
-            openSidebar()
-            sendResponse({ ok: true })
+            if (msg.config?.backendUrl) {
+                config = msg.config
+                openSidebar()
+                sendResponse({ ok: true })
+            } else {
+                // Fallback: busca do storage se o popup não passou a config
+                chrome.storage.sync.get(['smBackendUrl', 'smAuthToken'], (data) => {
+                    config = { backendUrl: data.smBackendUrl || '', authToken: data.smAuthToken || '' }
+                    openSidebar()
+                })
+                sendResponse({ ok: true })
+            }
         }
         if (msg.action === 'closeSidebar') {
             closeSidebar()
-            sendResponse({ ok: true })
-        }
-        if (msg.action === 'updateConfig') {
-            config = msg.config
             sendResponse({ ok: true })
         }
         return true
