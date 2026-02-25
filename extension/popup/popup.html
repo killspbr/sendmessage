@@ -3,7 +3,7 @@
 
 <head>
   <meta charset="UTF-8" />
-  <title>SendMessage Extractor</title>
+  <title>SM Extractor</title>
   <style>
     * {
       box-sizing: border-box;
@@ -12,7 +12,7 @@
     }
 
     body {
-      width: 320px;
+      width: 300px;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
       background: #f8fafc;
       color: #1e293b;
@@ -79,9 +79,6 @@
       letter-spacing: .5px;
       color: #64748b;
       margin-bottom: 10px;
-      display: flex;
-      align-items: center;
-      gap: 6px;
     }
 
     .field {
@@ -117,13 +114,7 @@
     .field .hint {
       font-size: 10px;
       color: #94a3b8;
-    }
-
-    .field .hint code {
-      background: #f1f5f9;
-      padding: 1px 4px;
-      border-radius: 4px;
-      font-size: 10px;
+      line-height: 1.4;
     }
 
     .btn {
@@ -148,17 +139,6 @@
 
     .btn-primary:hover {
       background: #047857;
-      transform: translateY(-1px);
-    }
-
-    .btn-secondary {
-      background: #f1f5f9;
-      color: #475569;
-      margin-top: 6px;
-    }
-
-    .btn-secondary:hover {
-      background: #e2e8f0;
     }
 
     .btn-open {
@@ -184,12 +164,6 @@
       box-shadow: 0 6px 20px rgba(5, 150, 105, .45);
     }
 
-    .btn-open:disabled {
-      opacity: .5;
-      cursor: not-allowed;
-      transform: none;
-    }
-
     .not-maps {
       padding: 20px 16px;
       text-align: center;
@@ -202,7 +176,6 @@
 
     .not-maps .title {
       font-weight: 700;
-      color: #1e293b;
       margin-bottom: 4px;
     }
 
@@ -222,10 +195,6 @@
       border: 1.5px solid #059669;
       padding: 6px 14px;
       border-radius: 8px;
-    }
-
-    .not-maps a:hover {
-      background: #ecfdf5;
     }
 
     .toast {
@@ -260,8 +229,6 @@
 </head>
 
 <body>
-
-  <!-- Header -->
   <div class="header">
     <div>
       <div class="header-title">🗺️ SM Extractor</div>
@@ -269,54 +236,41 @@
     </div>
   </div>
 
-  <!-- Status -->
   <div class="status-bar">
     <div class="dot" id="statusDot"></div>
     <span id="statusText">Verificando...</span>
   </div>
 
-  <!-- Config section -->
+  <!-- Token config -->
   <div class="section">
-    <div class="section-title">⚙️ Configurações</div>
+    <div class="section-title">🔑 Autenticação</div>
 
     <div class="field">
-      <label>URL do Backend</label>
-      <input type="text" id="backendUrl" placeholder="https://seu-backend.easypanel.host" />
-      <span class="hint">Ex: <code>https://clrodrigues-sendmessage-backend.rsybpi.easypanel.host</code></span>
-    </div>
-
-    <div class="field">
-      <label>Token de autenticação</label>
-      <input type="password" id="authToken" placeholder="ey..." />
+      <label>Token de acesso</label>
+      <input type="password" id="authToken" placeholder="Cole o token copiado do perfil..." />
       <span class="hint">
-        No SendMessage: F12 → Console → <code>localStorage.getItem('auth_token')</code>
+        No SendMessage: <strong>Perfil</strong> → <strong>📋 Copiar Token</strong>
       </span>
     </div>
 
     <button class="btn btn-primary" id="btnSave">💾 Salvar</button>
   </div>
 
-  <!-- Open sidebar button (only when on Maps) -->
+  <!-- Open sidebar (só aparece no Maps) -->
   <div id="onMapsArea" style="display:none;">
-    <button class="btn-open" id="btnOpenPanel">
-      🚀 Abrir Painel Lateral
-    </button>
-    <div class="footer-note">
-      O painel abre na direita do Google Maps com log em tempo real,<br>
-      extração automática e importação direta.
-    </div>
+    <button class="btn-open" id="btnOpenPanel">🚀 Abrir Painel Lateral</button>
+    <div class="footer-note">O painel abre à direita do Maps com extração e importação automáticas.</div>
   </div>
 
-  <!-- Not on maps -->
+  <!-- Not on Maps -->
   <div class="not-maps" id="notMapsArea" style="display:none;">
     <div class="emoji">🗺️</div>
     <div class="title">Abra o Google Maps</div>
-    <div class="desc">Pesquise por um tipo de negócio e região, depois clique em "Abrir Painel Lateral".</div>
+    <div class="desc">Pesquise por tipo de negócio e região, depois clique em "Abrir Painel Lateral".</div>
     <a href="https://www.google.com/maps" target="_blank">Abrir Google Maps →</a>
   </div>
 
   <div class="toast" id="toast"></div>
-
   <script src="popup.js"></script>
 </body>
 

@@ -1,3 +1,5 @@
+import React from 'react'
+
 type UserSettingsPageProps = {
   effectiveUserId: string | null
   useGlobalAi: boolean
@@ -39,6 +41,17 @@ export function UserSettingsPage({
   onChangeUserEvolutionInstance,
   onSave,
 }: UserSettingsPageProps) {
+  const [tokenCopied, setTokenCopied] = React.useState(false)
+
+  const copyToken = () => {
+    const token = localStorage.getItem('auth_token') || ''
+    if (!token) return
+    navigator.clipboard.writeText(token).then(() => {
+      setTokenCopied(true)
+      setTimeout(() => setTokenCopied(false), 2500)
+    })
+  }
+
   const handleSave = async () => {
     await onSave({
       aiApiKey: useGlobalAi ? null : userAiKey,
@@ -159,6 +172,44 @@ export function UserSettingsPage({
               Esses dados serão usados pela IA do Gemini para gerar textos mais personalizados e alinhados com o seu perfil.
             </p>
           </div>
+        </div>
+      </div>
+
+      {/* Token da Extensão Chrome */}
+      <div className="space-y-3">
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-lg bg-green-100 flex items-center justify-center text-green-600 text-base">🗺️</div>
+          <div>
+            <h2 className="text-lg font-bold text-slate-800 tracking-tight">Extensão Chrome — Maps Extractor</h2>
+            <p className="text-xs text-slate-500 font-medium">Cole este token na extensão para conectá-la ao SendMessage.</p>
+          </div>
+        </div>
+
+        <div className="p-4 rounded-2xl bg-slate-50 border border-slate-100 flex items-center gap-3">
+          <div className="flex-1 min-w-0">
+            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">Seu Token de Acesso</p>
+            <p className="text-xs font-mono text-slate-600 truncate">
+              {localStorage.getItem('auth_token')
+                ? `${(localStorage.getItem('auth_token') || '').substring(0, 40)}...`
+                : 'Faça login novamente para gerar o token'}
+            </p>
+          </div>
+          <button
+            onClick={copyToken}
+            disabled={!localStorage.getItem('auth_token')}
+            className={`flex-shrink-0 h-9 px-4 rounded-xl text-xs font-bold transition-all ${tokenCopied
+              ? 'bg-emerald-500 text-white'
+              : 'bg-slate-900 hover:bg-slate-700 text-white'
+              }`}
+          >
+            {tokenCopied ? '✅ Copiado!' : '📋 Copiar Token'}
+          </button>
+        </div>
+
+        <div className="text-[10px] text-slate-400 px-1 space-y-0.5">
+          <p>1. Instale a extensão no Chrome (pasta <code className="bg-slate-100 px-1 rounded">extension/</code> do projeto)</p>
+          <p>2. Clique no ícone 🗺️ → cole o token → Salvar</p>
+          <p>3. Abra o Google Maps → clique em "Abrir Painel Lateral" → Iniciar Extração</p>
         </div>
       </div>
 
