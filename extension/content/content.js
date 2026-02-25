@@ -28,12 +28,26 @@
                 openSidebar()
                 sendResponse({ ok: true })
             } else {
-                // Fallback: busca do storage se o popup não passou a config
-                chrome.storage.sync.get(['smBackendUrl', 'smAuthToken'], (data) => {
-                    config = { backendUrl: data.smBackendUrl || '', authToken: data.smAuthToken || '' }
+                // Fallback — tenta localStorage (mesmo scope do popup)
+                const fromLocal = {
+                    backendUrl: localStorage.getItem('sm_backendUrl') || '',
+                    authToken: localStorage.getItem('sm_authToken') || '',
+                }
+                // Se não tiver no localStorage, tenta chrome.storage.local
+                if (fromLocal.backendUrl) {
+                    config = fromLocal
                     openSidebar()
-                })
-                sendResponse({ ok: true })
+                    sendResponse({ ok: true })
+                } else {
+                    chrome.storage.local.get(['sm_backendUrl', 'sm_authToken'], (data) => {
+                        config = {
+                            backendUrl: data.sm_backendUrl || '',
+                            authToken: data.sm_authToken || '',
+                        }
+                        openSidebar()
+                    })
+                    sendResponse({ ok: true })
+                }
             }
         }
         if (msg.action === 'closeSidebar') {

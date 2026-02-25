@@ -1,24 +1,47 @@
+// ─── Dual-layer storage (localStorage + chrome.storage.local) ────────────────
+// localStorage funciona SEMPRE em contexto de extensão Chrome.
+// chrome.storage.local é usado como backup extra.
+
+function storageSave(key, value) {
+    try { localStorage.setItem(key, value) } catch (_) { }
+    try { chrome.storage.local.set({ [key]: value }) } catch (_) { }
+}
+
+function storageGet(key) {
+    // Primeiro tenta localStorage (mais confiável no popup)
+    const local = localStorage.getItem(key)
+    if (local) return Promise.resolve(local)
+    // Fallback para chrome.storage.local
+    return new Promise((resolve) => {
+        try {
+            chrome.storage.local.get([key], (data) => {
+                resolve(data[key] || '')
+            })
+        } catch (_) {
+            resolve('')
+        }
+    })
+}
+
 // ─── Init ─────────────────────────────────────────────────────────────────────
-document.addEventListener('DOMContentLoaded', () => {
-    loadConfig()
+document.addEventListener('DOMContentLoaded', async () => {
+    await loadConfig()
     checkCurrentTab()
 })
 
-// ─── Config — usa chrome.storage.sync (persiste entre sessões) ─────────────────
-function loadConfig() {
-    chrome.storage.sync.get(['smBackendUrl', 'smAuthToken'], (data) => {
-        if (chrome.runtime.lastError) {
-            console.error('[SM] Erro ao carregar config:', chrome.runtime.lastError)
-            return
-        }
-        if (data.smBackendUrl) {
-            document.getElementById('backendUrl').value = data.smBackendUrl
-        }
-        if (data.smAuthToken) {
-            document.getElementById('authToken').value = data.smAuthToken
-        }
-        updateSaveStatus(data.smBackendUrl, data.smAuthToken)
-    })
+// ─── Config ───────────────────────────────────────────────────────────────────
+async function loadConfig() {
+    const backendUrl = await storageGet('sm_backendUrl')
+    const authToken = await storageGet('sm_authToken')
+
+    if (backendUrl) document.getElementById('backendUrl').value = backendUrl
+    if (authToken) document.getElementById('authToken').value = authToken
+
+    if (backendUrl && authToken) {
+        const btn = document.getElementById('btnSave')
+        btn.textContent = '✅ Configurado'
+        btn.style.background = '#059669'
+    }
 }
 
 function saveConfig() {
@@ -28,33 +51,21 @@ function saveConfig() {
     if (!backendUrl) { showToast('⚠️ Informe a URL do backend'); return }
     if (!authToken) { showToast('⚠️ Informe o token'); return }
 
-    // Salva com callback explícito para garantir que funcionou
-    chrome.storage.sync.set({ smBackendUrl: backendUrl, smAuthToken: authToken }, () => {
-        if (chrome.runtime.lastError) {
-            console.error('[SM] Erro ao salvar:', chrome.runtime.lastError)
-            showToast('❌ Erro ao salvar: ' + chrome.runtime.lastError.message)
-            return
-        }
-        // Verifica que realmente salvou
-        chrome.storage.sync.get(['smBackendUrl', 'smAuthToken'], (check) => {
-            if (check.smBackendUrl === backendUrl) {
-                showToast('✅ Salvo! Pode fechar e reabrir para confirmar.')
-                updateSaveStatus(backendUrl, authToken)
-            } else {
-                showToast('❌ Falha ao persistir. Tente recarregar a extensão.')
-            }
-        })
-    })
-}
+    // Salva em ambas as camadas
+    storageSave('sm_backendUrl', backendUrl)
+    storageSave('sm_authToken', authToken)
 
-function updateSaveStatus(url, token) {
-    const btn = document.getElementById('btnSave')
-    if (url && token) {
-        btn.textContent = '✅ Salvo'
+    // Verifica se realmente salvou no localStorage
+    const check = localStorage.getItem('sm_backendUrl')
+    if (check === backendUrl) {
+        showToast('✅ Configurações salvas com sucesso!')
+        const btn = document.getElementById('btnSave')
+        const original = btn.textContent
+        btn.textContent = '✅ Salvo!'
         btn.style.background = '#059669'
-        setTimeout(() => {
-            btn.textContent = '💾 Salvar'
-        }, 2000)
+        setTimeout(() => { btn.textContent = original }, 2000)
+    } else {
+        showToast('❌ Falha ao salvar. Recarregue a extensão em chrome://extensions/')
     }
 }
 
@@ -82,33 +93,31 @@ function checkCurrentTab() {
 }
 
 // ─── Open sidebar ─────────────────────────────────────────────────────────────
-function openPanel() {
-    chrome.storage.sync.get(['smBackendUrl', 'smAuthToken'], async (data) => {
-        if (!data.smBackendUrl || !data.smAuthToken) {
-            showToast('⚠️ Salve a URL e o token primeiro!')
-            return
-        }
+async function openPanel() {
+    const backendUrl = localStorage.getItem('sm_backendUrl') || await storageGet('sm_backendUrl')
+    const authToken = localStorage.getItem('sm_authToken') || await storageGet('sm_authToken')
 
-        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
+    if (!backendUrl || !authToken) {
+        showToast('⚠️ Salve a URL e o token primeiro!')
+        return
+    }
 
-        // Inject content script (safe to call even if already injected)
+    chrome.tabs.query({ active: true, currentWindow: true }, async ([tab]) => {
+        // Injeta o content script se ainda não estiver rodando
         try {
             await chrome.scripting.executeScript({
                 target: { tabId: tab.id },
                 files: ['content/content.js']
             })
-        } catch (_) { /* already loaded */ }
+        } catch (_) { /* já carregado */ }
 
-        // Send open command
+        // Abre o painel com a config
         chrome.tabs.sendMessage(tab.id, {
             action: 'openSidebar',
-            config: {
-                backendUrl: data.smBackendUrl,
-                authToken: data.smAuthToken,
-            }
-        }, () => {
+            config: { backendUrl, authToken }
+        }, (response) => {
             if (chrome.runtime.lastError) {
-                showToast('❌ Recarregue a página do Maps e tente novamente.')
+                showToast('❌ Recarregue a página do Maps (F5) e tente novamente.')
                 return
             }
             window.close()
