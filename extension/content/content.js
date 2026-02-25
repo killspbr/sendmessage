@@ -364,6 +364,10 @@
                     // Full mode: click to get phone
                     if (mode === 'full') {
                         try {
+                            // Snapshot do título atual do painel de detalhes
+                            // para detectar quando o painel muda de empresa
+                            const prevTitle = getDetailPanelTitle()
+
                             const clickTarget =
                                 card.querySelector('a[href*="/maps/place"]') ||
                                 card.querySelector('a.hfpxzc') ||
@@ -371,16 +375,23 @@
                                 card
                             clickTarget.click()
 
-                            const phone = await waitForPhone(4000)
-                            const website = extractWebsiteFromDetail()
-                            contact.phone = phone || ''
-                            contact.website = website || ''
+                            // Aguarda o painel MUDAR para a empresa nova (até 6s)
+                            const panelChanged = await waitForPanelChange(prevTitle, name, 6000)
+                            if (!panelChanged) {
+                                addLog(`  ⚠️ Painel não mudou a tempo — pulando telefone`, 'warn')
+                            } else {
+                                // Painel updated — agora lê o telefone com segurança
+                                const phone = await waitForPhone(3000)
+                                const website = extractWebsiteFromDetail()
+                                contact.phone = phone || ''
+                                contact.website = website || ''
 
-                            if (phone) addLog(`  ✅ ${phone}`, 'ok')
-                            else addLog(`  — sem telefone`, 'warn')
+                                if (phone) addLog(`  ✅ ${phone}`, 'ok')
+                                else addLog(`  — sem telefone`, 'warn')
+                            }
 
                             await goBackToList()
-                            await sleep(400)
+                            await sleep(500)
                         } catch (e) {
                             addLog(`  ⚠️ ${e.message}`, 'warn')
                         }
@@ -532,6 +543,38 @@
             await sleep(200)
         }
         return null
+    }
+
+    /**
+     * Retorna o título atual exibido no painel de detalhes do Maps.
+     * Usamos isso como "impressão digital" do painel antes de clicar.
+     */
+    function getDetailPanelTitle() {
+        return (
+            document.querySelector('.DUwDvf')?.textContent?.trim() ||
+            document.querySelector('[data-attrid="title"]')?.textContent?.trim() ||
+            document.querySelector('.fontHeadlineLarge')?.textContent?.trim() ||
+            document.querySelector('h1')?.textContent?.trim() ||
+            ''
+        )
+    }
+
+    /**
+     * Espera o painel de detalhes mudar de empresa.
+     * Só retorna true quando o título muda E corresponde (ou muda) do prevTitle.
+     */
+    async function waitForPanelChange(prevTitle, expectedName, timeoutMs) {
+        const end = Date.now() + timeoutMs
+        while (Date.now() < end) {
+            const current = getDetailPanelTitle()
+            // Consideramos que mudou se:
+            // 1. O título é diferente do anterior e não está vazio, OU
+            // 2. O título contém parte do nome esperado
+            if (current && current !== prevTitle) return true
+            if (current && expectedName && current.toLowerCase().includes(expectedName.toLowerCase().substring(0, 8))) return true
+            await sleep(150)
+        }
+        return false
     }
 
     async function goBackToList() {
