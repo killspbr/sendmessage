@@ -364,9 +364,9 @@
                     // Full mode: click to get phone
                     if (mode === 'full') {
                         try {
-                            // Snapshot do título atual do painel de detalhes
-                            // para detectar quando o painel muda de empresa
-                            const prevTitle = getDetailPanelTitle()
+                            // Snapshot da URL ATUAL — a forma mais confiável de detectar navegação
+                            // pois o Maps sempre altera a URL ao entrar em uma empresa
+                            const prevUrl = window.location.href
 
                             const clickTarget =
                                 card.querySelector('a[href*="/maps/place"]') ||
@@ -375,23 +375,33 @@
                                 card
                             clickTarget.click()
 
-                            // Aguarda o painel MUDAR para a empresa nova (até 6s)
-                            const panelChanged = await waitForPanelChange(prevTitle, name, 6000)
-                            if (!panelChanged) {
-                                addLog(`  ⚠️ Painel não mudou a tempo — pulando telefone`, 'warn')
+                            // Aguarda a URL mudar (indica que entramos na empresa) — até 7s
+                            const urlChanged = await waitForUrlChange(prevUrl, 7000)
+
+                            if (!urlChanged) {
+                                addLog(`  ⚠️ URL não mudou — pulando telefone de ${name}`, 'warn')
                             } else {
-                                // Painel updated — agora lê o telefone com segurança
+                                // Pausa inicial para renderizar o painel de detalhes
+                                await sleep(400)
+
+                                // Rola o painel de detalhes para revelar contatos
+                                scrollDetailPanel()
+                                await sleep(500)
+
+                                // Lê o telefone agora com certeza que estamos na empresa certa
                                 const phone = await waitForPhone(3000)
                                 const website = extractWebsiteFromDetail()
                                 contact.phone = phone || ''
                                 contact.website = website || ''
 
                                 if (phone) addLog(`  ✅ ${phone}`, 'ok')
-                                else addLog(`  — sem telefone`, 'warn')
+                                else addLog(`  — sem telefone cadastrado`, 'warn')
                             }
 
-                            await goBackToList()
-                            await sleep(500)
+                            // Volta e aguarda URL retornar para a busca
+                            await goBackToList(prevUrl)
+                            await sleep(400)
+
                         } catch (e) {
                             addLog(`  ⚠️ ${e.message}`, 'warn')
                         }
@@ -546,49 +556,56 @@
     }
 
     /**
-     * Retorna o título atual exibido no painel de detalhes do Maps.
-     * Usamos isso como "impressão digital" do painel antes de clicar.
+     * Aguarda a URL da página mudar em relação à prevUrl.
+     * É o método mais confiável para detectar navegação no Maps.
      */
-    function getDetailPanelTitle() {
-        return (
-            document.querySelector('.DUwDvf')?.textContent?.trim() ||
-            document.querySelector('[data-attrid="title"]')?.textContent?.trim() ||
-            document.querySelector('.fontHeadlineLarge')?.textContent?.trim() ||
-            document.querySelector('h1')?.textContent?.trim() ||
-            ''
-        )
-    }
-
-    /**
-     * Espera o painel de detalhes mudar de empresa.
-     * Só retorna true quando o título muda E corresponde (ou muda) do prevTitle.
-     */
-    async function waitForPanelChange(prevTitle, expectedName, timeoutMs) {
+    async function waitForUrlChange(prevUrl, timeoutMs) {
         const end = Date.now() + timeoutMs
         while (Date.now() < end) {
-            const current = getDetailPanelTitle()
-            // Consideramos que mudou se:
-            // 1. O título é diferente do anterior e não está vazio, OU
-            // 2. O título contém parte do nome esperado
-            if (current && current !== prevTitle) return true
-            if (current && expectedName && current.toLowerCase().includes(expectedName.toLowerCase().substring(0, 8))) return true
+            if (window.location.href !== prevUrl) return true
             await sleep(150)
         }
         return false
     }
 
-    async function goBackToList() {
+    /**
+     * Rola o painel de detalhes da empresa para revelar
+     * número de telefone e site que podem estar escondidos abaixo do fold.
+     */
+    function scrollDetailPanel() {
+        // O painel de detalhes do Maps é um div scrollável no lado esquerdo
+        const panel =
+            document.querySelector('.m6QErb.WNBkOb.tLjsW.eKbjU') ||
+            document.querySelector('.m6QErb.WNBkOb') ||
+            document.querySelector('.m6QErb[tabindex]') ||
+            document.querySelector('.DxyBCb')
+        if (panel) {
+            panel.scrollTop += 500
+        }
+    }
+
+    async function goBackToList(searchUrl) {
         const btn =
             document.querySelector('button[aria-label="Voltar"]') ||
             document.querySelector('button[aria-label="Back"]') ||
             document.querySelector('button[jsaction*="back"]') ||
             document.querySelector('[data-tooltip="Voltar"]')
-        if (btn) { btn.click(); await sleep(700); return }
 
-        document.dispatchEvent(new KeyboardEvent('keydown', {
-            key: 'Escape', code: 'Escape', bubbles: true, cancelable: true
-        }))
-        await sleep(600)
+        if (btn) {
+            btn.click()
+        } else {
+            // Fallback: Escape key
+            document.dispatchEvent(new KeyboardEvent('keydown', {
+                key: 'Escape', code: 'Escape', bubbles: true, cancelable: true
+            }))
+        }
+
+        // Aguarda URL mudar de volta (indica retorno à lista de resultados)
+        if (searchUrl) {
+            await waitForUrlChange(window.location.href, 4000)
+        } else {
+            await sleep(700)
+        }
     }
 
     function scrollFeed() {
