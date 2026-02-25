@@ -364,8 +364,6 @@
                     // Full mode: click to get phone
                     if (mode === 'full') {
                         try {
-                            // Snapshot da URL ATUAL — a forma mais confiável de detectar navegação
-                            // pois o Maps sempre altera a URL ao entrar em uma empresa
                             const prevUrl = window.location.href
 
                             const clickTarget =
@@ -375,33 +373,24 @@
                                 card
                             clickTarget.click()
 
-                            // Aguarda a URL mudar (indica que entramos na empresa) — até 7s
-                            const urlChanged = await waitForUrlChange(prevUrl, 7000)
+                            // Aguarda a URL mudar (detecção ultra rápida)
+                            const urlChanged = await waitForUrlChange(prevUrl, 5000)
 
-                            if (!urlChanged) {
-                                addLog(`  ⚠️ URL não mudou — pulando telefone de ${name}`, 'warn')
-                            } else {
-                                // Pausa inicial para renderizar o painel de detalhes
-                                await sleep(400)
-
-                                // Rola o painel de detalhes para revelar contatos
+                            if (urlChanged) {
+                                // Rola e já tenta capturar (sem esperar 1s fixo)
                                 scrollDetailPanel()
-                                await sleep(500)
 
-                                // Lê o telefone agora com certeza que estamos na empresa certa
-                                const phone = await waitForPhone(3000)
+                                const phone = await waitForPhone(2500)
                                 const website = extractWebsiteFromDetail()
                                 contact.phone = phone || ''
                                 contact.website = website || ''
 
                                 if (phone) addLog(`  ✅ ${phone}`, 'ok')
-                                else addLog(`  — sem telefone cadastrado`, 'warn')
+                                else addLog(`  — sem telefone`, 'warn')
                             }
 
-                            // Volta e aguarda URL retornar para a busca
+                            // Volta rápido
                             await goBackToList(prevUrl)
-                            await sleep(400)
-
                         } catch (e) {
                             addLog(`  ⚠️ ${e.message}`, 'warn')
                         }
@@ -423,7 +412,8 @@
                         updateStats()
                     }
 
-                    await sleep(mode === 'full' ? 300 : 80)
+                    // Pausa mínima entre empresas
+                    await sleep(200)
                 }
 
                 // Step 3: scroll to load more after each batch
@@ -550,20 +540,19 @@
         while (Date.now() < end) {
             const p = extractPhoneFromDetail()
             if (p) return p
-            await sleep(200)
+            await sleep(50) // Polling rápido: 50ms
         }
         return null
     }
 
     /**
      * Aguarda a URL da página mudar em relação à prevUrl.
-     * É o método mais confiável para detectar navegação no Maps.
      */
     async function waitForUrlChange(prevUrl, timeoutMs) {
         const end = Date.now() + timeoutMs
         while (Date.now() < end) {
             if (window.location.href !== prevUrl) return true
-            await sleep(150)
+            await sleep(50) // Polling rápido: 50ms
         }
         return false
     }
@@ -600,11 +589,10 @@
             }))
         }
 
-        // Aguarda URL mudar de volta (indica retorno à lista de resultados)
         if (searchUrl) {
-            await waitForUrlChange(window.location.href, 4000)
+            await waitForUrlChange(window.location.href, 3000)
         } else {
-            await sleep(700)
+            await sleep(300)
         }
     }
 
