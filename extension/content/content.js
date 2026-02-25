@@ -640,5 +640,4 @@
         return new Promise(r => setTimeout(r, ms))
     }
 
-    console.log('[SendMessage Extractor] Content script pronto em:', window.location.href)
 })()
