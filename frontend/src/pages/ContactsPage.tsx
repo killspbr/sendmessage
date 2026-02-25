@@ -11,11 +11,11 @@ type ContactsPageProps = {
   sortedLists: ContactList[]
   currentListId: string
   contactSendHistory: ContactSendHistoryItem[]
-  
+
   // Estado de seleção
   selectedIds: number[]
   moveTargetListId: string
-  
+
   // Estado do formulário
   showContactForm: boolean
   editingContactId: number | null
@@ -27,38 +27,38 @@ type ContactsPageProps = {
   contactFormAddress: string
   contactFormCity: string
   contactFormRating: string
-  
+
   // Estado de filtros
   searchName: string
   searchPhone: string
   searchEmail: string
   filterCategory: string
   filterCity: string
-  
+
   // Estado de importação
   importNewContacts: Contact[] | null
   importConflicts: ImportConflict[] | null
-  
+
   // Estado de IA
   geminiApiKey: string
   isBackfillingAddress: boolean
-  
+
   // Estado de preview
   payloadPreview: string | null
-  
+
   // Handlers de lista
   onSelectList: (id: string) => void
   onCreateList: () => void
   onRenameCurrentList: () => void
   onDeleteCurrentList: () => void
-  
+
   // Handlers de contato
   onCreateContact: () => void
   onEditContact: (contact: Contact) => void
   onDeleteContact: (id: number) => void
   onSaveContactForm: () => void
   onCancelContactForm: () => void
-  
+
   // Handlers de formulário
   onChangeContactFormName: (value: string) => void
   onChangeContactFormPhone: (value: string) => void
@@ -68,14 +68,14 @@ type ContactsPageProps = {
   onChangeContactFormAddress: (value: string) => void
   onChangeContactFormCity: (value: string) => void
   onChangeContactFormRating: (value: string) => void
-  
+
   // Handlers de seleção
   onToggleSelectAll: (checked: boolean) => void
   onToggleSelectOne: (id: number, checked: boolean) => void
   onResetSelection: () => void
   onSetMoveTargetListId: (id: string) => void
   onMoveSelectedToList: () => void
-  
+
   // Handlers de filtros
   onSetSearchName: (value: string) => void
   onSetSearchPhone: (value: string) => void
@@ -83,16 +83,16 @@ type ContactsPageProps = {
   onSetFilterCategory: (value: string) => void
   onSetFilterCity: (value: string) => void
   onClearFilters: () => void
-  
+
   // Handlers de importação
   onCancelImport: () => void
   onApplyImport: () => void
   onSetImportConflicts: (conflicts: ImportConflict[] | null) => void
-  
+
   // Handlers de IA
   onBackfillAddressFromCep: () => void
   onAiExtractContact: (file: File) => void
-  
+
   // Handlers de estado
   onSetLists: (fn: (prev: ContactList[]) => ContactList[]) => void
   onSetContactsByList: (fn: (prev: Record<string, Contact[]>) => Record<string, Contact[]>) => void
@@ -352,9 +352,8 @@ export function ContactsPage({
                         return (
                           <tr
                             key={`${conflict.id}-${field}`}
-                            className={`border-b border-slate-100 ${
-                              isDifferent ? 'bg-amber-50/80' : 'bg-white'
-                            }`}
+                            className={`border-b border-slate-100 ${isDifferent ? 'bg-amber-50/80' : 'bg-white'
+                              }`}
                           >
                             {index === 0 && (
                               <td className="px-2 py-1 align-top" rowSpan={fields.length}>
@@ -626,9 +625,21 @@ export function ContactsPage({
                   <td className="px-2 py-2">{formatRating(contact.rating)}</td>
                   <td className="px-2 py-2">
                     <div className="flex items-center gap-1.5">
+                      {contact.phone && (
+                        <a
+                          href={`https://web.whatsapp.com/send/?phone=${normalizePhone(contact.phone).length === 11 ? '55' + normalizePhone(contact.phone) : normalizePhone(contact.phone)}&text&type=phone_number&app_absent=0`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="px-2 py-1 rounded-md border border-emerald-200 bg-emerald-50 text-[11px] text-emerald-600 hover:bg-emerald-100 flex items-center gap-1"
+                          title="Chamar no WhatsApp"
+                        >
+                          <span className="text-[12px]">📱</span>
+                          Whats
+                        </a>
+                      )}
                       {canEditContact && (
                         <button
-                          className="px-2 py-0.5 rounded-md border border-slate-200 text-[11px] text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                          className="px-2 py-1 rounded-md border border-slate-200 text-[11px] text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
                           onClick={() => onEditContact(contact)}
                           disabled={!canEditContact}
                         >
@@ -637,7 +648,7 @@ export function ContactsPage({
                       )}
                       {canDeleteContact && (
                         <button
-                          className="px-2 py-0.5 rounded-md border border-red-100 bg-red-50 text-[11px] text-red-600 hover:bg-red-100 disabled:opacity-40 disabled:cursor-not-allowed"
+                          className="px-2 py-1 rounded-md border border-red-100 bg-red-50 text-[11px] text-red-600 hover:bg-red-100 disabled:opacity-40 disabled:cursor-not-allowed"
                           onClick={() => onDeleteContact(contact.id)}
                           disabled={!canDeleteContact}
                         >
@@ -653,16 +664,18 @@ export function ContactsPage({
         </div>
 
         {/* Preview de payload */}
-        {payloadPreview && (
-          <div className="mt-4 border border-slate-200 rounded-lg bg-slate-50 p-3 text-[11px] font-mono text-slate-700 max-h-80 overflow-auto">
-            <div className="flex items-center justify-between mb-1">
-              <span className="font-semibold text-slate-600">Payload n8n (pré-visualização)</span>
-              <span className="text-[10px] text-slate-500">Somente leitura · ainda não enviado</span>
+        {
+          payloadPreview && (
+            <div className="mt-4 border border-slate-200 rounded-lg bg-slate-50 p-3 text-[11px] font-mono text-slate-700 max-h-80 overflow-auto">
+              <div className="flex items-center justify-between mb-1">
+                <span className="font-semibold text-slate-600">Payload n8n (pré-visualização)</span>
+                <span className="text-[10px] text-slate-500">Somente leitura · ainda não enviado</span>
+              </div>
+              <pre className="whitespace-pre-wrap break-all">{payloadPreview}</pre>
             </div>
-            <pre className="whitespace-pre-wrap break-all">{payloadPreview}</pre>
-          </div>
-        )}
-      </section>
-    </div>
+          )
+        }
+      </section >
+    </div >
   )
 }

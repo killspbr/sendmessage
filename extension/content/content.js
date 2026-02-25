@@ -141,18 +141,14 @@
             .contacts-count { font-weight:700; color:#059669; font-size:11px; }
 
             .contacts-list { flex:1; overflow-y:auto; }
-            .contact-card { display:flex; align-items:center; gap:8px; padding:10px 12px; border-bottom:1px solid #f1f5f9; background:white; animation:slideIn .2s ease; }
+            .contact-card { display:flex; align-items:flex-start; gap:8px; padding:7px 12px; border-bottom:1px solid #f1f5f9; background:white; animation:slideIn .2s ease; }
             @keyframes slideIn { from{opacity:0;transform:translateX(10px)} to{opacity:1;transform:none} }
-            .avatar { width:32px; height:32px; border-radius:50%; flex-shrink:0; background:linear-gradient(135deg,#059669,#34d399); display:flex; align-items:center; justify-content:center; font-size:12px; color:white; font-weight:700; }
+            .avatar { width:28px; height:28px; border-radius:50%; flex-shrink:0; background:linear-gradient(135deg,#059669,#34d399); display:flex; align-items:center; justify-content:center; font-size:11px; color:white; font-weight:700; }
             .contact-info { flex:1; min-width:0; }
-            .cname { font-weight:600; font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; display:flex; align-items:center; gap:4px; }
-            .cmeta { font-size:9px; color:#64748b; margin-top:1px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-            .cphone { font-size:10px; color:#059669; font-weight:600; margin-top:1px; }
+            .cname { font-weight:600; font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+            .cmeta { font-size:9px; color:#64748b; margin-top:1px; }
+            .cphone { font-size:10px; color:#059669; font-weight:500; }
             .tag-imp { font-size:8px; background:#d1fae5; color:#065f46; padding:1px 4px; border-radius:3px; }
-
-            .btn-wa { width:30px; height:30px; border-radius:50%; background:#25d366; color:white; display:flex; align-items:center; justify-content:center; text-decoration:none; transition:transform .2s; flex-shrink:0; box-shadow:0 2px 5px rgba(37,211,102,.3); }
-            .btn-wa:hover { transform:scale(1.1); background:#128c7e; }
-            .btn-wa svg { width:16px; height:16px; fill:currentColor; }
 
             /* Footer */
             .footer { padding:8px 12px; background:white; border-top:2px solid #e2e8f0; flex-shrink:0; display:flex; flex-direction:column; gap:6px; }
@@ -616,31 +612,13 @@
         const list = shadow.getElementById('contactsList')
         const div = document.createElement('div')
         div.className = 'contact-card'
-
-        // Limpeza do número para o link
-        const cleanPhone = (c.phone || '').replace(/\D/g, '')
-        // Se começar com 9 e não tiver DDI, assume 55+DDD (exemplo simplificado, maps costuma dar nacional)
-        // Mas o ideal para wa.me é sempre ter o DDI.
-        const waNumber = cleanPhone.length === 11 ? `55${cleanPhone}` : cleanPhone
-
         div.innerHTML = `
             <div class="avatar">${(c.name[0] || '?').toUpperCase()}</div>
             <div class="contact-info">
-                <div class="cname">
-                    ${esc(c.name)}
-                    ${c._dup ? ' <span class="tag-imp" style="background:#fef3c7;color:#92400e;">já existia</span>' : c._imported ? ' <span class="tag-imp">✓ importado</span>' : ''}
-                </div>
+                <div class="cname">${esc(c.name)}${c._dup ? ' <span class="tag-imp" style="background:#fef3c7;color:#92400e;">já existia</span>' : c._imported ? ' <span class="tag-imp">✓ importado</span>' : ''}</div>
                 <div class="cmeta">${esc(c.category)} · ${esc(c.address.split(',')[0] || '')}</div>
-                ${c.phone ? `<div class="cphone">📱 ${esc(c.phone)}</div>` : ''}
+                ${c.phone ? `<div class="cphone">📞 ${esc(c.phone)}</div>` : ''}
             </div>
-            ${c.phone ? `
-                <a href="https://web.whatsapp.com/send/?phone=${waNumber}&text&type=phone_number&app_absent=0" 
-                   target="_blank" 
-                   class="btn-wa" 
-                   title="Enviar WhatsApp">
-                    <svg viewBox="0 0 24 24"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z"/></svg>
-                </a>
-            ` : ''}
         `
         list.appendChild(div)
         list.scrollTop = list.scrollHeight
