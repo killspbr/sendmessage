@@ -423,45 +423,107 @@
     }
 
     async function extractFullMode(items) {
-        const cards = getResultCards()
+        addLog(`🤖 Modo automático: percorrendo ${items.length} empresa(s)...`, 'info')
 
-        for (let i = 0; i < Math.min(items.length, cards.length); i++) {
+        for (let i = 0; i < items.length; i++) {
             const item = items[i]
-            const card = cards[i]
 
-            addLog(`📞 Buscando tel. (${i + 1}/${items.length}): ${item.name}`, 'info')
-            setProgress(15 + Math.round((i / items.length) * 80), `${i + 1}/${items.length}: ${item.name}`)
+            setProgress(
+                15 + Math.round((i / items.length) * 80),
+                `📞 ${i + 1}/${items.length}: ${item.name}`
+            )
+            addLog(`📞 (${i + 1}/${items.length}) ${item.name}`, 'info')
 
             try {
-                // Programmatically click the card
-                card.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
-                await sleep(1800)
+                // Re-busca os cards a cada iteração (DOM muda após navegação)
+                const cards = getResultCards()
+                const card = cards[i]
 
-                // Extract phone from detail panel
-                const phone = extractPhoneFromDetail()
+                if (!card) {
+                    addLog(`   ⚠️ Card ${i + 1} não localizado no DOM`, 'warn')
+                    continue
+                }
+
+                // Clica no link interno do card (mais confiável que o container)
+                const clickTarget =
+                    card.querySelector('a[href*="/maps/place"]') ||
+                    card.querySelector('a.hfpxzc') ||
+                    card.querySelector('[role="link"]') ||
+                    card
+
+                clickTarget.click()
+
+                // Espera dinâmica: aguarda o painel de detalhes/telefone aparecer
+                const phone = await waitForPhone(4000)
                 const website = extractWebsiteFromDetail()
                 item.phone = phone || ''
                 item.website = website || ''
 
-                if (phone) addLog(`   📞 ${phone}`, 'ok')
-                else addLog(`   — sem telefone`, 'warn')
-
-                // Go back to list
-                const backBtn = document.querySelector('button[aria-label*="Voltar"]') ||
-                    document.querySelector('button[aria-label*="Back"]')
-                if (backBtn) { backBtn.click(); await sleep(600) }
+                if (phone) addLog(`   ✅ ${phone}`, 'ok')
+                else addLog(`   — sem telefone cadastrado`, 'warn')
 
             } catch (e) {
-                addLog(`   ⚠️ Erro ao buscar detalhe: ${e.message}`, 'warn')
+                addLog(`   ⚠️ Erro: ${e.message}`, 'warn')
             }
 
+            // Volta para a lista antes de ir à próxima empresa
+            await goBackToList()
+
+            // Adiciona o contato já coletado (com ou sem tel)
             const contact = normalizeContact(item)
             if (!isDuplicate(contact)) {
                 extractedContacts.push(contact)
                 appendContactCard(contact)
+            } else {
+                addLog(`   ⏭️ Duplicata ignorada`, 'warn')
             }
 
-            await sleep(400)
+            // Pausa entre empresas para não sobrecarregar
+            await sleep(600)
+        }
+    }
+
+    /**
+     * Espera dinamicamente o telefone aparecer no painel de detalhes.
+     * Tenta a cada 200ms até o timeout.
+     */
+    async function waitForPhone(timeoutMs) {
+        const deadline = Date.now() + timeoutMs
+        while (Date.now() < deadline) {
+            const phone = extractPhoneFromDetail()
+            if (phone) return phone
+            await sleep(200)
+        }
+        return null
+    }
+
+    /**
+     * Navega de volta para a lista de resultados com múltiplas estratégias.
+     */
+    async function goBackToList() {
+        // 1. Botão "Voltar" nativo do Maps
+        const backBtn =
+            document.querySelector('button[aria-label="Voltar"]') ||
+            document.querySelector('button[aria-label="Back"]') ||
+            document.querySelector('button[jsaction*="back"]') ||
+            document.querySelector('[data-tooltip="Voltar"]')
+
+        if (backBtn) {
+            backBtn.click()
+            await sleep(700)
+            return
+        }
+
+        // 2. Tecla Escape (fecha o painel de detalhes)
+        document.dispatchEvent(new KeyboardEvent('keydown', {
+            key: 'Escape', code: 'Escape', bubbles: true, cancelable: true
+        }))
+        await sleep(500)
+
+        // 3. history.back() como último recurso
+        if (!getResultCards().length) {
+            history.back()
+            await sleep(1000)
         }
     }
 
