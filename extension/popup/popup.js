@@ -25,6 +25,10 @@ function storageGet(key) {
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
+    // IMPORTANTE: MV3 bloqueia onclick="" inline — usamos addEventListener
+    document.getElementById('btnSave').addEventListener('click', saveConfig)
+    document.getElementById('btnOpenPanel').addEventListener('click', openPanel)
+
     await loadConfig()
     checkCurrentTab()
 })
