@@ -319,33 +319,41 @@
         $('btnImport').addEventListener('click', importContacts)
     }
 
-    // ─── Load lists from backend ─────────────────────────────────────────────────
     async function loadLists() {
-        if (!config.backendUrl || !config.authToken) return
+        if (!config.backendUrl || !config.authToken) {
+            addLog('⚠️ Backend não configurado. Abra a extensão e salve URL + token.', 'warn')
+            return
+        }
         try {
             const resp = await fetch(`${config.backendUrl}/api/extension/info`, {
                 headers: { 'Authorization': `Bearer ${config.authToken}` }
             })
+            if (resp.status === 401 || resp.status === 403) {
+                addLog('❌ Token inválido ou expirado. Reconfigure na extensão.', 'err')
+                return
+            }
             if (!resp.ok) {
-                addLog('⚠️ Token inválido. Reconfigure na extensão.', 'warn')
+                const err = await resp.json().catch(() => ({}))
+                addLog(`❌ Erro no servidor (${resp.status}): ${err.details || err.error || 'tente novamente'}`, 'err')
                 return
             }
             const info = await resp.json()
             const select = shadow.getElementById('listSelect')
             if (info.lists?.length) {
                 select.innerHTML = info.lists.map(l =>
-                    `<option value="${l.id}" ${l.id == config.targetListId ? 'selected' : ''}>${l.name}</option>`
+                    `<option value="${l.id}">${l.name}</option>`
                 ).join('')
                 shadow.getElementById('btnImport').disabled = false
-                addLog(`✅ ${info.lists.length} lista(s) carregada(s).`, 'ok')
+                addLog(`✅ ${info.lists.length} lista(s) carregada(s). Pronto para extrair!`, 'ok')
             } else {
                 select.innerHTML = '<option value="">Nenhuma lista encontrada</option>'
                 addLog('⚠️ Crie uma lista no SendMessage primeiro.', 'warn')
             }
         } catch (e) {
-            addLog(`❌ Erro ao conectar ao backend: ${e.message}`, 'err')
+            addLog(`❌ Não conectou ao backend: ${e.message}`, 'err')
         }
     }
+
 
     // ─── Auto-scroll feed ────────────────────────────────────────────────────────
     function autoScrollFeed() {
