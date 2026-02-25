@@ -431,6 +431,24 @@ app.delete('/api/campaigns/history', authenticateToken, async (req, res) => {
   }
 });
 
+// --- ENDPOINT PARA A EXTENSÃO CHROME ---
+// Retorna as listas do usuário para facilitar configuração da extensão
+app.get('/api/extension/info', authenticateToken, async (req, res) => {
+  try {
+    const listsResult = await query(
+      'SELECT id, name FROM contact_lists WHERE user_id = $1 ORDER BY created_at DESC',
+      [req.user.id]
+    );
+    res.json({
+      ok: true,
+      user: { id: req.user.id, email: req.user.email },
+      lists: listsResult.rows,
+    });
+  } catch (error) {
+    res.status(500).json({ error: 'Erro ao buscar informações da extensão' });
+  }
+});
+
 // Trata erros de body muito grande ou requisição abortada
 app.use((err, req, res, next) => {
   if (err && err.type === 'entity.too.large') {
