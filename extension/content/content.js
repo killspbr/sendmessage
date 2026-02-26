@@ -15,7 +15,7 @@
     let isStopRequested = false
     let processedNames = new Set()
     let importedCount = 0
-    let mode = 'quick'         // 'quick' | 'full'
+    let mode = 'full'          // 'full' (coleta completa de dados)
     let autoImport = true
     let config = { backendUrl: '', authToken: '' }
 
@@ -93,11 +93,6 @@
             .stat:last-child { border-right:none; }
             .stat-val { font-size:16px; font-weight:800; color:#059669; line-height:1; }
             .stat-lbl { font-size:9px; color:#64748b; text-transform:uppercase; letter-spacing:.4px; margin-top:2px; }
-
-            /* Mode */
-            .mode-bar { padding:8px 12px; background:white; border-bottom:1px solid #e2e8f0; display:flex; gap:6px; flex-shrink:0; }
-            .mode-btn { flex:1; height:30px; border-radius:8px; border:1.5px solid #e2e8f0; font-size:11px; font-weight:600; cursor:pointer; background:white; color:#475569; transition:all .15s; }
-            .mode-btn.active { border-color:#059669; background:#ecfdf5; color:#059669; }
 
             /* Auto-import toggle */
             .toggle-row { display:flex; align-items:center; justify-content:space-between; padding:6px 12px; background:white; border-bottom:1px solid #e2e8f0; flex-shrink:0; }
@@ -187,11 +182,7 @@
                 </div>
             </div>
 
-            <!-- Mode -->
-            <div class="mode-bar">
-                <button class="mode-btn active" id="modeQuick">⚡ Rápido (sem tel.)</button>
-                <button class="mode-btn" id="modeFull">📞 Completo (com tel.)</button>
-            </div>
+            <!-- Modo de extração removido (sempre Completo para coletar contatos) -->
 
             <!-- Auto-import toggle -->
             <div class="toggle-row">
@@ -242,16 +233,7 @@
 
         $('btnClose').addEventListener('click', closeSidebar)
 
-        $('modeQuick').addEventListener('click', () => {
-            mode = 'quick'
-            $('modeQuick').classList.add('active')
-            $('modeFull').classList.remove('active')
-        })
-        $('modeFull').addEventListener('click', () => {
-            mode = 'full'
-            $('modeFull').classList.add('active')
-            $('modeQuick').classList.remove('active')
-        })
+        // Seleção de modo removida
 
         $('autoImportChk').addEventListener('change', e => {
             autoImport = e.target.checked
