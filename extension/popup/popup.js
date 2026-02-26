@@ -1,15 +1,26 @@
-// URL do backend — fixo, não configurável pelo usuário
+// URL do backend — fixo
 const BACKEND_URL = 'https://clrodrigues-sendmessage-backend.rsybpi.easypanel.host'
+// URL do sistema — inferida pelo padrão ou definida fixa
+const SYSTEM_URL = 'https://clrodrigues-sendmessage.rsybpi.easypanel.host'
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('btnSave').addEventListener('click', saveConfig)
     document.getElementById('btnOpenPanel').addEventListener('click', openPanel)
+    document.getElementById('btnGetToken').addEventListener('click', goToProfile)
+
     loadConfig()
     checkCurrentTab()
 })
 
-// ─── Storage (localStorage — persiste no popup mesmo fechando) ─────────────────
+// ─── Navegação ────────────────────────────────────────────────────────────────
+function goToProfile(e) {
+    if (e) e.preventDefault()
+    // Abre a tela de perfil onde está o botão de copiar token
+    chrome.tabs.create({ url: `${SYSTEM_URL}/settings` })
+}
+
+// ─── Storage ──────────────────────────────────────────────────────────────────
 function loadConfig() {
     const token = localStorage.getItem('sm_authToken') || ''
     if (token) {
@@ -23,30 +34,40 @@ function saveConfig() {
     if (!token) { showToast('⚠️ Cole o token do seu perfil no SendMessage'); return }
 
     localStorage.setItem('sm_authToken', token)
-    // Backup em chrome.storage também
+    // Backup em chrome.storage
     try { chrome.storage.local.set({ sm_authToken: token }) } catch (_) { }
 
     const btn = document.getElementById('btnSave')
     btn.textContent = '✅ Salvo!'
-    showToast('✅ Token salvo com sucesso!')
-    setTimeout(() => { btn.textContent = '💾 Salvar' }, 2000)
+    showToast('✅ Token configurado com sucesso!')
+    setTimeout(() => { btn.textContent = '💾 Salvar Token' }, 2000)
 }
 
 // ─── Tab check ────────────────────────────────────────────────────────────────
 function checkCurrentTab() {
     chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => {
         const isMaps = tab?.url?.includes('google.com/maps') || tab?.url?.includes('maps.google.com')
-        document.getElementById('statusDot').className = isMaps ? 'dot ok' : 'dot warn'
-        document.getElementById('statusText').textContent = isMaps ? '✓ Google Maps detectado' : 'Abra o Google Maps primeiro'
-        document.getElementById('onMapsArea').style.display = isMaps ? 'block' : 'none'
-        document.getElementById('notMapsArea').style.display = isMaps ? 'none' : 'block'
+        const dot = document.getElementById('statusDot')
+        const txt = document.getElementById('statusText')
+
+        if (isMaps) {
+            dot.className = 'dot ok'
+            txt.textContent = '✓ Google Maps detectado'
+            document.getElementById('onMapsArea').style.display = 'block'
+            document.getElementById('notMapsArea').style.display = 'none'
+        } else {
+            dot.className = 'dot warn'
+            txt.textContent = 'Abra o Google Maps primeiro'
+            document.getElementById('onMapsArea').style.display = 'none'
+            document.getElementById('notMapsArea').style.display = 'block'
+        }
     })
 }
 
 // ─── Open sidebar ─────────────────────────────────────────────────────────────
 function openPanel() {
     const token = localStorage.getItem('sm_authToken') || ''
-    if (!token) { showToast('⚠️ Configure e salve o token primeiro!'); return }
+    if (!token) { showToast('⚠️ Configure o token primeiro!'); return }
 
     chrome.tabs.query({ active: true, currentWindow: true }, async ([tab]) => {
         try {
@@ -58,7 +79,7 @@ function openPanel() {
             config: { backendUrl: BACKEND_URL, authToken: token }
         }, () => {
             if (chrome.runtime.lastError) {
-                showToast('❌ Recarregue a página do Maps (F5) e tente novamente.')
+                showToast('❌ Recarregue o Maps (F5) e tente novamente.')
                 return
             }
             window.close()
@@ -66,7 +87,6 @@ function openPanel() {
     })
 }
 
-// ─── Toast ────────────────────────────────────────────────────────────────────
 function showToast(msg) {
     const t = document.getElementById('toast')
     t.textContent = msg

@@ -12,7 +12,7 @@
     }
 
     body {
-      width: 300px;
+      width: 320px;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
       background: #f8fafc;
       color: #1e293b;
@@ -67,7 +67,7 @@
     }
 
     .section {
-      padding: 14px 16px;
+      padding: 16px;
       border-bottom: 1px solid #e2e8f0;
       background: white;
     }
@@ -78,14 +78,14 @@
       text-transform: uppercase;
       letter-spacing: .5px;
       color: #64748b;
-      margin-bottom: 10px;
+      margin-bottom: 12px;
     }
 
     .field {
       display: flex;
       flex-direction: column;
       gap: 4px;
-      margin-bottom: 10px;
+      margin-bottom: 12px;
     }
 
     .field label {
@@ -95,26 +95,29 @@
     }
 
     .field input {
-      height: 34px;
-      padding: 0 10px;
+      width: 100%;
+      height: 36px;
+      padding: 0 12px;
       border: 1.5px solid #e2e8f0;
       border-radius: 9px;
       font-size: 12px;
       color: #1e293b;
       outline: none;
-      transition: border-color .15s;
+      transition: all .15s;
       background: #fafafa;
     }
 
     .field input:focus {
       border-color: #10b981;
       background: white;
+      box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.1);
     }
 
     .field .hint {
       font-size: 10px;
       color: #94a3b8;
       line-height: 1.4;
+      margin-top: 4px;
     }
 
     .btn {
@@ -141,13 +144,38 @@
       background: #047857;
     }
 
+    .link-system {
+      display: block;
+      text-align: center;
+      margin-top: 10px;
+      color: #059669;
+      font-size: 11px;
+      text-decoration: none;
+      font-weight: 600;
+      padding: 6px;
+      border-radius: 8px;
+      border: 1px dashed #10b981;
+      background: #f0fdf4;
+      transition: all .2s;
+    }
+
+    .link-system:hover {
+      background: #dcfce7;
+      border-style: solid;
+    }
+
+    .on-maps-container {
+      padding: 16px;
+      background: white;
+    }
+
     .btn-open {
-      margin: 14px 16px;
+      width: 100%;
       display: flex;
       align-items: center;
       justify-content: center;
       gap: 8px;
-      height: 44px;
+      height: 46px;
       border-radius: 12px;
       border: none;
       background: linear-gradient(135deg, #059669, #10b981);
@@ -156,62 +184,74 @@
       font-weight: 700;
       cursor: pointer;
       transition: all .2s;
-      box-shadow: 0 4px 14px rgba(5, 150, 105, .35);
+      box-shadow: 0 4px 12px rgba(5, 150, 105, .2);
     }
 
     .btn-open:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 6px 20px rgba(5, 150, 105, .45);
+      transform: translateY(-1px);
+      box-shadow: 0 6px 16px rgba(5, 150, 105, .3);
+    }
+
+    .btn-open:active {
+      transform: translateY(0);
     }
 
     .not-maps {
-      padding: 20px 16px;
+      padding: 24px 16px;
       text-align: center;
     }
 
     .not-maps .emoji {
-      font-size: 36px;
-      margin-bottom: 10px;
+      font-size: 40px;
+      margin-bottom: 12px;
     }
 
     .not-maps .title {
       font-weight: 700;
-      margin-bottom: 4px;
+      margin-bottom: 6px;
+      font-size: 14px;
     }
 
     .not-maps .desc {
       font-size: 11px;
       color: #64748b;
-      line-height: 1.5;
+      line-height: 1.6;
     }
 
     .not-maps a {
-      margin-top: 12px;
+      margin-top: 14px;
       display: inline-block;
       color: #059669;
       font-size: 12px;
       font-weight: 700;
       text-decoration: none;
       border: 1.5px solid #059669;
-      padding: 6px 14px;
-      border-radius: 8px;
+      padding: 8px 16px;
+      border-radius: 9px;
+      transition: all .2s;
+    }
+
+    .not-maps a:hover {
+      background: #059669;
+      color: white;
     }
 
     .toast {
       position: fixed;
-      bottom: 10px;
+      bottom: 12px;
       left: 50%;
       transform: translateX(-50%);
       background: #1e293b;
       color: white;
       font-size: 11px;
       font-weight: 600;
-      padding: 7px 14px;
+      padding: 8px 16px;
       border-radius: 20px;
       opacity: 0;
       transition: opacity .2s;
       pointer-events: none;
       white-space: nowrap;
+      z-index: 100;
     }
 
     .toast.show {
@@ -219,7 +259,7 @@
     }
 
     .footer-note {
-      padding: 8px 16px 12px;
+      padding: 4px 16px 16px;
       font-size: 10px;
       color: #94a3b8;
       text-align: center;
@@ -241,32 +281,36 @@
     <span id="statusText">Verificando...</span>
   </div>
 
-  <!-- Token config -->
+  <!-- Config de Token -->
   <div class="section">
     <div class="section-title">🔑 Autenticação</div>
 
     <div class="field">
       <label>Token de acesso</label>
-      <input type="password" id="authToken" placeholder="Cole o token copiado do perfil..." />
-      <span class="hint">
-        No SendMessage: <strong>Perfil</strong> → <strong>📋 Copiar Token</strong>
-      </span>
+      <input type="password" id="authToken" placeholder="Cole o token do seu perfil..." />
+      <div class="hint">
+        Você encontra o token nas configurações do seu perfil.
+      </div>
     </div>
 
-    <button class="btn btn-primary" id="btnSave">💾 Salvar</button>
+    <button class="btn btn-primary" id="btnSave">💾 Salvar Token</button>
+
+    <a href="#" class="link-system" id="btnGetToken">🌐 Abrir SendMessage / Obter Token</a>
   </div>
 
-  <!-- Open sidebar (só aparece no Maps) -->
+  <!-- Área ativa (só no Maps) -->
   <div id="onMapsArea" style="display:none;">
-    <button class="btn-open" id="btnOpenPanel">🚀 Abrir Painel Lateral</button>
-    <div class="footer-note">O painel abre à direita do Maps com extração e importação automáticas.</div>
+    <div class="on-maps-container">
+      <button class="btn-open" id="btnOpenPanel">🚀 Abrir Painel Lateral</button>
+    </div>
+    <div class="footer-note">Use o painel lateral para iniciar a coleta automática.</div>
   </div>
 
-  <!-- Not on Maps -->
+  <!-- Fora do Maps -->
   <div class="not-maps" id="notMapsArea" style="display:none;">
-    <div class="emoji">🗺️</div>
-    <div class="title">Abra o Google Maps</div>
-    <div class="desc">Pesquise por tipo de negócio e região, depois clique em "Abrir Painel Lateral".</div>
+    <div class="emoji">📍</div>
+    <div class="title">Ative no Google Maps</div>
+    <div class="desc">Vá para o Maps, faça uma busca e o botão de extração aparecerá aqui.</div>
     <a href="https://www.google.com/maps" target="_blank">Abrir Google Maps →</a>
   </div>
 
