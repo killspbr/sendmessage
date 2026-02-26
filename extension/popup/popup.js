@@ -1,7 +1,7 @@
 // URL do backend — fixo
 const BACKEND_URL = 'https://clrodrigues-sendmessage-backend.rsybpi.easypanel.host'
-// URL do sistema — inferida pelo padrão ou definida fixa
-const SYSTEM_URL = 'https://clrodrigues-sendmessage.rsybpi.easypanel.host'
+// URL do sistema
+const SYSTEM_URL = 'https://sendmessage-frontend.pages.dev'
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
