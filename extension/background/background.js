@@ -4,20 +4,30 @@
  */
 
 // Ao instalar ou atualizar, limpa o estado e desativa o preload de navegação
-chrome.runtime.onInstalled.addListener(async () => {
-    const registrations = await self.registration.getNavigationPreload?.();
-    if (registrations) {
-        await self.registration.navigationPreload.disable();
-    }
-    console.log('SM Extractor: Service Worker Instalado e Preload Desativado.');
+self.addEventListener('install', (event) => {
+    self.skipWaiting();
 });
 
-// Garante que o SW assuma controle imediato sem interceptar fetch desnecessário
 self.addEventListener('activate', (event) => {
-    event.waitUntil(clients.claim());
+    event.waitUntil(
+        (async () => {
+            if (self.registration.navigationPreload) {
+                await self.registration.navigationPreload.disable();
+            }
+            await clients.claim();
+        })()
+    );
 });
 
-// ─── Message Listener ──────────────────────────────────────────────────────
+// Listener de fetch obrigatório para evitar o erro de "preloadResponse"
+// Respondemos com a requisição original para não interferir na navegação
+self.addEventListener('fetch', (event) => {
+    if (event.request.mode === 'navigate') {
+        return; 
+    }
+});
+
+// ─── Message Listener (API Gateway) ─────────────────────────────────────────
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (request.action === 'apiFetch') {
         const { url, options } = request.params;

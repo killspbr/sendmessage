@@ -273,6 +273,7 @@
         }
         try {
             const endpoint = `${config.backendUrl}/api/extension/info`;
+            console.log('[SM Debug] Conectando ao Backend:', config.backendUrl);
             addLog(`📡 Conectando a: ${config.backendUrl}...`, 'info');
             
             const resp = await backendFetch(endpoint, {
