@@ -256,11 +256,8 @@
                 params: { url, options }
             }, (response) => {
                 if (chrome.runtime.lastError) {
+                    console.error('Fetch Error:', chrome.runtime.lastError);
                     reject(new Error(chrome.runtime.lastError.message));
-                    return;
-                }
-                if (!response.ok && response.error) {
-                    reject(new Error(response.error));
                     return;
                 }
                 resolve(response);
@@ -271,32 +268,43 @@
     // ─── Load lists ──────────────────────────────────────────────────────────────
     async function loadLists() {
         if (!config.backendUrl || !config.authToken) {
-            addLog('⚠️ Configure URL e token na extensão.', 'warn')
+            addLog('⚠️ Escolha as configurações no popup da extensão.', 'warn')
             return
         }
         try {
-            const resp = await backendFetch(`${config.backendUrl}/api/extension/info`, {
+            const endpoint = `${config.backendUrl}/api/extension/info`;
+            addLog(`📡 Conectando a: ${config.backendUrl}...`, 'info');
+            
+            const resp = await backendFetch(endpoint, {
                 headers: { 'Authorization': `Bearer ${config.authToken}` }
             })
+
             if (resp.status === 401 || resp.status === 403) {
-                addLog('❌ Token inválido. Reconfigure na extensão.', 'err'); return
+                addLog('❌ Token inválido ou expirado. Gere um novo no seu perfil.', 'err'); return
             }
+
             if (!resp.ok) {
-                addLog(`❌ Servidor (${resp.status}): erro inesperado`, 'err'); return
+                addLog(`❌ Erro ${resp.status} no servidor. Verifique a URL do backend.`, 'err'); 
+                return
             }
 
             const info = resp.data
-            const sel = shadow.getElementById('listSelect')
-            if (info.lists?.length) {
-                sel.innerHTML = info.lists.map(l => `<option value="${l.id}">${l.name}</option>`).join('')
-                shadow.getElementById('btnImport').disabled = false
-                addLog(`✅ ${info.lists.length} lista(s) disponível(is). Pronto!`, 'ok')
+            if (info && info.lists && Array.isArray(info.lists)) {
+                const sel = shadow.getElementById('listSelect')
+                if (info.lists.length > 0) {
+                    sel.innerHTML = info.lists.map(l => `<option value="${l.id}">${l.name}</option>`).join('')
+                    shadow.getElementById('btnImport').disabled = false
+                    addLog(`✅ Carregadas ${info.lists.length} lista(s) de "${info.user?.email || 'usuário'}".`, 'ok')
+                } else {
+                    sel.innerHTML = '<option value="">Nenhuma lista encontrada</option>'
+                    addLog('⚠️ Você não tem listas criadas no SendMessage.', 'warn')
+                }
             } else {
-                sel.innerHTML = '<option value="">Nenhuma lista encontrada</option>'
-                addLog('⚠️ Crie uma lista no SendMessage primeiro.', 'warn')
+                addLog(`❌ Resposta inesperada do servidor.`, 'err');
+                console.log('Resposta completa:', resp);
             }
         } catch (e) {
-            addLog(`❌ Falha ao conectar: ${e.message}`, 'err')
+            addLog(`❌ Falha de conexão: ${e.message}`, 'err')
         }
     }
 

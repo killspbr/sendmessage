@@ -3,16 +3,17 @@
  * Centraliza as chamadas de rede para evitar problemas de CORS no Content Script.
  */
 
-// ─── Preload Navigation Fix ──────────────────────────────────────────────────
-chrome.runtime.onInstalled.addListener(() => {
-    // Tenta desativar se não for necessário, ou apenas lidar no fetch
-    if (self.registration.navigationPreload) {
-        self.registration.navigationPreload.disable().catch(() => { });
+// Ao instalar ou atualizar, limpa o estado e desativa o preload de navegação
+chrome.runtime.onInstalled.addListener(async () => {
+    const registrations = await self.registration.getNavigationPreload?.();
+    if (registrations) {
+        await self.registration.navigationPreload.disable();
     }
+    console.log('SM Extractor: Service Worker Instalado e Preload Desativado.');
 });
 
+// Garante que o SW assuma controle imediato sem interceptar fetch desnecessário
 self.addEventListener('activate', (event) => {
-    // Garante que o service worker assuma o controle imediatamente
     event.waitUntil(clients.claim());
 });
 
@@ -28,9 +29,14 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 let data = null;
                 
                 try {
-                    data = await response.json();
+                    const text = await response.text();
+                    try {
+                        data = JSON.parse(text);
+                    } catch (e) {
+                        data = { _raw: text, error: 'JSON malformado' };
+                    }
                 } catch (e) {
-                    data = { error: 'Invalid JSON' };
+                    data = { error: 'Não foi possível ler a resposta' };
                 }
 
                 sendResponse({ ok, status, data });
@@ -39,6 +45,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 sendResponse({ ok: false, error: error.message });
             });
 
-        return true; // Mantém o canal aberto para resposta assíncrona
+        return true; 
     }
 });
