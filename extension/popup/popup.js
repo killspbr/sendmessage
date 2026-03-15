@@ -1,6 +1,6 @@
-// URL do backend — fixo
+// URL do backend (Easypanel) — Usada para chamadas de API
 const BACKEND_URL = 'https://clrodrigues-sendmessage-backend.rsybpi.easypanel.host'
-// URL do sistema
+// URL do frontend (Pages.dev) — Usada para abrir o sistema e obter token
 const SYSTEM_URL = 'https://sendmessage-frontend.pages.dev'
 
 // ─── Init ─────────────────────────────────────────────────────────────────────

@@ -285,13 +285,16 @@
   <div class="section">
     <div class="section-title">🔑 Autenticação</div>
 
-    <div class="field">
-      <label>URL do Sistema (Servidor)</label>
-      <input type="text" id="backendUrl" placeholder="Ex: http://localhost:4000 ou https://seu-backend.com" />
-      <div class="hint">
-        Cole a URL do seu servidor backend (onde o sistema está rodando).
+    <details style="margin-bottom: 12px; font-size: 11px; cursor: pointer;">
+      <summary style="color: #64748b; font-weight: 600; outline: none; margin-bottom: 8px;">⚙️ Configurações Avançadas (URL)</summary>
+      <div class="field" style="margin-top: 8px; border-left: 2px solid #e2e8f0; padding-left: 10px;">
+        <label>URL do Sistema (Backend)</label>
+        <input type="text" id="backendUrl" placeholder="https://seu-backend.host" />
+        <div class="hint">
+          Padrão: clrodrigues-sendmessage-backend...
+        </div>
       </div>
-    </div>
+    </details>
 
     <div class="field">
       <label>Token de acesso</label>
