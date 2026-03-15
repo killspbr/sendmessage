@@ -210,17 +210,27 @@ export function UserSettingsPage({
           <p>1. Instale a extensão no Chrome (pasta <code className="bg-slate-100 px-1 rounded">extension/</code> do projeto)</p>
           <p>2. Clique no ícone 🗺️ → cole o token → Salvar</p>
           <p>3. Abra o Google Maps → clique em "Abrir Painel Lateral" → Iniciar Extração</p>
-          <div className="pt-2">
+          <div className="mt-6 pt-4 border-t border-slate-100">
+            <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Recurso Essencial</h4>
             <a 
               href="/extension.zip" 
               download="SM_Extractor.zip"
-              className="inline-flex items-center gap-2 text-emerald-600 font-bold hover:underline"
+              className="group relative inline-flex items-center gap-3 px-6 py-3 bg-gradient-to-br from-emerald-500 to-teal-600 text-white rounded-xl font-bold shadow-lg shadow-emerald-200 hover:shadow-emerald-300 hover:-translate-y-0.5 transition-all duration-200 overflow-hidden"
             >
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-              </svg>
-              Baixar Extensão Atualizada (.zip)
+              <div className="absolute inset-0 bg-white/10 group-hover:bg-transparent transition-colors" />
+              <div className="flex items-center justify-center w-8 h-8 bg-white/20 rounded-lg backdrop-blur-sm">
+                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                </svg>
+              </div>
+              <div className="flex flex-col items-start leading-tight">
+                <span className="text-sm">Baixar Extensão Atualizada</span>
+                <span className="text-[10px] opacity-80 font-medium">Versão 2025.03 • SM_Extractor.zip</span>
+              </div>
             </a>
+            <p className="mt-3 text-[11px] text-slate-400 italic">
+              * Necessário para extração automática no Google Maps.
+            </p>
           </div>
         </div>
       </div>
