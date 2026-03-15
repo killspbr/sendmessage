@@ -233,6 +233,7 @@ export function SettingsPage({
               <option value="1024">1024 tokens (médio)</option>
               <option value="2048">2048 tokens (longo)</option>
               <option value="4096">4096 tokens (muito longo)</option>
+              <option value="8192">8192 tokens (artigo completo/sem cortes)</option>
             </select>
           </div>
         </div>

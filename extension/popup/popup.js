@@ -23,24 +23,38 @@ function goToProfile(e) {
 // ─── Storage ──────────────────────────────────────────────────────────────────
 function loadConfig() {
     const token = localStorage.getItem('sm_authToken') || ''
+    const backendUrl = localStorage.getItem('sm_backendUrl') || BACKEND_URL
+
+    document.getElementById('backendUrl').value = backendUrl
+
     if (token) {
         document.getElementById('authToken').value = token
-        document.getElementById('btnSave').textContent = '✅ Token salvo'
+        document.getElementById('btnSave').textContent = '✅ Salvo'
     }
 }
 
 function saveConfig() {
     const token = document.getElementById('authToken').value.trim()
+    let backendUrl = document.getElementById('backendUrl').value.trim()
+
+    if (backendUrl.endsWith('/')) {
+        backendUrl = backendUrl.slice(0, -1)
+    }
+
     if (!token) { showToast('⚠️ Cole o token do seu perfil no SendMessage'); return }
+    if (!backendUrl) { showToast('⚠️ Cole a URL do backend do SendMessage'); return }
 
     localStorage.setItem('sm_authToken', token)
+    localStorage.setItem('sm_backendUrl', backendUrl)
     // Backup em chrome.storage
-    try { chrome.storage.local.set({ sm_authToken: token }) } catch (_) { }
+    try {
+        chrome.storage.local.set({ sm_authToken: token, sm_backendUrl: backendUrl })
+    } catch (_) { }
 
     const btn = document.getElementById('btnSave')
     btn.textContent = '✅ Salvo!'
-    showToast('✅ Token configurado com sucesso!')
-    setTimeout(() => { btn.textContent = '💾 Salvar Token' }, 2000)
+    showToast('✅ Configurações salvas!')
+    setTimeout(() => { btn.textContent = '💾 Salvar Configurações' }, 2000)
 }
 
 // ─── Tab check ────────────────────────────────────────────────────────────────
@@ -67,6 +81,8 @@ function checkCurrentTab() {
 // ─── Open sidebar ─────────────────────────────────────────────────────────────
 function openPanel() {
     const token = localStorage.getItem('sm_authToken') || ''
+    const backendUrl = localStorage.getItem('sm_backendUrl') || BACKEND_URL
+
     if (!token) { showToast('⚠️ Configure o token primeiro!'); return }
 
     chrome.tabs.query({ active: true, currentWindow: true }, async ([tab]) => {
@@ -76,7 +92,7 @@ function openPanel() {
 
         chrome.tabs.sendMessage(tab.id, {
             action: 'openSidebar',
-            config: { backendUrl: BACKEND_URL, authToken: token }
+            config: { backendUrl: backendUrl, authToken: token }
         }, () => {
             if (chrome.runtime.lastError) {
                 showToast('❌ Recarregue o Maps (F5) e tente novamente.')

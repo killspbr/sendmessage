@@ -210,6 +210,18 @@ export function UserSettingsPage({
           <p>1. Instale a extensão no Chrome (pasta <code className="bg-slate-100 px-1 rounded">extension/</code> do projeto)</p>
           <p>2. Clique no ícone 🗺️ → cole o token → Salvar</p>
           <p>3. Abra o Google Maps → clique em "Abrir Painel Lateral" → Iniciar Extração</p>
+          <div className="pt-2">
+            <a 
+              href="/extension.zip" 
+              download="SM_Extractor.zip"
+              className="inline-flex items-center gap-2 text-emerald-600 font-bold hover:underline"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+              </svg>
+              Baixar Extensão Atualizada (.zip)
+            </a>
+          </div>
         </div>
       </div>
 

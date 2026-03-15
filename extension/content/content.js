@@ -248,6 +248,26 @@
         $('btnImport').addEventListener('click', importAll)
     }
 
+    // ─── Backend Fetch via Background (Manifest V3 CORS Fix) ──────────────────
+    async function backendFetch(url, options = {}) {
+        return new Promise((resolve, reject) => {
+            chrome.runtime.sendMessage({
+                action: 'apiFetch',
+                params: { url, options }
+            }, (response) => {
+                if (chrome.runtime.lastError) {
+                    reject(new Error(chrome.runtime.lastError.message));
+                    return;
+                }
+                if (!response.ok && response.error) {
+                    reject(new Error(response.error));
+                    return;
+                }
+                resolve(response);
+            });
+        });
+    }
+
     // ─── Load lists ──────────────────────────────────────────────────────────────
     async function loadLists() {
         if (!config.backendUrl || !config.authToken) {
@@ -255,17 +275,17 @@
             return
         }
         try {
-            const resp = await fetch(`${config.backendUrl}/api/extension/info`, {
+            const resp = await backendFetch(`${config.backendUrl}/api/extension/info`, {
                 headers: { 'Authorization': `Bearer ${config.authToken}` }
             })
             if (resp.status === 401 || resp.status === 403) {
                 addLog('❌ Token inválido. Reconfigure na extensão.', 'err'); return
             }
             if (!resp.ok) {
-                const e = await resp.json().catch(() => ({}))
-                addLog(`❌ Servidor (${resp.status}): ${e.error || 'erro desconhecido'}`, 'err'); return
+                addLog(`❌ Servidor (${resp.status}): erro inesperado`, 'err'); return
             }
-            const info = await resp.json()
+
+            const info = resp.data
             const sel = shadow.getElementById('listSelect')
             if (info.lists?.length) {
                 sel.innerHTML = info.lists.map(l => `<option value="${l.id}">${l.name}</option>`).join('')
@@ -427,7 +447,7 @@
     // ─── Import single contact ───────────────────────────────────────────────────
     async function importSingle(contact, listId) {
         try {
-            const resp = await fetch(`${config.backendUrl}/api/contacts`, {
+            const resp = await backendFetch(`${config.backendUrl}/api/contacts`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

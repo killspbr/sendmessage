@@ -286,6 +286,14 @@
     <div class="section-title">🔑 Autenticação</div>
 
     <div class="field">
+      <label>URL do Sistema (Servidor)</label>
+      <input type="text" id="backendUrl" placeholder="Ex: http://localhost:4000 ou https://seu-backend.com" />
+      <div class="hint">
+        Cole a URL do seu servidor backend (onde o sistema está rodando).
+      </div>
+    </div>
+
+    <div class="field">
       <label>Token de acesso</label>
       <input type="password" id="authToken" placeholder="Cole o token do seu perfil..." />
       <div class="hint">
@@ -293,7 +301,7 @@
       </div>
     </div>
 
-    <button class="btn btn-primary" id="btnSave">💾 Salvar Token</button>
+    <button class="btn btn-primary" id="btnSave">💾 Salvar Configurações</button>
 
     <a href="#" class="link-system" id="btnGetToken">🌐 Abrir SendMessage / Obter Token</a>
   </div>

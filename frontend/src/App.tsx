@@ -382,7 +382,7 @@ function App() {
   const [geminiModel, setGeminiModel] = useState<string>('gemini-1.5-flash-latest')
   const [geminiApiVersion, setGeminiApiVersion] = useState<string>('v1')
   const [geminiTemperature, setGeminiTemperature] = useState<number>(0.7)
-  const [geminiMaxTokens, setGeminiMaxTokens] = useState<number>(1024)
+  const [geminiMaxTokens, setGeminiMaxTokens] = useState<number>(4096)
 
   // IA efetiva considerando configurações globais x por usuário
   const globalAiKey = globalSettings?.global_ai_api_key || geminiApiKey || ''
