@@ -27,11 +27,11 @@ export function Sidebar({ currentPage, onChangePage, can, userEmail, userName, o
   return (
     <aside className="w-16 md:w-60 shrink-0 bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 text-slate-100 flex flex-col border-r border-slate-900/60 h-screen sticky top-0">
       <div className="h-14 md:h-16 flex items-center justify-center md:justify-start md:px-5 border-b border-slate-900/80 gap-3">
-        <div className="h-8 w-8 md:h-9 md:w-9 rounded-2xl bg-gradient-to-br from-violet-500 to-fuchsia-500 flex items-center justify-center text-base md:text-lg shadow-lg shadow-violet-700/40">
-          <span aria-hidden="true">📨</span>
+        <div className="h-8 w-8 md:h-9 md:w-9 rounded-xl bg-white flex items-center justify-center p-1.5 shadow-lg shadow-emerald-900/40">
+          <img src="/icons/icon-512x512.png" alt="Logo" className="w-full h-full object-contain" />
         </div>
         <div className="hidden md:flex flex-col">
-          <span className="text-sm font-semibold tracking-tight">CL Marketing</span>
+          <span className="text-sm font-bold tracking-tight text-white">SendMessage</span>
         </div>
       </div>
       <nav className="flex-1 px-2 md:px-3 py-4 text-sm space-y-1">
