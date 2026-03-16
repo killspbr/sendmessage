@@ -1,4 +1,4 @@
-﻿import type { ChangeEvent } from 'react'
+import type { ChangeEvent } from 'react'
 import { useEffect, useState } from 'react'
 import { apiFetch } from './api'
 import { Sidebar } from './components/layout/Sidebar'
@@ -15,7 +15,6 @@ import {
   UserSettingsPage,
   ReportsPage,
   SchedulesPage,
-  ExtractPage,
 } from './pages'
 import { usePermissions } from './hooks/usePermissions'
 import { useAuth } from './hooks/useAuth'
@@ -100,7 +99,8 @@ const _initialLists: ContactList[] = [
 ]
 
 function App() {
-  const [authMode, setAuthMode] = useState<'login' | 'signup'>('login')
+  const [authMode, setAuthMode] = useState<'login' | 'signup' | 'forgot-password' | 'reset-password'>('login')
+  const [resetToken, setResetToken] = useState<string | null>(null)
   const [authEmail, setAuthEmail] = useState('')
   const [authPassword, setAuthPassword] = useState('')
   const [authName, setAuthName] = useState('')
@@ -121,8 +121,24 @@ function App() {
 
   const [updateAvailable, setUpdateAvailable] = useState(false)
   const [forceUpdate, setForceUpdate] = useState(false)
-  const [isExtracting, setIsExtracting] = useState(false)
+  const [isSearching, setIsSearching] = useState(false)
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const APP_VERSION = '1.0.1'
+
+  // Verificar tokens de redefinição de senha na URL
+  useEffect(() => {
+    const path = window.location.pathname
+    if (path.startsWith('/reset-password/')) {
+      const token = path.replace('/reset-password/', '')
+      if (token) {
+        setResetToken(token)
+        setAuthMode('reset-password')
+        setAuthError('Defina sua nova senha abaixo.')
+        // Limpar a URL sem recarregar a página
+        window.history.pushState({}, '', '/')
+      }
+    }
+  }, [])
 
   // Verificar versão e forçar atualização se necessário
   useEffect(() => {
@@ -424,7 +440,7 @@ function App() {
 
   // currentListId agora vem do hook useListsWithSupabase; mantemos apenas a persistência
   const [currentPage, setCurrentPage] = useState<
-    'dashboard' | 'contacts' | 'campaigns' | 'schedules' | 'settings' | 'reports' | 'admin' | 'profile' | 'extract'
+    'dashboard' | 'contacts' | 'campaigns' | 'schedules' | 'settings' | 'reports' | 'admin' | 'profile'
   >(() => {
     try {
       const stored = localStorage.getItem('sendmessage_currentPage') as
@@ -1792,7 +1808,7 @@ function App() {
           return
         }
 
-        setIsExtracting(true)
+        setIsSearching(true)
         try {
           const resp = await fetch(`${BACKEND_URL}/api/ai/extract-contact`, {
             method: 'POST',
@@ -1834,11 +1850,6 @@ function App() {
           setContactFormRating('')
           setShowContactForm(true)
 
-          // Se estiver na página de extração, muda para contatos para ver o resultado
-          if (currentPage === 'extract') {
-            setCurrentPage('contacts')
-          }
-
           const el = document.getElementById('contact-form-section')
           if (el) {
             el.scrollIntoView({ behavior: 'smooth', block: 'start' })
@@ -1849,7 +1860,7 @@ function App() {
           console.error('Erro ao chamar IA:', err)
           setLastMoveMessage('Erro inesperado ao chamar IA. Tente novamente.')
         } finally {
-          setIsExtracting(false)
+          setIsSearching(false)
         }
       }
       reader.readAsDataURL(file)
@@ -1977,54 +1988,7 @@ function App() {
     }
   }
 
-  // Importação em lote a partir da extração do Google Maps
-  const handleImportFromMaps = async (
-    contacts: { name: string; phone: string; email: string; category: string; cep: string; rating: string }[],
-    listId: string
-  ) => {
-    if (!effectiveUserId || !listId) throw new Error('Usuário ou lista não definidos')
 
-    const results: Contact[] = []
-    const current = contactsByList[listId] ?? []
-    let maxId = current.reduce((m, c) => (c.id > m ? c.id : m), 0)
-
-    for (const contact of contacts) {
-      const phoneDigits = normalizePhone(contact.phone)
-      try {
-        const data = await apiFetch('/api/contacts', {
-          method: 'POST',
-          body: JSON.stringify({
-            list_id: listId,
-            user_id: effectiveUserId,
-            name: contact.name.trim(),
-            phone: phoneDigits || '',
-            email: contact.email || '',
-            category: contact.category || '',
-            cep: contact.cep || '',
-            rating: contact.rating || '',
-          }),
-        })
-        maxId += 1
-        results.push({
-          id: maxId,
-          supabaseId: data.id?.toString(),
-          name: data.name ?? contact.name,
-          phone: data.phone ?? phoneDigits,
-          email: data.email ?? '',
-          category: data.category ?? contact.category,
-          cep: data.cep ?? '',
-          rating: data.rating ?? contact.rating,
-        })
-      } catch { /* falha silenciosa por contato */ }
-    }
-
-    if (results.length > 0) {
-      setContactsByList(prev => ({
-        ...prev,
-        [listId]: [...results, ...(prev[listId] ?? [])],
-      }))
-    }
-  }
 
   const handleApplyImport = async () => {
     if (!importNewContacts && !importConflicts) return
@@ -2613,6 +2577,35 @@ function App() {
         setAuthMode('login')
         setAuthPassword('')
         setAuthName('')
+      } else if (authMode === 'forgot-password') {
+        if (!email) {
+          setAuthError('Informe o seu e-mail para recuperar a senha.')
+          return
+        }
+        await apiFetch('/api/auth/forgot-password', {
+          method: 'POST',
+          body: JSON.stringify({ email })
+        })
+        setAuthError('Se o e-mail estiver cadastrado, as instruções serão enviadas para sua caixa de entrada.')
+        return
+      } else if (authMode === 'reset-password') {
+        if (!password || password.length < 6) {
+          setAuthError('A nova senha deve ter pelo menos 6 caracteres.')
+          return
+        }
+        if (!resetToken) {
+          setAuthError('Token de redefinição ausente ou inválido.')
+          return
+        }
+        await apiFetch('/api/auth/reset-password', {
+          method: 'POST',
+          body: JSON.stringify({ token: resetToken, password })
+        })
+        setAuthError('Senha alterada com sucesso! Você já pode entrar com sua nova senha.')
+        setAuthMode('login')
+        setAuthPassword('')
+        setResetToken(null)
+        return
       } else {
         await authLogin({ email, password })
       }
@@ -2713,8 +2706,8 @@ function App() {
       <div className="h-screen bg-slate-950 flex items-center justify-center p-4">
         <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-md w-full text-center">
           <div className="mb-6">
-            <div className="mx-auto w-16 h-16 bg-violet-100 rounded-full flex items-center justify-center mb-4">
-              <svg className="w-8 h-8 text-violet-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div className="mx-auto w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center mb-4">
+              <svg className="w-8 h-8 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
               </svg>
             </div>
@@ -2734,7 +2727,7 @@ function App() {
               localStorage.setItem('app_version', APP_VERSION)
               window.location.reload()
             }}
-            className="w-full px-6 py-3 bg-violet-600 hover:bg-violet-700 text-white font-semibold rounded-lg shadow-md transition-colors"
+            className="w-full px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-lg shadow-md transition-colors"
           >
             Atualizar Agora
           </button>
@@ -2744,7 +2737,7 @@ function App() {
   }
 
   return (
-    <div className="h-screen bg-slate-50 text-slate-900 flex overflow-hidden">
+    <div className="h-screen bg-slate-50 text-slate-900 flex flex-col md:flex-row overflow-hidden relative">
       <Sidebar
         currentPage={currentPage}
         onChangePage={(page) => {
@@ -2756,10 +2749,21 @@ function App() {
         onSignOut={_handleSignOut}
         impersonatedUserId={impersonatedUserId}
         onClearImpersonation={() => setImpersonatedUserId(null)}
+        isMobileMenuOpen={isMobileMenuOpen}
+        onCloseMobileMenu={() => setIsMobileMenuOpen(false)}
       />
 
+      {/* Overlay para fechar menu no mobile */}
+      {isMobileMenuOpen && (
+        <div 
+          className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-40 md:hidden transition-opacity"
+          onClick={() => setIsMobileMenuOpen(false)}
+          aria-hidden="true"
+        />
+      )}
+
       {/* Área de conteúdo */}
-      <div className="flex-1 flex flex-col h-screen overflow-hidden">
+      <div className="flex-1 flex flex-col h-screen overflow-hidden min-w-0">
         {updateAvailable && (
           <div className="shrink-0 bg-emerald-600 text-white text-[11px] md:text-xs px-3 md:px-6 py-2 flex items-center justify-center z-40">
             <div className="max-w-6xl w-full flex flex-col md:flex-row md:items-center md:justify-between gap-2">
@@ -2790,6 +2794,7 @@ function App() {
           currentPage={currentPage}
           onImportCsv={currentPage === 'contacts' && can('contacts.import') ? handleCsvUpload : undefined}
           onExportCsv={currentPage === 'contacts' && can('contacts.export') ? handleExportCsv : undefined}
+          onToggleMobileMenu={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
         />
 
         {impersonatedUserId && (
@@ -3090,18 +3095,6 @@ function App() {
                 currentUserGroupName={permissions?.groupName ?? null}
                 impersonatedUserId={impersonatedUserId}
                 onImpersonateUser={setImpersonatedUserId}
-              />
-            ) : currentPage === 'extract' ? (
-              <ExtractPage
-                onAiExtractContact={handleAiExtractContact}
-                isExtracting={isExtracting}
-                lastMessage={lastMoveMessage}
-                lists={lists}
-                existingPhones={new Set(
-                  Object.values(contactsByList).flat().map(c => normalizePhone(c.phone)).filter(Boolean)
-                )}
-                googleMapsApiKey={googleMapsApiKey || globalSettings?.google_maps_api_key || undefined}
-                onImportContacts={handleImportFromMaps}
               />
             ) : null}
           </div>

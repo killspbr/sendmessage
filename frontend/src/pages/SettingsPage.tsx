@@ -97,7 +97,7 @@ export function SettingsPage({
           value={evolutionApiUrl}
           onChange={(e) => onChangeEvolutionApiUrl(e.target.value.trim())}
           placeholder="https://api.sua-evolution.com"
-          className="h-9 w-full px-2 rounded-md border border-slate-200 bg-white text-[11px] text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-violet-400/80"
+          className="h-9 w-full px-2 rounded-md border border-slate-200 bg-white text-[11px] text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-emerald-400/80"
         />
       </div>
 
@@ -109,7 +109,7 @@ export function SettingsPage({
             value={evolutionApiKey}
             onChange={(e) => onChangeEvolutionApiKey(e.target.value.trim())}
             placeholder="sua_chave_global"
-            className="h-9 w-full px-2 rounded-md border border-slate-200 bg-white text-[11px] text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-violet-400/80"
+            className="h-9 w-full px-2 rounded-md border border-slate-200 bg-white text-[11px] text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-emerald-400/80"
           />
         </div>
 
@@ -120,7 +120,7 @@ export function SettingsPage({
             value={evolutionInstance}
             onChange={(e) => onChangeEvolutionInstance(e.target.value.trim())}
             placeholder="ex: admin_zap"
-            className="h-9 w-full px-2 rounded-md border border-slate-200 bg-white text-[11px] text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-violet-400/80"
+            className="h-9 w-full px-2 rounded-md border border-slate-200 bg-white text-[11px] text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-emerald-400/80"
           />
         </div>
       </div>
@@ -170,7 +170,7 @@ export function SettingsPage({
             value={geminiApiKey}
             onChange={(e) => onChangeGeminiApiKey(e.target.value.trim())}
             placeholder="ex: AIza..."
-            className="h-9 w-full px-2 rounded-md border border-slate-200 bg-white text-[11px] text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-violet-400/80"
+            className="h-9 w-full px-2 rounded-md border border-slate-200 bg-white text-[11px] text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-emerald-400/80"
           />
           <p className="text-[10px] text-amber-600">
             Esta chave é sensível. Não compartilhe telas ou exports contendo a API Key.
@@ -183,7 +183,7 @@ export function SettingsPage({
             <select
               value={geminiModel}
               onChange={(e) => onChangeGeminiModel(e.target.value)}
-              className="h-9 w-full px-2 rounded-md border border-slate-200 bg-white text-[11px] text-slate-700 focus:outline-none focus:ring-1 focus:ring-violet-400/80"
+              className="h-9 w-full px-2 rounded-md border border-slate-200 bg-white text-[11px] text-slate-700 focus:outline-none focus:ring-1 focus:ring-emerald-400/80"
             >
               <option value="gemini-2.5-flash">gemini-2.5-flash (mais recente)</option>
               <option value="gemini-1.5-flash-latest">gemini-1.5-flash-latest (rápido)</option>
@@ -197,7 +197,7 @@ export function SettingsPage({
             <select
               value={geminiApiVersion}
               onChange={(e) => onChangeGeminiApiVersion(e.target.value)}
-              className="h-9 w-full px-2 rounded-md border border-slate-200 bg-white text-[11px] text-slate-700 focus:outline-none focus:ring-1 focus:ring-violet-400/80"
+              className="h-9 w-full px-2 rounded-md border border-slate-200 bg-white text-[11px] text-slate-700 focus:outline-none focus:ring-1 focus:ring-emerald-400/80"
             >
               <option value="v1">v1 (estável)</option>
               <option value="v1beta">v1beta (experimental)</option>
@@ -217,17 +217,17 @@ export function SettingsPage({
               step="0.1"
               value={geminiTemperature}
               onChange={(e) => onChangeGeminiTemperature(parseFloat(e.target.value))}
-              className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-violet-500"
+              className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-emerald-500"
             />
             <p className="text-[9px] text-slate-400">0 = previsível, 1 = criativo</p>
           </div>
 
           <div className="flex flex-col gap-1">
-            <label className="text-[10px) font-medium text-slate-600">Tamanho máximo</label>
+            <label className="text-[10px] font-medium text-slate-600">Tamanho máximo</label>
             <select
               value={geminiMaxTokens}
               onChange={(e) => onChangeGeminiMaxTokens(parseInt(e.target.value, 10))}
-              className="h-9 w-full px-2 rounded-md border border-slate-200 bg-white text-[11px] text-slate-700 focus:outline-none focus:ring-1 focus:ring-violet-400/80"
+              className="h-9 w-full px-2 rounded-md border border-slate-200 bg-white text-[11px] text-slate-700 focus:outline-none focus:ring-1 focus:ring-emerald-400/80"
             >
               <option value="512">512 tokens (curto)</option>
               <option value="1024">1024 tokens (médio)</option>

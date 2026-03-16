@@ -1,7 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import { query } from './db.js';
-import { login, signup, authenticateToken } from './auth.js';
+import { login, signup, forgotPassword, resetPassword, authenticateToken } from './auth.js';
 
 const app = express();
 const port = process.env.PORT || 4000;
@@ -12,6 +12,8 @@ app.use(express.json({ limit: '20mb' }));
 // --- ROTAS DE AUTENTICAÇÃO ---
 app.post('/api/auth/signup', signup);
 app.post('/api/auth/login', login);
+app.post('/api/auth/forgot-password', forgotPassword);
+app.post('/api/auth/reset-password', resetPassword);
 
 // A partir daqui, as rotas podem ser protegidas se necessário
 // app.use(authenticateToken); 
@@ -750,7 +752,7 @@ app.post('/api/campaigns/:id/send', authenticateToken, async (req, res) => {
 
     // 3) Buscar contatos da lista
     const contactsResult = await query(
-      'SELECT id, name, phone, email, category, cep, rating FROM contacts WHERE user_id = $1 AND list_id = $2',
+      'SELECT id, name, phone, email, category, cep, address, city, rating FROM contacts WHERE user_id = $1 AND list_id = $2',
       [req.user.id, list.id]
     );
     const contacts = contactsResult.rows;
@@ -811,19 +813,71 @@ app.post('/api/campaigns/:id/send', authenticateToken, async (req, res) => {
       return `55${local}`;
     };
 
+    const resolveTemplate = (tpl, contact) => {
+      let result = tpl;
+      const data = {
+        '{name}': contact.name || '',
+        '{primeiro_nome}': (contact.name || '').split(' ')[0],
+        '{phone}': contact.phone || '',
+        '{category}': contact.category || '',
+        '{city}': contact.city || '',
+        '{email}': contact.email || '',
+        '{rating}': contact.rating || '',
+      };
+
+      Object.entries(data).forEach(([key, val]) => {
+        const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        result = result.replace(new RegExp(escapedKey, 'g'), val);
+      });
+      return result;
+    };
+
+    const extractImages = (html) => {
+      const images = [];
+      const regex = /<img[^>]+src="([^">]+)"/gi;
+      let match;
+      while ((match = regex.exec(html)) !== null) {
+        images.push(match[1]);
+      }
+      return images;
+    };
+
     const htmlToWhatsapp = (html) => {
-      return html
-        .replace(/<br\s*\/?>(?=\s*<br\s*\/?)/gi, '\n')
-        .replace(/<br\s*\/?>(?!\s*<br\s*\/?)/gi, '\n')
-        .replace(/<\/p>/gi, '\n')
+      if (!html) return '';
+
+      let text = html;
+
+      // negrito
+      text = text.replace(/<(b|strong)>([\s\S]*?)<\/(b|strong)>/gi, '*$2*');
+      // itálico
+      text = text.replace(/<(i|em)>([\s\S]*?)<\/(i|em)>/gi, '_$2_');
+      // rasurado
+      text = text.replace(/<(s|del)>([\s\S]*?)<\/(s|del)>/gi, '~$2~');
+      
+      // links
+      text = text.replace(/<a[^>]+href="([^">]+)"[^>]*>([\s\S]*?)<\/a>/gi, (match, url, label) => {
+        const cleanLabel = label.replace(/<[^>]+>/g, '').trim();
+        if (url === cleanLabel || !cleanLabel) return url;
+        return `${cleanLabel} (${url})`;
+      });
+
+      // listas
+      text = text.replace(/<li[^>]*>([\s\S]*?)<\/li>/gi, '* $1\n');
+      text = text.replace(/<\/?(ul|ol)[^>]*>/gi, '\n');
+      // parágrafos e quebras
+      text = text.replace(/<br\s*\/?>/gi, '\n');
+      text = text.replace(/<\/(p|div)>/gi, '\n');
+
+      // remover demais tags e limpar
+      return text
         .replace(/<[^>]+>/g, '')
+        .replace(/\n{3,}/g, '\n\n')
         .trim();
     };
 
     const htmlToText = (html) =>
       html
-        .replace(/<br\s*\/?>(?=\s*<br\s*\/?)/gi, '\n')
-        .replace(/<br\s*\/?>(?!\s*<br\s*\/?)/gi, '\n')
+        .replace(/<br\s*\/?>/gi, '\n')
         .replace(/<\/p>/gi, '\n')
         .replace(/<[^>]+>/g, '')
         .trim();
@@ -854,29 +908,55 @@ app.post('/api/campaigns/:id/send', authenticateToken, async (req, res) => {
 
           if (evolutionUrl && evolutionInstance) {
             try {
-              const fullUrl = `${evolutionUrl}/message/sendText/${evolutionInstance}`;
-              const bodyPayload = {
-                number: evolutionNumber,
-                text: htmlToWhatsapp(messageHtml),
-              };
+              const resolvedHtml = resolveTemplate(messageHtml, contact);
+              const messageTextProcessed = htmlToWhatsapp(resolvedHtml);
+              const imageUrls = extractImages(resolvedHtml);
 
-              console.log(`[Evolution] Enviando para ${evolutionNumber} (${contact.name}) | URL: ${fullUrl}`);
+              // 1) Enviar Texto
+              if (messageTextProcessed) {
+                const textUrl = `${evolutionUrl}/message/sendText/${evolutionInstance}`;
+                const textBody = {
+                  number: evolutionNumber,
+                  text: messageTextProcessed,
+                  linkPreview: true
+                };
 
-              const response = await fetch(fullUrl, {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                  'apikey': evolutionApiKey
-                },
-                body: JSON.stringify(bodyPayload),
-              });
+                console.log(`[Evolution] Enviando Texto para ${evolutionNumber} (${contact.name})`);
+                const textResp = await fetch(textUrl, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json', 'apikey': evolutionApiKey },
+                  body: JSON.stringify(textBody),
+                });
 
-              const responseText = await response.text();
-              console.log(`[Evolution] Resposta ${response.status} para ${evolutionNumber}:`, responseText.slice(0, 300));
+                if (!textResp.ok) {
+                  const errText = await textResp.text();
+                  console.error(`[Evolution] Erro no Texto para ${evolutionNumber}:`, errText);
+                  errors++;
+                }
+              }
 
-              if (!response.ok) {
-                console.error(`[Evolution] Erro ao enviar para ${evolutionNumber}:`, responseText);
-                errors++;
+              // 2) Enviar Imagens (se houver)
+              for (const imageUrl of imageUrls) {
+                const mediaUrl = `${evolutionUrl}/message/sendMedia/${evolutionInstance}`;
+                const mediaBody = {
+                  number: evolutionNumber,
+                  media: imageUrl,
+                  mediatype: 'image',
+                  caption: '' // Imagens enviadas separadamente para garantir entrega
+                };
+
+                console.log(`[Evolution] Enviando Imagem para ${evolutionNumber} (${contact.name}): ${imageUrl}`);
+                const mediaResp = await fetch(mediaUrl, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json', 'apikey': evolutionApiKey },
+                  body: JSON.stringify(mediaBody),
+                });
+
+                if (!mediaResp.ok) {
+                  const errMedia = await mediaResp.text();
+                  console.error(`[Evolution] Erro na Imagem para ${evolutionNumber}:`, errMedia);
+                  // Não somamos erro aqui para não invalidar o envio do texto que talvez tenha dado certo
+                }
               }
             } catch (e) {
               console.error(`[Evolution] Falha na requisição para ${evolutionNumber}:`, e.message);

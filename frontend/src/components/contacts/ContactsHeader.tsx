@@ -56,7 +56,7 @@ export function ContactsHeader({
         </div>
 
         {/* Desktop: pills */}
-        <div className="hidden md:flex items-center gap-2 text-xs flex-wrap">
+        <div className="hidden md:flex items-center gap-1.5 text-xs flex-wrap">
           {sortedLists.map((list) => (
             <button
               key={list.id}
@@ -65,11 +65,11 @@ export function ContactsHeader({
                 onResetSelection()
                 onSelectList(list.id)
               }}
-              className={`px-3 py-1.5 rounded-full border text-xs transition 
+              className={`px-4 py-1.5 rounded-xl border text-[11px] font-bold transition-all duration-200 shadow-sm
                 ${
                   list.id === currentListId
-                    ? 'bg-slate-900 text-white border-slate-900'
-                    : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                    ? 'bg-emerald-600 text-white border-emerald-600 shadow-emerald-200'
+                    : 'bg-white text-slate-600 border-slate-200 hover:border-emerald-300 hover:text-emerald-600'
                 }
               `}
             >
@@ -78,10 +78,10 @@ export function ContactsHeader({
           ))}
           {onCreateList && (
             <button
-              className="px-2.5 py-1.5 rounded-full border border-dashed border-slate-300 text-xs text-slate-500 hover:bg-slate-50"
+              className="px-3 py-1.5 rounded-xl border border-dashed border-slate-300 text-[11px] font-medium text-slate-400 hover:bg-emerald-50 hover:border-emerald-200 hover:text-emerald-600 transition-all shadow-sm"
               onClick={onCreateList}
             >
-              + Nova lista
+              + Criar Lista
             </button>
           )}
         </div>
@@ -90,13 +90,12 @@ export function ContactsHeader({
           {onCreateContact && (
             <button
               type="button"
-              className="px-2 py-1 rounded-md border border-slate-200 text-slate-600 hover:bg-slate-50"
+              className="h-8 px-4 rounded-xl bg-emerald-600 text-white text-[11px] font-bold shadow-sm shadow-emerald-950/20 hover:bg-emerald-500 active:scale-95 transition-all"
               onClick={onCreateContact}
             >
-              Novo contato
+              + Novo Contato
             </button>
           )}
-          {/* Os botões de IA de imagem e backfill de CEP continuam no App por enquanto */}
         </div>
       </div>
     </div>

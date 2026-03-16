@@ -121,7 +121,7 @@ export function SchedulesPage({ campaigns, effectiveUserId }: SchedulesPageProps
             <select
               value={newCampaignId}
               onChange={(e) => setNewCampaignId(e.target.value)}
-              className="h-8 px-2 rounded-md border border-slate-200 bg-white text-[11px] text-slate-700 focus:outline-none focus:ring-1 focus:ring-violet-400/80 min-w-[220px]"
+              className="h-8 px-2 rounded-md border border-slate-200 bg-white text-[11px] text-slate-700 focus:outline-none focus:ring-1 focus:ring-emerald-400/80 min-w-[220px]"
             >
               <option value="">Selecione uma campanha</option>
               {campaigns.map((c) => (
@@ -138,7 +138,7 @@ export function SchedulesPage({ campaigns, effectiveUserId }: SchedulesPageProps
               type="date"
               value={newDate}
               onChange={(e) => setNewDate(e.target.value)}
-              className="h-8 px-2 rounded-md border border-slate-200 bg-white text-[11px] text-slate-700 focus:outline-none focus:ring-1 focus:ring-violet-400/80"
+              className="h-8 px-2 rounded-md border border-slate-200 bg-white text-[11px] text-slate-700 focus:outline-none focus:ring-1 focus:ring-emerald-400/80"
             />
           </div>
 
@@ -148,13 +148,13 @@ export function SchedulesPage({ campaigns, effectiveUserId }: SchedulesPageProps
               type="time"
               value={newTime}
               onChange={(e) => setNewTime(e.target.value)}
-              className="h-8 px-2 rounded-md border border-slate-200 bg-white text-[11px] text-slate-700 focus:outline-none focus:ring-1 focus:ring-violet-400/80"
+              className="h-8 px-2 rounded-md border border-slate-200 bg-white text-[11px] text-slate-700 focus:outline-none focus:ring-1 focus:ring-emerald-400/80"
             />
           </div>
 
           <button
             type="button"
-            className="h-8 px-3 rounded-md text-[11px] font-medium bg-violet-500 text-white hover:bg-violet-400 disabled:opacity-40 disabled:cursor-not-allowed"
+            className="h-8 px-3 rounded-md text-[11px] font-medium bg-emerald-500 text-white hover:bg-emerald-400 disabled:opacity-40 disabled:cursor-not-allowed"
             disabled={
               !effectiveUserId ||
               !newCampaignId ||
@@ -214,7 +214,7 @@ export function SchedulesPage({ campaigns, effectiveUserId }: SchedulesPageProps
               <select
                 value={filterCampaignId}
                 onChange={(e) => setFilterCampaignId(e.target.value as any)}
-                className="h-7 px-2 rounded-md border border-slate-200 bg-white text-[11px] text-slate-700 focus:outline-none focus:ring-1 focus:ring-violet-400/80 min-w-[180px]"
+                className="h-7 px-2 rounded-md border border-slate-200 bg-white text-[11px] text-slate-700 focus:outline-none focus:ring-1 focus:ring-emerald-400/80 min-w-[180px]"
               >
                 <option value="all">Todas as campanhas</option>
                 {distinctCampaigns.map((c) => (
@@ -230,7 +230,7 @@ export function SchedulesPage({ campaigns, effectiveUserId }: SchedulesPageProps
               <select
                 value={filterStatus}
                 onChange={(e) => setFilterStatus(e.target.value as any)}
-                className="h-7 px-2 rounded-md border border-slate-200 bg-white text-[11px] text-slate-700 focus:outline-none focus:ring-1 focus:ring-violet-400/80"
+                className="h-7 px-2 rounded-md border border-slate-200 bg-white text-[11px] text-slate-700 focus:outline-none focus:ring-1 focus:ring-emerald-400/80"
               >
                 <option value="all">Todos</option>
                 <option value="pending">Pendente</option>
@@ -258,9 +258,9 @@ export function SchedulesPage({ campaigns, effectiveUserId }: SchedulesPageProps
           </div>
         )}
 
-        <div className="border border-slate-100 rounded-xl overflow-hidden mt-1">
-          <table className="w-full text-[11px]">
-            <thead className="bg-slate-50 text-slate-500">
+        <div className="border border-slate-100 rounded-xl overflow-x-auto overflow-y-auto mt-1 max-h-[60vh]">
+          <table className="w-full text-[11px] min-w-[500px]">
+            <thead className="bg-slate-50 text-slate-500 sticky top-0 z-10">
               <tr>
                 <th className="text-left px-3 py-2">Campanha</th>
                 <th className="text-left px-3 py-2">Data/Hora agendada</th>

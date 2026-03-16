@@ -6,9 +6,10 @@ type HeaderProps = {
   currentPage: HeaderPage
   onImportCsv?: (e: React.ChangeEvent<HTMLInputElement>) => void
   onExportCsv?: () => void
+  onToggleMobileMenu?: () => void
 }
 
-export function Header({ currentPage, onImportCsv, onExportCsv }: HeaderProps) {
+export function Header({ currentPage, onImportCsv, onExportCsv, onToggleMobileMenu }: HeaderProps) {
   const title =
     currentPage === 'dashboard'
       ? 'Dashboard'
@@ -53,9 +54,23 @@ export function Header({ currentPage, onImportCsv, onExportCsv }: HeaderProps) {
 
   return (
     <header className="h-14 md:h-16 shrink-0 border-b border-slate-200 bg-white/80 backdrop-blur flex items-center justify-between px-3 md:px-6">
-      <div className="min-w-0">
-        <h1 className="text-base md:text-xl font-semibold tracking-tight truncate">{title}</h1>
-        <p className="hidden md:block text-[11px] text-slate-500">{subtitle}</p>
+      <div className="flex items-center gap-2 md:gap-3 min-w-0">
+        {onToggleMobileMenu && (
+          <button
+            type="button"
+            onClick={onToggleMobileMenu}
+            className="md:hidden p-1.5 -ml-1.5 rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-800 focus:outline-none transition-colors"
+            title="Menu"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+            </svg>
+          </button>
+        )}
+        <div className="min-w-0">
+          <h1 className="text-base md:text-xl font-semibold tracking-tight truncate">{title}</h1>
+          <p className="hidden md:block text-[11px] text-slate-500">{subtitle}</p>
+        </div>
       </div>
       {currentPage === 'contacts' && (onImportCsv || onExportCsv) && (
         <div className="flex items-center gap-1 md:gap-2">

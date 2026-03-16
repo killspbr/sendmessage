@@ -299,9 +299,9 @@ export function ExtractPage({
 
             {/* ── TAB: GOOGLE MAPS ── */}
             {activeTab === 'maps' && (
-                <div className="flex gap-4 flex-1 min-h-0" style={{ height: 'calc(100vh - 200px)' }}>
+                <div className="flex flex-col md:flex-row gap-4 flex-1 min-h-0 md:h-[calc(100vh-200px)]">
                     {/* Painel esquerdo */}
-                    <div className="flex flex-col gap-3 w-[380px] min-w-[340px] overflow-y-auto">
+                    <div className="flex flex-col gap-3 w-full md:w-[380px] md:min-w-[340px] md:overflow-y-auto">
                         {/* Formulário de busca */}
                         <form onSubmit={handleSearch} className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm flex flex-col gap-3">
                             <div className="flex items-center gap-2 mb-1">
@@ -484,7 +484,7 @@ export function ExtractPage({
                     </div>
 
                     {/* Painel direito — Mapa */}
-                    <div className="flex-1 rounded-2xl overflow-hidden border border-slate-200 shadow-sm bg-slate-100 flex flex-col">
+                    <div className="flex-1 w-full min-h-[400px] md:min-h-0 rounded-2xl overflow-hidden border border-slate-200 shadow-sm bg-slate-100 flex flex-col mt-4 md:mt-0">
                         {mapEmbedQuery ? (
                             googleMapsApiKey ? (
                                 <iframe

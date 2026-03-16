@@ -218,50 +218,38 @@ export function ContactsPage({
         onCreateContact={canCreateContact ? onCreateContact : undefined}
       />
 
-      <div className="flex items-center gap-2 text-[11px] mt-1">
-        <label className="px-2 py-1 rounded-md border border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 cursor-pointer flex items-center gap-1">
-          <span>IA</span>
-          <input
-            type="file"
-            accept="image/*"
-            className="hidden"
-            onChange={(e) => {
-              const file = e.target.files?.[0]
-              if (file) {
-                onAiExtractContact(file)
-              }
-              e.target.value = ''
-            }}
-          />
-        </label>
+      <div className="flex items-center gap-2 text-[10px] md:text-[11px] mt-2 mb-3">
         <button
           type="button"
-          className="px-2 py-1 rounded-md border border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
+          className="px-3 py-1.5 rounded-xl border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 font-bold shadow-sm transition-all"
           onClick={onBackfillAddressFromCep}
           disabled={isBackfillingAddress}
         >
-          {isBackfillingAddress && (
-            <span className="inline-flex w-3 h-3 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin" />
+          {isBackfillingAddress ? (
+            <span className="inline-flex w-3 h-3 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin" />
+          ) : (
+            <span>✨</span>
           )}
-          {isBackfillingAddress ? 'IA preenchendo endereços...' : 'IA: Endereços'}
+          {isBackfillingAddress ? 'IA preenchendo endereços...' : 'IA: Completar Endereços'}
         </button>
-        {canManageLists && (
-          <button
-            type="button"
-            className="px-2 py-1 rounded-md border border-slate-200 text-slate-600 hover:bg-slate-50"
-            onClick={onRenameCurrentList}
-          >
-            Renomear lista
-          </button>
-        )}
-        {canManageLists && (
-          <button
-            type="button"
-            className="px-2 py-1 rounded-md border border-red-200 bg-red-50 text-red-600 hover:bg-red-100"
-            onClick={onDeleteCurrentList}
-          >
-            Excluir lista
-          </button>
+        <div className="flex-1" />
+        {canManageLists && currentListId !== 'sem-contatos' && (
+          <>
+            <button
+              type="button"
+              className="px-3 py-1.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 font-medium transition-all"
+              onClick={onRenameCurrentList}
+            >
+              Renomear Lista
+            </button>
+            <button
+              type="button"
+              className="px-3 py-1.5 rounded-xl border border-red-100 bg-red-50 text-red-600 hover:bg-red-100 font-medium transition-all"
+              onClick={onDeleteCurrentList}
+            >
+              Excluir Lista
+            </button>
+          </>
         )}
       </div>
 
@@ -460,7 +448,7 @@ export function ContactsPage({
 
         {/* Tabela de contatos */}
         <div className="overflow-x-auto overflow-y-auto max-h-[60vh] md:max-h-[70vh] lg:max-h-[75vh] rounded-xl border border-slate-100">
-          <table className="w-full text-xs border-separate border-spacing-0">
+          <table className="w-full text-xs border-separate border-spacing-0 min-w-[800px]">
             <thead className="bg-white sticky top-0 z-10">
               <tr className="border-b border-slate-100">
                 <th className="w-10 px-3 py-2 text-left align-bottom">

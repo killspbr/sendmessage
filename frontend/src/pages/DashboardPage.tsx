@@ -78,6 +78,113 @@ export function DashboardPage({
   }
   return (
     <>
+      {/* Seção de Onboarding / Primeiros Passos */}
+      {(!hasEvolutionConfigured || contacts.length === 0 || campaigns.length === 0) && (
+        <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden mb-6">
+          <div className="px-6 py-4 border-b border-slate-50 flex items-center justify-between bg-slate-50/50">
+            <div>
+              <h3 className="text-sm font-bold text-slate-800">Primeiros Passos</h3>
+              <p className="text-[11px] text-slate-500">Complete estas tarefas para começar a enviar suas mensagens</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">
+                {Math.round(((hasEvolutionConfigured ? 1 : 0) + (contacts.length > 0 ? 1 : 0) + (campaigns.length > 0 ? 1 : 0)) / 3 * 100)}% concluído
+              </span>
+            </div>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 divide-y md:divide-y-0 md:divide-x divide-slate-100">
+            <div className={`p-5 flex flex-col gap-3 transition-colors ${!hasEvolutionConfigured ? 'bg-amber-50/30' : 'bg-white'}`}>
+              <div className="flex items-center justify-between">
+                <div className={`w-8 h-8 rounded-xl flex items-center justify-center text-sm ${hasEvolutionConfigured ? 'bg-emerald-100 text-emerald-600' : 'bg-amber-100 text-amber-600'}`}>
+                  {hasEvolutionConfigured ? '✓' : '1'}
+                </div>
+                {!hasEvolutionConfigured && <span className="text-[9px] font-bold text-amber-600 animate-pulse">PENDENTE</span>}
+              </div>
+              <div>
+                <h4 className="text-xs font-bold text-slate-800">Conectar WhatsApp</h4>
+                <p className="text-[10px] text-slate-500 mt-1 leading-relaxed">Configure a API Evolution para habilitar o envio de mensagens via WhatsApp.</p>
+              </div>
+              <button 
+                onClick={() => onNavigate('settings')}
+                className={`mt-auto text-[10px] font-bold text-left hover:underline ${hasEvolutionConfigured ? 'text-emerald-600' : 'text-amber-600'}`}
+              >
+                {hasEvolutionConfigured ? 'Configurações concluídas' : 'Ir para Configurações →'}
+              </button>
+            </div>
+
+            <div className={`p-5 flex flex-col gap-3 transition-colors ${hasEvolutionConfigured && contacts.length === 0 ? 'bg-amber-50/30' : 'bg-white'}`}>
+              <div className="flex items-center justify-between">
+                <div className={`w-8 h-8 rounded-xl flex items-center justify-center text-sm ${contacts.length > 0 ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-100 text-slate-600'}`}>
+                  {contacts.length > 0 ? '✓' : '2'}
+                </div>
+                {hasEvolutionConfigured && contacts.length === 0 && <span className="text-[9px] font-bold text-amber-600 animate-pulse">PRÓXIMO PASSO</span>}
+              </div>
+              <div>
+                <h4 className="text-xs font-bold text-slate-800">Adicionar Contatos</h4>
+                <p className="text-[10px] text-slate-500 mt-1 leading-relaxed">Importe sua lista de contatos via CSV ou adicione manualmente no sistema.</p>
+              </div>
+              <button 
+                onClick={() => onNavigate('contacts')}
+                className={`mt-auto text-[10px] font-bold text-left hover:underline ${contacts.length > 0 ? 'text-emerald-600' : 'text-slate-600'}`}
+              >
+                {contacts.length > 0 ? 'Contatos cadastrados' : 'Gerenciar Contatos →'}
+              </button>
+            </div>
+
+            <div className={`p-5 flex flex-col gap-3 transition-colors ${contacts.length > 0 && campaigns.length === 0 ? 'bg-amber-50/30' : 'bg-white'}`}>
+              <div className="flex items-center justify-between">
+                <div className={`w-8 h-8 rounded-xl flex items-center justify-center text-sm ${campaigns.length > 0 ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-100 text-slate-600'}`}>
+                  {campaigns.length > 0 ? '✓' : '3'}
+                </div>
+                {contacts.length > 0 && campaigns.length === 0 && <span className="text-[9px] font-bold text-amber-600 animate-pulse">QUASE LÁ</span>}
+              </div>
+              <div>
+                <h4 className="text-xs font-bold text-slate-800">Criar Campanha</h4>
+                <p className="text-[10px] text-slate-500 mt-1 leading-relaxed">Crie sua primeira campanha de mensagens e escolha o público alvo.</p>
+              </div>
+              <button 
+                onClick={() => onNavigate('campaigns')}
+                className={`mt-auto text-[10px] font-bold text-left hover:underline ${campaigns.length > 0 ? 'text-emerald-600' : 'text-slate-600'}`}
+              >
+                {campaigns.length > 0 ? 'Campanha criada' : 'Criar Campanha →'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Banner da Extensão do Navegador */}
+      <div className="relative overflow-hidden mb-4 p-4 rounded-3xl bg-gradient-to-r from-emerald-600 to-emerald-800 text-white shadow-xl shadow-emerald-950/20 group">
+        {/* Decorative elements */}
+        <div className="absolute top-0 right-0 -mr-10 -mt-10 h-40 w-40 rounded-full bg-white/10 blur-3xl pointer-events-none group-hover:bg-white/20 transition-all duration-700" />
+        <div className="absolute bottom-0 left-0 -ml-10 -mb-10 h-32 w-32 rounded-full bg-emerald-400/20 blur-2xl pointer-events-none" />
+
+        <div className="relative flex flex-col md:flex-row items-center justify-between gap-4">
+          <div className="flex items-center gap-4">
+            <div className="h-12 w-12 rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center text-2xl shadow-inner border border-white/30">
+              🚀
+            </div>
+            <div>
+              <h3 className="text-sm font-bold tracking-tight">Potencialize sua extração com nossa extensão</h3>
+              <p className="text-[11px] text-emerald-50/80 leading-relaxed max-w-md">
+                Extraia contatos diretamente do seu navegador com 1 clique. Mais rápido, seguro e integrado ao seu WhatsApp.
+              </p>
+            </div>
+          </div>
+          <a
+            href="https://github.com/killspbr/sendmessage/raw/main/sendmessage-extension.zip"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="shrink-0 flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-white text-emerald-700 text-xs font-bold hover:bg-emerald-50 transition-all duration-300 shadow-lg active:scale-95"
+          >
+            Baixar Agora
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 16v1a3 3 0 003 3h10a3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+            </svg>
+          </a>
+        </div>
+      </div>
+
       {/* KPIs principais */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
         <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-3 flex flex-col gap-1">

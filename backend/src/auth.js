@@ -1,6 +1,7 @@
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import { query } from './db.js';
+import crypto from 'crypto';
 import 'dotenv/config';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'super-secret-key-mudar-em-producao';
@@ -108,5 +109,68 @@ export const login = async (req, res) => {
     } catch (error) {
         console.error('[Auth] Erro no login:', error);
         res.status(500).json({ error: 'Erro interno ao fazer login.' });
+    }
+};
+/**
+ * Solicita redefinição de senha
+ */
+export const forgotPassword = async (req, res) => {
+    try {
+        const { email } = req.body;
+        const result = await query('SELECT id FROM users WHERE email = $1', [email]);
+        const user = result.rows[0];
+
+        if (!user) {
+            // Retornamos sucesso mesmo que não exista pra evitar enumeração de emails
+            return res.json({ ok: true, message: 'Se o e-mail estiver cadastrado, as instruções serão enviadas.' });
+        }
+
+        const token = crypto.randomBytes(20).toString('hex');
+        const expires = new Date(Date.now() + 3600000); // 1 hora
+
+        await query(
+            'UPDATE users SET reset_password_token = $1, reset_password_expires = $2 WHERE id = $3',
+            [token, expires, user.id]
+        );
+
+        // MOCK: Em produção, enviaria um e-mail aqui.
+        console.log(`[AUTH] Link de redefinição para ${email}: http://localhost:3000/reset-password/${token}`);
+
+        res.json({ ok: true, message: 'Se o e-mail estiver cadastrado, as instruções serão enviadas.' });
+    } catch (error) {
+        console.error('[Auth] Erro no forgotPassword:', error);
+        res.status(500).json({ error: 'Erro interno ao processar redefinição.' });
+    }
+};
+
+/**
+ * Define nova senha usando token
+ */
+export const resetPassword = async (req, res) => {
+    try {
+        const { token, password } = req.body;
+
+        const result = await query(
+            'SELECT id FROM users WHERE reset_password_token = $1 AND reset_password_expires > NOW()',
+            [token]
+        );
+        const user = result.rows[0];
+
+        if (!user) {
+            return res.status(400).json({ error: 'Token inválido ou expirado.' });
+        }
+
+        const salt = await bcrypt.genSalt(10);
+        const passwordHash = await bcrypt.hash(password, salt);
+
+        await query(
+            'UPDATE users SET password_hash = $1, reset_password_token = NULL, reset_password_expires = NULL WHERE id = $2',
+            [passwordHash, user.id]
+        );
+
+        res.json({ ok: true, message: 'Senha alterada com sucesso.' });
+    } catch (error) {
+        console.error('[Auth] Erro no resetPassword:', error);
+        res.status(500).json({ error: 'Erro interno ao alterar senha.' });
     }
 };
