@@ -171,16 +171,19 @@ export function DashboardPage({
               </p>
             </div>
           </div>
-          <a
-            href="/extension.zip"
-            download="sendmessage-extension.zip"
-            className="shrink-0 flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-white text-emerald-700 text-xs font-bold hover:bg-emerald-50 transition-all duration-300 shadow-lg active:scale-95"
-          >
-            Baixar Agora
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 16v1a3 3 0 0 0 3 3h10a3 3 0 0 0 3-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-            </svg>
-          </a>
+          <div className="flex flex-col items-center md:items-end gap-1.5">
+            <a
+              href="/extension.zip"
+              download="sendmessage-extension.zip"
+              className="shrink-0 flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-white text-emerald-700 text-xs font-bold hover:bg-emerald-50 transition-all duration-300 shadow-lg active:scale-95"
+            >
+              Baixar Agora
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 16v1a3 3 0 0 0 3 3h10a3 3 0 0 0 3-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+              </svg>
+            </a>
+            <span className="text-[10px] text-emerald-100/90 font-medium px-2">v1.0.1 • 17/03/2026 às 20:32</span>
+          </div>
         </div>
       </div>
 
