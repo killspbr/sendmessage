@@ -6,8 +6,33 @@ import { login, signup, forgotPassword, resetPassword, authenticateToken } from 
 const app = express();
 const port = process.env.PORT || 4000;
 
-app.use(cors());
+const allowedOrigins = [
+  'https://sendmessage-frontend.pages.dev',
+  'http://localhost:5173',
+  'http://localhost:3000',
+  'http://localhost:4173'
+];
+
+const corsOptions = {
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.includes(origin) || origin.includes('localhost')) {
+      callback(null, true);
+    } else {
+      console.warn(`[CORS] Bloqueado: ${origin}`);
+      callback(new Error('Não permitido pela política CORS'), false);
+    }
+  },
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
+  credentials: false, // Desabilitado: usamos Bearer Token, não Cookies/Sessão
+  optionsSuccessStatus: 200
+};
+
+app.use(cors(corsOptions));
 app.use(express.json({ limit: '20mb' }));
+
+// Garante que o Preflight (OPTIONS) responda com os mesmos headers sem passar por auth guards
+app.options('*', cors(corsOptions));
 
 // --- ROTAS DE AUTENTICAÇÃO ---
 app.post('/api/auth/signup', signup);
@@ -1242,7 +1267,7 @@ app.get('/api/admin/gemini-keys', authenticateToken, checkAdmin, async (req, res
   }
 });
 
-app.post('/api/admin/gemini-keys', authenticateToken, async (req, res) => {
+app.post('/api/admin/gemini-keys', authenticateToken, checkAdmin, async (req, res) => {
   try {
     const { nome, api_key, status, observacoes } = req.body;
     const result = await query(
