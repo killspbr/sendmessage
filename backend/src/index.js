@@ -1,7 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import { query } from './db.js';
-import { login, signup, forgotPassword, resetPassword, authenticateToken } from './auth.js';
+import { login, signup, forgotPassword, resetPassword, authenticateToken, checkAdmin } from './auth.js';
 
 const app = express();
 const port = process.env.PORT || 4000;
