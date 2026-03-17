@@ -115,26 +115,50 @@ async function runWorker() {
        return;
     }
 
-    const msg = msgResult.rows[0];
+    // 0. Verifica Reputação do Número
+    const repRes = await query('SELECT * FROM whatsapp_reputation WHERE user_id = $1', [msg.user_id]);
+    let reputation = repRes.rows[0];
 
-    // 1. Verifica Limite Diário
+    // Se não existir, cria um perfil 'NOVO'
+    if (!reputation) {
+      const newRep = await query(
+        'INSERT INTO whatsapp_reputation (user_id) VALUES ($1) RETURNING *',
+        [msg.user_id]
+      );
+      reputation = newRep.rows[0];
+    }
+
+    // Bloqueia se estiver CRÍTICO
+    if (reputation.level === 'CRÍTICO') {
+      console.log(`[Worker] Reputação CRÍTICA para usuário ${msg.user_id}. Bloqueando envios por segurança.`);
+      await query('UPDATE campaign_schedule SET status = $1 WHERE user_id = $2 AND status = $3', ['pausado', msg.user_id, 'em_execucao']);
+      isWorkerRunning = false;
+      return;
+    }
+
+    // 1. Verifica Limite Diário (Combinado com Reputação)
     const sentCountRes = await query(
-      "SELECT count(*) FROM message_queue WHERE campaign_id = $1 AND status = 'enviado' AND data_envio >= CURRENT_DATE",
-      [msg.campaign_id]
+      "SELECT count(*) FROM message_queue WHERE user_id = $1 AND status = 'enviado' AND data_envio >= CURRENT_DATE",
+      [msg.user_id]
     );
-    const sentToday = parseInt(sentCountRes.rows[0].count);
+    const sentTodayOverall = parseInt(sentCountRes.rows[0].count);
 
-    if (sentToday >= msg.limite_diario) {
-      console.log(`[Worker] Limite diário (${msg.limite_diario}) atingido para campanha ${msg.campaign_id}. Pausando.`);
-      await query('UPDATE campaign_schedule SET status = $1 WHERE campaign_id = $2 AND status = $3', ['pausado', msg.campaign_id, 'em_execucao']);
+    let effectiveLimit = msg.limite_diario;
+    if (reputation.level === 'NOVO') effectiveLimit = Math.min(effectiveLimit, 40);
+    if (reputation.level === 'AQUECENDO') effectiveLimit = Math.min(effectiveLimit, 100);
+    if (reputation.level === 'ALERTA') effectiveLimit = Math.min(effectiveLimit, 20);
+
+    if (sentTodayOverall >= effectiveLimit) {
+      console.log(`[Worker] Limite operacional (${effectiveLimit}) atingido (Reputação: ${reputation.level}). Pausando.`);
+      await query('UPDATE campaign_schedule SET status = $1 WHERE user_id = $2 AND status = $3', ['pausado', msg.user_id, 'em_execucao']);
       isWorkerRunning = false;
       return;
     }
 
     // 2. Lógica de Pausa por Lote
-    if (sentToday > 0 && sentToday % msg.mensagens_por_lote === 0) {
+    if (sentTodayOverall > 0 && sentTodayOverall % msg.mensagens_por_lote === 0) {
        console.log(`[Worker] Lote de ${msg.mensagens_por_lote} atingido. Pausando por ${msg.tempo_pausa_lote} minutos.`);
-       await query('INSERT INTO scheduler_logs (event, details) VALUES ($1, $2)', ['pausa_lote', `Campanha ${msg.campaign_id} pausada por lote.`]);
+       await query('INSERT INTO scheduler_logs (event, details) VALUES ($1, $2)', ['pausa_lote', `Usuário ${msg.user_id} pausado por lote.`]);
        await new Promise(r => setTimeout(r, msg.tempo_pausa_lote * 60 * 1000));
     }
 
@@ -192,11 +216,18 @@ async function runWorker() {
     }
 
     // 4. Delay Aleatório Pós-Envio (Proteção Anti-Bloqueio)
-    const delay = Math.floor(Math.random() * (msg.intervalo_maximo - msg.intervalo_minimo + 1)) + msg.intervalo_minimo;
-    console.log(`[Worker] Sucesso. Aguardando ${delay} segundos para a próxima...`);
+    let minDelay = msg.intervalo_minimo;
+    let maxDelay = msg.intervalo_maximo;
+
+    // Adaptação por Reputação
+    if (reputation.level === 'NOVO') { minDelay *= 1.5; maxDelay *= 1.5; }
+    if (reputation.level === 'ALERTA') { minDelay *= 3; maxDelay *= 3; }
+
+    const delay = Math.floor(Math.random() * (maxDelay - minDelay + 1)) + minDelay;
+    console.log(`[Worker] Sucesso. Aguardando ${delay} segundos para a próxima (Nível: ${reputation.level})...`);
     
     // Pequeno registro de log operacional
-    await query('INSERT INTO scheduler_logs (event, details) VALUES ($1, $2)', ['envio_sucesso', `Mensagem enviada para ${msg.telefone} com delay de ${delay}s`]);
+    await query('INSERT INTO scheduler_logs (event, details) VALUES ($1, $2)', ['envio_sucesso', `Mensagem enviada para ${msg.telefone} com delay de ${delay}s (Rep: ${reputation.level})`]);
 
     setTimeout(() => {
       isWorkerRunning = false;

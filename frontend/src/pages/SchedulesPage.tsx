@@ -1,11 +1,11 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { apiFetch } from '../api'
 import type { Campaign } from '../types'
 
 type ProfSchedule = {
     id: number
-    campaign_id: number
-    user_id: number
+    campaign_id: string
+    user_id: string
     data_inicio: string
     hora_inicio: string
     limite_diario: number
@@ -20,7 +20,7 @@ type ProfSchedule = {
 
 type QueueItem = {
     id: number
-    campaign_id: number
+    campaign_id: string
     telefone: string
     nome: string
     status: string
@@ -36,7 +36,7 @@ type SchedulesPageProps = {
     effectiveUserId: string | null
 }
 
-export function SchedulesPage({ campaigns, effectiveUserId }: SchedulesPageProps) {
+export function SchedulesPage({ effectiveUserId }: SchedulesPageProps) {
     const [schedules, setSchedules] = useState<ProfSchedule[]>([])
     const [queue, setQueue] = useState<QueueItem[]>([])
     const [loading, setLoading] = useState(false)
@@ -50,8 +50,8 @@ export function SchedulesPage({ campaigns, effectiveUserId }: SchedulesPageProps
                 apiFetch('/api/admin/schedules'),
                 apiFetch('/api/admin/queue')
             ])
-            setSchedules(sData ?? [])
-            setQueue(qData ?? [])
+            setSchedules(Array.isArray(sData.data) ? sData.data : [])
+            setQueue(Array.isArray(qData.data) ? qData.data : [])
         } catch (e) {
             console.error('Erro ao carregar dados de agendamento profissional', e)
         } finally {
@@ -61,7 +61,7 @@ export function SchedulesPage({ campaigns, effectiveUserId }: SchedulesPageProps
 
     useEffect(() => {
         void loadData()
-        const interval = setInterval(loadData, 30000) // Auto-refresh a cada 30s
+        const interval = setInterval(loadData, 15000) // Refresh mais rápido para monitoring
         return () => clearInterval(interval)
     }, [effectiveUserId])
 
@@ -75,81 +75,93 @@ export function SchedulesPage({ campaigns, effectiveUserId }: SchedulesPageProps
         return new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
     }
 
+    const handleCancel = async (campaign_id: string) => {
+        if (!confirm('Deseja realmente cancelar este agendamento e limpar a fila pendente?')) return
+        try {
+            const res = await apiFetch(`/api/campaigns/${campaign_id}/schedule`, { method: 'DELETE' })
+            if (res.success) loadData()
+        } catch (err) {
+            console.error('Erro ao cancelar:', err)
+        }
+    }
+
     return (
-        <div className="space-y-6">
+        <div className="space-y-6 max-w-6xl mx-auto">
             <div className="flex bg-slate-100 p-1 rounded-2xl w-fit">
                 <button 
                     onClick={() => setViewMode('schedules')}
-                    className={`px-6 py-2 rounded-xl text-sm font-bold transition-all ${viewMode === 'schedules' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                    className={`px-6 py-2.5 rounded-xl text-sm font-bold transition-all ${viewMode === 'schedules' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
                 >
-                    📅 Agendamentos Pro
+                    📅 Agendamentos Ativos
                 </button>
                 <button 
                     onClick={() => setViewMode('queue')}
-                    className={`px-6 py-2 rounded-xl text-sm font-bold transition-all ${viewMode === 'queue' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                    className={`px-6 py-2.5 rounded-xl text-sm font-bold transition-all ${viewMode === 'queue' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
                 >
-                    🚀 Fila de Mensagens
+                    🚀 Monitor de Fila
                 </button>
             </div>
 
             {viewMode === 'schedules' ? (
                 <div className="grid grid-cols-1 gap-4">
-                    {schedules.length === 0 ? (
-                        <div className="bg-white rounded-3xl p-12 text-center border border-dashed border-slate-200">
-                            <span className="text-4xl mb-4 block">📅</span>
-                            <h3 className="text-lg font-bold text-slate-800">Nenhum agendamento profissional</h3>
-                            <p className="text-sm text-slate-500">Use o botão "Agendar Pro" na tela de campanhas para criar um envio seguro.</p>
+                    {loading && schedules.length === 0 ? (
+                        <div className="p-12 text-center text-slate-400">Carregando agendamentos...</div>
+                    ) : schedules.length === 0 ? (
+                        <div className="bg-white rounded-3xl p-16 text-center border border-dashed border-slate-200">
+                            <span className="text-5xl mb-6 block">📅</span>
+                            <h3 className="text-xl font-bold text-slate-800">Nenhum agendamento ativo</h3>
+                            <p className="text-slate-500 max-w-sm mx-auto mt-2">Os envios profissionais garantem maior segurança e proteção contra bloqueios.</p>
                         </div>
                     ) : (
                         schedules.map((s) => (
-                            <div key={s.id} className="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm hover:shadow-md transition-shadow group">
-                                <div className="flex items-start justify-between">
-                                    <div className="space-y-1">
-                                        <div className="flex items-center gap-3">
-                                            <h3 className="font-bold text-slate-800">{s.campaign_name || `Campanha #${s.campaign_id}`}</h3>
-                                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border ${
-                                                s.status === 'ativo' || s.status === 'em_execucao' 
-                                                    ? 'bg-emerald-50 text-emerald-700 border-emerald-100' 
+                            <div key={s.id} className="bg-white rounded-3xl p-8 border border-slate-100 shadow-sm hover:shadow-xl hover:border-emerald-100 transition-all group relative overflow-hidden">
+                                <div className="absolute top-0 right-0 w-32 h-32 bg-slate-50 rounded-full -mr-16 -mt-16 group-hover:bg-emerald-50 transition-colors" />
+                                
+                                <div className="relative flex flex-col md:flex-row md:items-center justify-between gap-6">
+                                    <div className="space-y-2">
+                                        <div className="flex items-center gap-4">
+                                            <h3 className="text-xl font-bold text-slate-800">{s.campaign_name || 'Campanha sem nome'}</h3>
+                                            <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border shadow-sm ${
+                                                s.status === 'em_execucao' 
+                                                    ? 'bg-emerald-50 text-emerald-700 border-emerald-100 animate-pulse' 
                                                     : 'bg-amber-50 text-amber-700 border-amber-100'
                                             }`}>
-                                                {s.status}
+                                                {s.status === 'em_execucao' ? '● PROCESSANDO' : s.status}
                                             </span>
                                         </div>
-                                        <p className="text-xs text-slate-500">Criado em {formatDate(s.data_criacao)} às {formatTime(s.data_criacao)}</p>
+                                        <div className="flex items-center gap-4 text-xs font-medium text-slate-400">
+                                            <span>📅 {formatDate(s.data_criacao)}</span>
+                                            <span>⏰ {formatTime(s.data_criacao)}</span>
+                                            <span className="text-slate-300">|</span>
+                                            <span className="text-slate-500">Início: <b>{s.data_inicio} {s.hora_inicio}</b></span>
+                                        </div>
                                     </div>
-                                    <button 
-                                        className="text-xs text-red-500 font-bold opacity-0 group-hover:opacity-100 transition-opacity hover:underline"
-                                        onClick={async () => {
-                                            if (confirm('Deseja realmente cancelar este agendamento e limpar a fila?')) {
-                                                await apiFetch(`/api/campaigns/${s.campaign_id}/schedule`, { method: 'DELETE' })
-                                                loadData()
-                                            }
-                                        }}
-                                    >
-                                        Cancelar Envio
-                                    </button>
+                                    <div className="flex gap-2">
+                                        <button 
+                                            onClick={() => handleCancel(s.campaign_id)}
+                                            className="px-6 py-3 rounded-2xl bg-white border border-red-100 text-red-500 text-xs font-bold hover:bg-red-50 transition-colors shadow-sm"
+                                        >
+                                            Cancelar Envio
+                                        </button>
+                                    </div>
                                 </div>
 
-                                <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mt-6">
-                                    <div className="p-3 rounded-2xl bg-slate-50 border border-slate-100">
-                                        <p className="text-[10px] font-bold text-slate-400 uppercase">Intervalo</p>
-                                        <p className="text-sm font-bold text-slate-700">{s.intervalo_minimo}-{s.intervalo_maximo}s</p>
+                                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mt-8">
+                                    <div className="p-4 rounded-2xl bg-slate-50 border border-slate-100 flex flex-col">
+                                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Delays Dinâmicos</span>
+                                        <span className="text-lg font-bold text-slate-700">{s.intervalo_minimo}s — {s.intervalo_maximo}s</span>
                                     </div>
-                                    <div className="p-3 rounded-2xl bg-slate-50 border border-slate-100">
-                                        <p className="text-[10px] font-bold text-slate-400 uppercase">Lotes</p>
-                                        <p className="text-sm font-bold text-slate-700">{s.mensagens_por_lote} msg</p>
+                                    <div className="p-4 rounded-2xl bg-slate-50 border border-slate-100 flex flex-col">
+                                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Pausa por Lote</span>
+                                        <span className="text-lg font-bold text-slate-700">{s.mensagens_por_lote} msg / {s.tempo_pausa_lote} min</span>
                                     </div>
-                                    <div className="p-3 rounded-2xl bg-slate-50 border border-slate-100">
-                                        <p className="text-[10px] font-bold text-slate-400 uppercase">Pausa Lote</p>
-                                        <p className="text-sm font-bold text-slate-700">{s.tempo_pausa_lote} min</p>
+                                    <div className="p-4 rounded-2xl bg-slate-50 border border-slate-100 flex flex-col">
+                                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Limite Diário</span>
+                                        <span className="text-lg font-bold text-slate-700">{s.limite_diario} disparos</span>
                                     </div>
-                                    <div className="p-3 rounded-2xl bg-slate-50 border border-slate-100">
-                                        <p className="text-[10px] font-bold text-slate-400 uppercase">Limite Dia</p>
-                                        <p className="text-sm font-bold text-slate-700">{s.limite_diario} msg</p>
-                                    </div>
-                                    <div className="p-3 rounded-2xl bg-emerald-50 border border-emerald-100">
-                                        <p className="text-[10px] font-bold text-emerald-400 uppercase">Início</p>
-                                        <p className="text-sm font-bold text-emerald-700">{s.data_inicio} {s.hora_inicio}</p>
+                                    <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-100 flex flex-col text-emerald-700">
+                                        <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider mb-1">Status de Rede</span>
+                                        <span className="text-lg font-bold">Iniciando...</span>
                                     </div>
                                 </div>
                             </div>
@@ -157,49 +169,71 @@ export function SchedulesPage({ campaigns, effectiveUserId }: SchedulesPageProps
                     )}
                 </div>
             ) : (
-                <div className="bg-white rounded-3xl border border-slate-100 overflow-hidden shadow-sm">
-                    <table className="w-full text-left text-sm">
-                        <thead className="bg-slate-50 border-b border-slate-100">
-                            <tr>
-                                <th className="px-6 py-4 font-bold text-slate-500 uppercase text-[10px]">Campanha</th>
-                                <th className="px-6 py-4 font-bold text-slate-500 uppercase text-[10px]">Contato</th>
-                                <th className="px-6 py-4 font-bold text-slate-500 uppercase text-[10px]">Status</th>
-                                <th className="px-6 py-4 font-bold text-slate-500 uppercase text-[10px]">Data Criada</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-50">
-                            {queue.map((q) => (
-                                <tr key={q.id} className="hover:bg-slate-50 transition-colors">
-                                    <td className="px-6 py-4 font-medium text-slate-700">{q.campaign_name || q.campaign_id}</td>
-                                    <td className="px-6 py-4">
-                                        <div className="flex flex-col">
-                                            <span className="text-slate-800 font-medium">{q.nome || 'Sem nome'}</span>
-                                            <span className="text-xs text-slate-400">{q.telefone}</span>
-                                        </div>
-                                    </td>
-                                    <td className="px-6 py-4">
-                                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                                            q.status === 'enviado' ? 'bg-emerald-50 text-emerald-600' :
-                                            q.status === 'falhou' ? 'bg-red-50 text-red-600' :
-                                            'bg-sky-50 text-sky-600'
-                                        }`}>
-                                            {q.status} {q.tentativas > 0 && `(${q.tentativas})`}
-                                        </span>
-                                    </td>
-                                    <td className="px-6 py-4 text-xs text-slate-400">
-                                        {formatDate(q.data_criacao)} {formatTime(q.data_criacao)}
-                                    </td>
-                                </tr>
-                            ))}
-                            {queue.length === 0 && (
+                <div className="bg-white rounded-3xl border border-slate-100 overflow-hidden shadow-xl">
+                    <div className="p-6 bg-slate-50 border-b border-slate-100 flex items-center justify-between">
+                        <h3 className="font-bold text-slate-700 uppercase text-[10px] tracking-widest">Últimas 100 Mensagens em Fila</h3>
+                        <span className="text-[10px] text-slate-400 animate-pulse">● Auto-refresh ativo</span>
+                    </div>
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-left text-sm whitespace-nowrap">
+                            <thead className="bg-slate-50">
                                 <tr>
-                                    <td colSpan={4} className="px-6 py-12 text-center text-slate-400 italic">
-                                        Fila de mensagens vazia.
-                                    </td>
+                                    <th className="px-6 py-4 font-bold text-slate-400 uppercase text-[10px]">Campanha</th>
+                                    <th className="px-6 py-4 font-bold text-slate-400 uppercase text-[10px]">Destinatário</th>
+                                    <th className="px-6 py-4 font-bold text-slate-400 uppercase text-[10px]">Status</th>
+                                    <th className="px-6 py-4 font-bold text-slate-400 uppercase text-[10px]">Envio</th>
+                                    <th className="px-6 py-4 font-bold text-slate-400 uppercase text-[10px]">Info</th>
                                 </tr>
-                            )}
-                        </tbody>
-                    </table>
+                            </thead>
+                            <tbody className="divide-y divide-slate-50">
+                                {queue.map((q) => (
+                                    <tr key={q.id} className="hover:bg-slate-50 transition-colors group">
+                                        <td className="px-6 py-5">
+                                            <span className="font-bold text-slate-700">{q.campaign_name || 'Agendamento'}</span>
+                                        </td>
+                                        <td className="px-6 py-5">
+                                            <div className="flex flex-col">
+                                                <span className="font-bold text-slate-900">{q.nome || 'Sem nome'}</span>
+                                                <span className="text-xs text-slate-400 font-mono tracking-tighter">{q.telefone}</span>
+                                            </div>
+                                        </td>
+                                        <td className="px-6 py-5">
+                                            <span className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase border ${
+                                                q.status === 'enviado' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' :
+                                                q.status === 'falhou' ? 'bg-red-50 text-red-600 border-red-100' :
+                                                q.status === 'processando' ? 'bg-sky-50 text-sky-600 border-sky-100 animate-pulse' :
+                                                'bg-slate-50 text-slate-500 border-slate-200'
+                                            }`}>
+                                                {q.status} {q.tentativas > 0 && `(tentat: ${q.tentativas})`}
+                                            </span>
+                                        </td>
+                                        <td className="px-6 py-5 text-xs">
+                                            <span className="text-slate-500 font-medium">
+                                                {q.data_envio ? new Date(q.data_envio).toLocaleTimeString('pt-BR') : 'Aguardando...'}
+                                            </span>
+                                        </td>
+                                        <td className="px-6 py-5">
+                                            {q.erro && (
+                                                <span className="text-[10px] text-red-400 bg-red-50 px-2 py-1 rounded-lg border border-red-100 max-w-[200px] truncate block" title={q.erro}>
+                                                    {q.erro}
+                                                </span>
+                                            )}
+                                        </td>
+                                    </tr>
+                                ))}
+                                {queue.length === 0 && (
+                                    <tr>
+                                        <td colSpan={5} className="px-6 py-24 text-center">
+                                            <div className="flex flex-col items-center">
+                                                <span className="text-4xl grayscale opacity-20 mb-4">🚀</span>
+                                                <p className="text-slate-400 italic">Nenhuma mensagem em processamento agora.</p>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             )}
         </div>

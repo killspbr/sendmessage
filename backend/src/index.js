@@ -1236,9 +1236,9 @@ app.put('/api/admin/users/:id/settings', authenticateToken, async (req, res) => 
 app.get('/api/admin/gemini-keys', authenticateToken, async (req, res) => {
   try {
     const result = await query('SELECT id, nome, status, ultimo_uso, requests_count, data_cadastro, observacoes FROM gemini_api_keys ORDER BY data_cadastro DESC');
-    res.json(result.rows);
+    res.json({ success: true, data: result.rows });
   } catch (error) {
-    res.status(500).json({ error: 'Erro ao buscar chaves Gemini' });
+    res.status(500).json({ success: false, error: 'Erro ao buscar chaves Gemini' });
   }
 });
 
@@ -1246,12 +1246,12 @@ app.post('/api/admin/gemini-keys', authenticateToken, async (req, res) => {
   try {
     const { nome, api_key, status, observacoes } = req.body;
     const result = await query(
-      'INSERT INTO gemini_api_keys (nome, api_key, status, observacoes) VALUES ($1, $2, $3, $4) RETURNING id, nome, status',
-      [nome, api_key, status || 'ativa', observacoes]
+      'INSERT INTO gemini_api_keys (user_id, nome, api_key, status, observacoes) VALUES ($1, $2, $3, $4, $5) RETURNING id, nome, status',
+      [req.user.id, nome, api_key, status || 'ativa', observacoes]
     );
-    res.status(201).json(result.rows[0]);
+    res.status(201).json({ success: true, data: result.rows[0] });
   } catch (error) {
-    res.status(500).json({ error: 'Erro ao cadastrar chave Gemini' });
+    res.status(500).json({ success: false, error: 'Erro ao cadastrar chave Gemini' });
   }
 });
 
@@ -1259,18 +1259,18 @@ app.delete('/api/admin/gemini-keys/:id', authenticateToken, async (req, res) => 
   try {
     const { id } = req.params;
     await query('DELETE FROM gemini_api_keys WHERE id = $1', [id]);
-    res.json({ ok: true });
+    res.json({ success: true });
   } catch (error) {
-    res.status(500).json({ error: 'Erro ao deletar chave Gemini' });
+    res.status(500).json({ success: false, error: 'Erro ao deletar chave Gemini' });
   }
 });
 
 app.post('/api/admin/gemini-keys/reset', authenticateToken, async (req, res) => {
   try {
     await query('UPDATE gemini_api_keys SET requests_count = 0, status = CASE WHEN status = \'limite_atingido\' THEN \'ativa\' ELSE status END');
-    res.json({ ok: true });
+    res.json({ success: true });
   } catch (error) {
-    res.status(500).json({ error: 'Erro ao resetar contadores Gemini' });
+    res.status(500).json({ success: false, error: 'Erro ao resetar contadores Gemini' });
   }
 });
 
@@ -1306,7 +1306,11 @@ app.get('/api/admin/operational-stats', authenticateToken, async (req, res) => {
       enviadas_ultima_hora: 0,
       fila_pendente: 0,
       falhas_hoje: 0,
-      campanhas_em_execucao: 0
+      campanhas_em_execucao: 0,
+      ai: {
+        requestsToday: 0,
+        activeKeys: 0
+      }
     };
 
     const resHoje = await query("SELECT count(*) FROM message_queue WHERE status = 'enviado' AND data_envio >= CURRENT_DATE");
@@ -1324,22 +1328,28 @@ app.get('/api/admin/operational-stats', authenticateToken, async (req, res) => {
     const resExec = await query("SELECT count(*) FROM campaign_schedule WHERE status = 'em_execucao'");
     stats.campanhas_em_execucao = parseInt(resExec.rows[0].count);
 
-    res.json(stats);
+    // Stats de IA
+    const resAik = await query("SELECT count(*) FROM gemini_api_keys WHERE status = 'ativa'");
+    stats.ai.activeKeys = parseInt(resAik.rows[0].count);
+    
+    const resAiu = await query("SELECT sum(requests_count) FROM gemini_api_keys");
+    stats.ai.requestsToday = parseInt(resAiu.rows[0].sum || 0);
+
+    res.json({ success: true, data: stats });
   } catch (error) {
-    res.status(500).json({ error: 'Erro ao buscar estatísticas operacionais' });
+    console.error('[AdminStats] Erro:', error);
+    res.status(500).json({ success: false, error: 'Erro ao buscar estatísticas operacionais' });
   }
 });
 
 app.delete('/api/campaigns/:id/schedule', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
-    // Remove mensagens pendentes da fila
     await query('DELETE FROM message_queue WHERE campaign_id = $1 AND status = $2', [id, 'pendente']);
-    // Atualiza status do agendamento
     await query("UPDATE campaign_schedule SET status = 'cancelado' WHERE campaign_id = $1", [id]);
-    res.json({ ok: true });
+    res.json({ success: true });
   } catch (error) {
-    res.status(500).json({ error: 'Erro ao cancelar agendamento' });
+    res.status(500).json({ success: false, error: 'Erro ao cancelar agendamento' });
   }
 });
 
@@ -1351,9 +1361,10 @@ app.get('/api/admin/schedules', authenticateToken, async (req, res) => {
       LEFT JOIN campaigns c ON s.campaign_id = c.id
       ORDER BY s.data_criacao DESC
     `);
-    res.json(resSched.rows);
+    res.json({ success: true, data: resSched.rows });
   } catch (error) {
-    res.status(500).json({ error: 'Erro ao buscar agendamentos profissionais' });
+    console.error('[AdminSchedules] Erro:', error);
+    res.status(500).json({ success: false, error: 'Erro ao buscar agendamentos profissionais' });
   }
 });
 
@@ -1366,9 +1377,10 @@ app.get('/api/admin/queue', authenticateToken, async (req, res) => {
       ORDER BY q.data_criacao DESC
       LIMIT 100
     `);
-    res.json(resQueue.rows);
+    res.json({ success: true, data: resQueue.rows });
   } catch (error) {
-    res.status(500).json({ error: 'Erro ao buscar fila de mensagens' });
+    console.error('[AdminQueue] Erro:', error);
+    res.status(500).json({ success: false, error: 'Erro ao buscar fila de mensagens' });
   }
 });
 
@@ -1429,10 +1441,20 @@ async function runMigrations() {
     )`,
     // Nova arquitetura: Agendamento, Fila e APIs Gemini
     `CREATE EXTENSION IF NOT EXISTS "pgcrypto"`,
+    // Nova arquitetura: Agendamento, Fila e APIs Gemini com tipos UUID corrigidos
+    `CREATE EXTENSION IF NOT EXISTS "pgcrypto"`,
+    // Correção de tipos (migração forçada se necessário)
+    `DO $$ 
+     BEGIN 
+       IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='campaign_schedule' AND column_name='campaign_id' AND data_type='integer') THEN
+         DROP TABLE IF EXISTS campaign_schedule CASCADE;
+         DROP TABLE IF EXISTS message_queue CASCADE;
+       END IF;
+     END $$;`,
     `CREATE TABLE IF NOT EXISTS campaign_schedule (
       id SERIAL PRIMARY KEY,
-      campaign_id INTEGER NOT NULL,
-      user_id INTEGER NOT NULL,
+      campaign_id UUID NOT NULL,
+      user_id UUID NOT NULL,
       data_inicio DATE NOT NULL,
       hora_inicio TIME NOT NULL,
       limite_diario INTEGER DEFAULT 300,
@@ -1445,9 +1467,9 @@ async function runMigrations() {
     )`,
     `CREATE TABLE IF NOT EXISTS message_queue (
       id SERIAL PRIMARY KEY,
-      campaign_id INTEGER NOT NULL,
-      user_id INTEGER NOT NULL,
-      contact_id INTEGER,
+      campaign_id UUID NOT NULL,
+      user_id UUID NOT NULL,
+      contact_id UUID,
       telefone TEXT NOT NULL,
       nome TEXT,
       mensagem TEXT NOT NULL,
@@ -1459,7 +1481,7 @@ async function runMigrations() {
     )`,
     `CREATE TABLE IF NOT EXISTS gemini_api_keys (
       id SERIAL PRIMARY KEY,
-      user_id INTEGER,
+      user_id UUID,
       nome TEXT NOT NULL,
       api_key TEXT NOT NULL,
       status TEXT DEFAULT 'ativa',
@@ -1471,21 +1493,30 @@ async function runMigrations() {
     `CREATE TABLE IF NOT EXISTS gemini_api_usage_logs (
       id SERIAL PRIMARY KEY,
       key_id INTEGER NOT NULL,
-      user_id INTEGER,
+      user_id UUID,
       module TEXT,
       resultado TEXT,
       erro TEXT,
       data_solicitacao TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
     )`,
-    // Adicionar colunas extras em tabelas existentes
-    `ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS variations JSONB DEFAULT '[]'::jsonb`,
-    `ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS last_scheduled_at TIMESTAMP WITH TIME ZONE`,
     `CREATE TABLE IF NOT EXISTS scheduler_logs (
       id SERIAL PRIMARY KEY,
       event TEXT NOT NULL,
       details TEXT,
       data_evento TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
     )`,
+    // Sistema de Reputação WhatsApp
+    `CREATE TABLE IF NOT EXISTS whatsapp_reputation (
+      id SERIAL PRIMARY KEY,
+      user_id UUID NOT NULL UNIQUE,
+      score INTEGER DEFAULT 50,
+      level TEXT DEFAULT 'NOVO',
+      volume_24h INTEGER DEFAULT 0,
+      failure_rate NUMERIC(5,2) DEFAULT 0.00,
+      last_updated TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    )`,
+    `ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS variations JSONB DEFAULT '[]'::jsonb`,
+    `ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS last_scheduled_at TIMESTAMP WITH TIME ZONE`,
   ];
 
   for (const sql of migrations) {
