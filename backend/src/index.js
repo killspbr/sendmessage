@@ -346,6 +346,11 @@ app.post('/api/contacts', authenticateToken, async (req, res) => {
     res.status(201).json(result.rows[0]);
   } catch (error) {
     console.error('[Backend Import] Erro crítico ao inserir contato:', error);
+    try {
+      await query('INSERT INTO sys_logs (info) VALUES ($1)', [`ERRO IMPORTACAO 500: ${error.message} - Stack: ${error.stack}`]);
+      const fs = await import('fs');
+      fs.appendFileSync('import_error.log', new Date().toISOString() + ' : ' + error.message + '\n' + error.stack + '\n\n');
+    } catch(e) {}
     res.status(500).json({ error: 'Erro interno ao salvar contato', detail: error.message });
   }
 });

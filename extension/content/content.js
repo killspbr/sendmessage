@@ -497,7 +497,8 @@
             if (resp.ok) return 'ok'
             if (resp.status === 409) return 'dup'
             
-            addLog(`❌ Erro ao importar: ${contact.name} (Status: ${resp.status})`, 'err');
+            const detailStr = (resp.data && resp.data.detail) ? ` - Detalhe: ${resp.data.detail}` : (resp.data && resp.data.error) ? ` - Erro: ${resp.data.error}` : '';
+            addLog(`❌ Erro ao importar: ${contact.name} (Status: ${resp.status})${detailStr}`, 'err');
             return 'err'
         } catch (e) { 
             console.error('[SM Import] Falha no fetch de importação:', e);
