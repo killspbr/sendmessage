@@ -1297,10 +1297,15 @@ app.get('/api/admin/gemini-keys', authenticateToken, checkAdmin, async (req, res
 app.post('/api/admin/gemini-keys', authenticateToken, checkAdmin, async (req, res) => {
   try {
     const { nome, api_key, status, observacoes } = req.body;
+    
+    if (!nome || !api_key) {
+      return res.status(400).json({ success: false, error: 'Nome e chave de API são obrigatórios' });
+    }
+
     console.log('Tentando cadastrar chave Gemini:', { nome, status, userId: req.user?.id });
     const result = await query(
       'INSERT INTO gemini_api_keys (user_id, nome, api_key, status, observacoes) VALUES ($1, $2, $3, $4, $5) RETURNING id, nome, status',
-      [req.user.id, nome, api_key, status || 'ativa', observacoes]
+      [req.user.id, nome, api_key, status || 'ativa', observacoes || null]
     );
     console.log('Chave Gemini cadastrada com sucesso:', result.rows[0]);
     res.status(201).json({ success: true, data: result.rows[0] });
