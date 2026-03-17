@@ -185,7 +185,7 @@ export function SettingsPage({
               onChange={(e) => onChangeGeminiModel(e.target.value)}
               className="h-9 w-full px-2 rounded-md border border-slate-200 bg-white text-[11px] text-slate-700 focus:outline-none focus:ring-1 focus:ring-emerald-400/80"
             >
-              <option value="gemini-2.5-flash">gemini-2.5-flash (mais recente)</option>
+              <option value="gemini-2.0-flash">gemini-2.0-flash (mais recente)</option>
               <option value="gemini-1.5-flash-latest">gemini-1.5-flash-latest (rápido)</option>
               <option value="gemini-1.5-pro-latest">gemini-1.5-pro-latest (avançado)</option>
               <option value="gemini-1.0-pro">gemini-1.0-pro (legado)</option>

@@ -479,7 +479,7 @@ export function ContactsPage({
                     placeholder="Buscar nome"
                     value={searchName}
                     onChange={(e) => onSetSearchName(e.target.value)}
-                    className="w-full h-7 px-2 rounded-md border border-slate-200 bg-white text-[11px] text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-violet-400/80"
+                    className="w-full h-7 px-2 rounded-md border border-slate-200 bg-white text-[11px] text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-emerald-400/80"
                   />
                 </td>
                 <td className="px-2 py-1">
@@ -488,14 +488,14 @@ export function ContactsPage({
                     placeholder="Buscar telefone"
                     value={searchPhone}
                     onChange={(e) => onSetSearchPhone(e.target.value)}
-                    className="w-full h-7 px-2 rounded-md border border-slate-200 bg-white text-[11px] text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-violet-400/80"
+                    className="w-full h-7 px-2 rounded-md border border-slate-200 bg-white text-[11px] text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-emerald-400/80"
                   />
                 </td>
                 <td className="px-2 py-1">
                   <select
                     value={filterCategory}
                     onChange={(e) => onSetFilterCategory(e.target.value)}
-                    className="w-full h-7 px-2 rounded-md border border-slate-200 text-[11px] bg-white text-slate-700 focus:outline-none focus:ring-1 focus:ring-violet-400/80"
+                    className="w-full h-7 px-2 rounded-md border border-slate-200 text-[11px] bg-white text-slate-700 focus:outline-none focus:ring-1 focus:ring-emerald-400/80"
                   >
                     <option value="Todas">Todas</option>
                     {Array.from(new Set(contacts.map((c) => c.category))).map((category) => (
@@ -511,7 +511,7 @@ export function ContactsPage({
                     placeholder="Buscar email"
                     value={searchEmail}
                     onChange={(e) => onSetSearchEmail(e.target.value)}
-                    className="w-full h-7 px-2 rounded-md border border-slate-200 bg-white text-[11px] text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-violet-400/80"
+                    className="w-full h-7 px-2 rounded-md border border-slate-200 bg-white text-[11px] text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-emerald-400/80"
                   />
                 </td>
                 <td className="px-2 py-1 min-w-[160px]">
@@ -520,7 +520,7 @@ export function ContactsPage({
                     placeholder="Cidade contém"
                     value={filterCity}
                     onChange={(e) => onSetFilterCity(e.target.value)}
-                    className="w-full h-7 px-2 rounded-md border border-slate-200 bg-white text-[11px] text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-violet-400/80"
+                    className="w-full h-7 px-2 rounded-md border border-slate-200 bg-white text-[11px] text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-emerald-400/80"
                   />
                 </td>
               </tr>

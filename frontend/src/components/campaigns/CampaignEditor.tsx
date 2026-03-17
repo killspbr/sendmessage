@@ -26,6 +26,49 @@ const variables = [
   { label: 'Avaliação', value: '{rating}', icon: '⭐' },
 ]
 
+const testData = {
+  '{name}': 'João Silva',
+  '{primeiro_nome}': 'João',
+  '{phone}': '(11) 99999-9999',
+  '{category}': 'Cliente VIP',
+  '{city}': 'São Paulo',
+  '{email}': 'joao@exemplo.com.br',
+  '{rating}': '⭐⭐⭐⭐⭐',
+}
+
+const resolveTemplate = (tpl: string, data: Record<string, string>) => {
+  let result = tpl
+  Object.entries(data).forEach(([key, val]) => {
+    // Usar regex global para substituir todas as ocorrências
+    const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    result = result.replace(new RegExp(escapedKey, 'g'), val)
+  })
+  return result
+}
+
+// Mover extensões para fora do componente para evitar re-criação e avisos de duplicidade
+// Filtramos duplicados por nome para evitar o aviso do Tiptap v3
+const EDITOR_EXTENSIONS = [
+  StarterKit,
+  Underline,
+  Link.configure({
+    openOnClick: false,
+    HTMLAttributes: {
+      class: 'text-emerald-600 underline',
+    },
+  }),
+  TextAlign.configure({ types: ['heading', 'paragraph'] }),
+  Image.configure({
+    HTMLAttributes: {
+      class: 'rounded-lg max-w-full h-auto shadow-md my-4',
+    },
+  }),
+].reduce((acc: any[], ext: any) => {
+  const name = ext.name || (ext.options && ext.options.name)
+  if (name && acc.some(e => e.name === name)) return acc
+  return [...acc, ext]
+}, [])
+
 export function CampaignEditor({
   content,
   onChange,
@@ -37,43 +80,8 @@ export function CampaignEditor({
   const [activeTab, setActiveTab] = useState<'editor' | 'preview'>('editor')
   const [useTestData, setUseTestData] = useState(false)
 
-  const testData = {
-    '{name}': 'João Silva',
-    '{primeiro_nome}': 'João',
-    '{phone}': '(11) 99999-9999',
-    '{category}': 'Cliente VIP',
-    '{city}': 'São Paulo',
-    '{email}': 'joao@exemplo.com.br',
-    '{rating}': '⭐⭐⭐⭐⭐',
-  }
-
-  const resolveTemplate = (tpl: string, data: Record<string, string>) => {
-    let result = tpl
-    Object.entries(data).forEach(([key, val]) => {
-      // Usar regex global para substituir todas as ocorrências
-      const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-      result = result.replace(new RegExp(escapedKey, 'g'), val)
-    })
-    return result
-  }
-
   const editor = useEditor({
-    extensions: [
-      StarterKit,
-      Underline,
-      Link.configure({
-        openOnClick: false,
-        HTMLAttributes: {
-          class: 'text-emerald-600 underline',
-        },
-      }),
-      TextAlign.configure({ types: ['heading', 'paragraph'] }),
-      Image.configure({
-        HTMLAttributes: {
-          class: 'rounded-lg max-w-full h-auto shadow-md my-4',
-        },
-      }),
-    ],
+    extensions: EDITOR_EXTENSIONS,
     content: content || '<p></p>',
     editorProps: {
       attributes: {

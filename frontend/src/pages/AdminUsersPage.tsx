@@ -314,7 +314,7 @@ export function AdminUsersPage({
                       )}
                       <td className="px-2 py-1 align-top text-slate-700">
                         <select
-                          className="w-full h-7 px-1.5 rounded-md border border-slate-200 bg-white text-[11px] text-slate-700 focus:outline-none focus:ring-1 focus:ring-violet-400/80 disabled:opacity-50 disabled:cursor-not-allowed"
+                          className="w-full h-7 px-1.5 rounded-md border border-slate-200 bg-white text-[11px] text-slate-700 focus:outline-none focus:ring-1 focus:ring-emerald-400/80 disabled:opacity-50 disabled:cursor-not-allowed"
                           value={u.groupId ?? ''}
                           onChange={(e) => handleChangeUserGroup(u.id, e.target.value)}
                           disabled={savingUserGroupId === u.id}
@@ -338,7 +338,7 @@ export function AdminUsersPage({
                         <label className="inline-flex items-center gap-1 text-[10px] text-slate-600">
                           <input
                             type="checkbox"
-                            className="h-3 w-3 accent-violet-500 disabled:opacity-40 disabled:cursor-not-allowed"
+                            className="h-3 w-3 accent-emerald-500 disabled:opacity-40 disabled:cursor-not-allowed"
                             checked={u.useGlobalAi}
                             disabled={savingUserSettingsId === u.id}
                             onChange={(e) =>
@@ -354,7 +354,7 @@ export function AdminUsersPage({
                           <button
                             type="button"
                             className={`px-2 py-0.5 rounded-md text-[10px] border ${impersonatedUserId === u.id
-                              ? 'bg-violet-600 text-white border-violet-700'
+                              ? 'bg-emerald-600 text-white border-emerald-700'
                               : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
                               }`}
                             onClick={() =>
@@ -391,7 +391,7 @@ export function AdminUsersPage({
                     key={g.id}
                     type="button"
                     className={`w-full flex items-center justify-between gap-2 px-2 py-1.5 rounded-md text-[11px] border transition ${isSelected
-                      ? 'bg-violet-50 border-violet-300 text-violet-900'
+                      ? 'bg-emerald-50 border-emerald-300 text-emerald-900'
                       : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
                       }`}
                     onClick={() => setSelectedGroupId(g.id)}

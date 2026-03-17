@@ -190,7 +190,7 @@ export function DashboardPage({
         <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-3 flex flex-col gap-1">
           <div className="flex items-center justify-between">
             <span className="text-[11px] text-slate-500">Total de contatos</span>
-            <span className="h-6 w-6 rounded-lg bg-violet-500/10 text-violet-600 flex items-center justify-center text-[12px]" aria-hidden="true">
+            <span className="h-6 w-6 rounded-lg bg-emerald-500/10 text-emerald-600 flex items-center justify-center text-[12px]" aria-hidden="true">
               👥
             </span>
           </div>
@@ -337,7 +337,7 @@ export function DashboardPage({
             </div>
             <button
               type="button"
-              className="px-3 py-1.5 rounded-md text-[11px] font-medium bg-violet-500 text-white hover:bg-violet-400"
+              className="px-3 py-1.5 rounded-md text-[11px] font-medium bg-emerald-500 text-white hover:bg-emerald-400"
               onClick={onCreateCampaign}
             >
               Nova campanha

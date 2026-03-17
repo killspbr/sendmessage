@@ -13,6 +13,8 @@ export type UseGeminiAIProps = {
     userCompanyInfo?: string | null
     geminiTemperature: number
     geminiMaxTokens: number
+    geminiModel?: string
+    geminiApiVersion?: string
 }
 
 const decodeHtml = (html: string) => {
@@ -35,6 +37,8 @@ export function useGeminiAI({
     userCompanyInfo,
     geminiTemperature,
     geminiMaxTokens,
+    geminiModel = 'gemini-1.5-flash-latest',
+    geminiApiVersion = 'v1',
 }: UseGeminiAIProps) {
     const callGeminiForCampaign = async (params: GeminiAIParams): Promise<string | null> => {
         if (!effectiveAiKey) {
@@ -60,6 +64,19 @@ export function useGeminiAI({
             ? '- Use emojis relevantes ao contexto (sem exagero, 1 a 3 por parágrafo no máximo).'
             : '- Não use emojis.'
 
+        // Tentar extrair o nível de comprimento do nome da campanha
+        const lengthMatch = campaignName.match(/comprimento=(\d+)\/10/)
+        const level = lengthMatch ? parseInt(lengthMatch[1], 10) : 5
+
+        // Diretivas de comprimento mais agressivas e explícitas
+        const lengthDirectives = level <= 2
+            ? 'Crie uma mensagem CURTA e DIRETA. Máximo de 50 palavras.'
+            : level <= 4
+                ? 'Crie uma mensagem de TAMANHO MÉDIO. Mínimo de 100 palavras e 3 parágrafos.'
+                : level <= 7
+                    ? 'Crie uma mensagem LONGA, DETALHADA e EXPLICATIVA. Mínimo de 300 palavras e pelo menos 5 parágrafos robustos. Desenvolva profundamente os argumentos e use gatilhos de benefício.'
+                    : 'Crie uma CARTA DE VENDAS COMPLETA e EXTENSA. Texto muito longo, mínimo de 600 palavras e pelo menos 8 parágrafos, explorando cada dor e solução detalhadamente.'
+
         const companyContext = userCompanyInfo
             ? `\nContexto sobre a empresa remetente:\n${userCompanyInfo}\n(Use essas informações para alinhar o conteúdo ao perfil do negócio.)\n`
             : ''
@@ -68,55 +85,59 @@ export function useGeminiAI({
 
         if (mode === 'suggest') {
             prompt = `
-Você é um copywriter sênior e redator especializado em campanhas.
+Você é um copywriter sênior especialista em marketing digital e redação publicitária de ALTO IMPACTO.
 
-Crie um texto EXTENSO, COMPLETO e DETALHADO para uma campanha de ${channelsLabel},
-comunicando-se de forma persuasiva, engajadora e focada em conversão. NÃO restrinja o tamanho do texto a poucas linhas, a menos que seja explicitamente solicitado.
+Sua missão é criar o conteúdo COMPLETO de uma campanha persuasiva para ${channelsLabel}.
 
-Detalhes:
-- Nome da campanha: "${campaignName || 'Campanha sem nome'}"
-- Lista: "${listName}"
-- Idioma: Português (Brasil)
-- Público: pequenas e médias empresas.${companyContext}
+DADOS DA CAMPANHA:
+- Nome: "${campaignName || 'Campanha sem nome'}"
+- Público/Segmento: "${listName}"
+- Idioma: Português (Brasil)${companyContext}
 
-Regras:
-- Desenvolva bem os argumentos de venda, introdução (gancho forte) e uma clara chamada para ação (CTA).
-- Crie um texto rico, com múltiplos parágrafos bem estruturados.
-- Pode usar listas com marcadores quando fizer sentido.
+DIRETRIZ DE COMPRIMENTO (OBRIGATÓRIO):
+Escala de Comprimento Solicitada: ${level}/10.
+INSTRUÇÃO ESPECÍFICA: ${lengthDirectives}
+AVISO CRÍTICO: Se o nível for 5 ou superior, você NÃO pode ser breve. O texto deve ser RICO, informativo e ter muita substância. NÃO resuma. Escreva textos longos e envolventes.
+
+REGRAS DE CONTEÚDO:
+- Estrutura: Gancho forte -> Problema -> Solução/Benefícios -> Prova Social implícita -> Chamada Para Ação (CTA) clara.
+- Formatação: Use parágrafos claros, listas com marcadores (bullets) e destaque termos importantes em negrito (<strong>).
 ${emojiRule}
-- Respeite as instruções entre colchetes no nome da campanha (tom, objetivo, tipo, segmento, comprimento e emojis).
 
-Retorne APENAS o texto em HTML simples (tags <p>, <ul>, <li>, <strong>, <em>, <br>), sem marcações markdown como \`\`\`html e sem explicações extras.
+FORMATO DE SAÍDA:
+- Retorne APENAS o HTML semântico direto (tags <p>, <ul>, <li>, <strong>, <em>, <br>).
+- NÃO use blocos de código (\`\`\`html).
+- NÃO inclua o Assunto da mensagem.
+- NÃO apresente saudações fixas como "[Nome]" ou placeholders genéricos.
       `
         } else {
             prompt = `
-Você é um copywriter sênior e redator especializado em campanhas de marketing.
+Você é um revisor e copywriter sênior de elite. Sua tarefa é REESCREVER e EXPANDIR substancialmente o texto HTML abaixo para torná-lo muito mais persuasivo, profissional e atraente.
 
-Reescreva o texto abaixo para ficar mais CLARO, PERSUASIVO, ORGANIZADO e ENGAJADOR,
-mantendo o sentido central, mas melhorando muito as taxas de conversão. 
-Não encurte o tamanho original do texto indiscriminadamente; você pode expandir e adicionar gatilhos mentais para enriquecê-lo!
-
-Nome da campanha (inclui instruções entre colchetes para o tom, objetivo, tipo, segmento, comprimento e uso de emojis):
-"${campaignName || 'Campanha sem nome'}"
-
-Texto original (HTML):
+TEXTO ORIGINAL (HTML):
 ${currentContent}
+
+DIRETRIZ DE COMPRIMENTO (OBRIGATÓRIO):
+Escala de Comprimento Solicitada: ${level}/10.
+INSTRUÇÃO ESPECÍFICA: ${lengthDirectives}
+AVISO CRÍTICO: Se o nível for 5 ou superior, você deve ENRIQUECER o texto com novos parágrafos, detalhes adicionais e argumentos de venda que não estavam no original. NÃO encurte o texto se o nível for alto. Se o conteúdo original for curto, seu dever é dobrar ou triplicar o tamanho com copy de qualidade.
+
+CONTEÚDO DA CAMPANHA:
+"${campaignName || 'Campanha sem nome'}"
 ${companyContext}
-Regras:
-- Respeite o idioma do texto original (português).
-- Adicione um gancho (hook) forte no início e uma chamada para ação (CTA) clara no final.
-- Pode usar listas com marcadores quando fizer sentido.
+REGRAS:
+- Melhore a fluidez e a persuasão.
+- Adicione gatilhos mentais fortes.
 ${emojiRule}
-- Não invente ofertas nem preços que não existiam no original.
-- Respeite as instruções entre colchetes no nome da campanha (tom, objetivo, tipo, segmento, comprimento e emojis).
-- Retorne APENAS o texto reescrito em HTML simples (tags <p>, <ul>, <li>, <strong>, <em>, <br>), sem marcações markdown como \`\`\`html e sem explicações extras.
+
+FORMATO DE SAÍDA:
+- Retorne APENAS o HTML reescrito (tags <p>, <ul>, <li>, <strong>, <em>, <br>).
+- NÃO use blocos de código markdown nem explicações.
       `
         }
 
         try {
-            const forcedGeminiApiVersion = 'v1'
-            const forcedGeminiModel = 'gemini-2.5-flash'
-            const apiUrl = `https://generativelanguage.googleapis.com/${forcedGeminiApiVersion}/models/${forcedGeminiModel}:generateContent?key=${effectiveAiKey}`
+            const apiUrl = `https://generativelanguage.googleapis.com/${geminiApiVersion}/models/${geminiModel}:generateContent?key=${effectiveAiKey}`
 
             const tempAdjust = mode === 'suggest' ? 0.1 : -0.1
             const finalTemp = Math.max(0, Math.min(1, geminiTemperature + tempAdjust))
@@ -129,6 +150,8 @@ ${emojiRule}
                     generationConfig: {
                         temperature: finalTemp,
                         maxOutputTokens: geminiMaxTokens,
+                        topP: 0.95,
+                        topK: 40
                     },
                 }),
             })
@@ -140,7 +163,14 @@ ${emojiRule}
             }
 
             const data = await response.json()
-            const generatedText = data?.candidates?.[0]?.content?.parts?.[0]?.text || ''
+            const candidate = data?.candidates?.[0]
+            const parts = candidate?.content?.parts || []
+            const generatedText = parts.map((p: any) => p.text).join('')
+
+            if (candidate?.finishReason === 'MAX_TOKENS') {
+                console.warn('Alerta: A resposta da IA foi cortada por atingir o limite de tokens.')
+            }
+
             return cleanHtmlOutput(generatedText)
         } catch (error) {
             console.error('Gemini API Error:', error)
