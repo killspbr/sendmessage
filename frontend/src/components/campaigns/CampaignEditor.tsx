@@ -49,7 +49,10 @@ const resolveTemplate = (tpl: string, data: Record<string, string>) => {
 // Mover extensões para fora do componente para evitar re-criação e avisos de duplicidade
 // Filtramos duplicados por nome para evitar o aviso do Tiptap v3
 const EDITOR_EXTENSIONS = [
-  StarterKit,
+  StarterKit.configure({
+    link: false,
+    underline: false,
+  }),
   Underline,
   Link.configure({
     openOnClick: false,
@@ -63,11 +66,7 @@ const EDITOR_EXTENSIONS = [
       class: 'rounded-lg max-w-full h-auto shadow-md my-4',
     },
   }),
-].reduce((acc: any[], ext: any) => {
-  const name = ext.name || (ext.options && ext.options.name)
-  if (name && acc.some(e => e.name === name)) return acc
-  return [...acc, ext]
-}, [])
+]
 
 export function CampaignEditor({
   content,

@@ -295,14 +295,14 @@
                 if (info.lists.length > 0) {
                     sel.innerHTML = info.lists.map(l => `<option value="${l.id}">${l.name}</option>`).join('')
                     shadow.getElementById('btnImport').disabled = false
-                    addLog(`✅ Carregadas ${info.lists.length} lista(s) de "${info.user?.email || 'usuário'}".`, 'ok')
+                    addLog(`✅ Listas carregadas: ${info.lists.length}`, 'ok')
                 } else {
                     sel.innerHTML = '<option value="">Nenhuma lista encontrada</option>'
-                    addLog('⚠️ Você não tem listas criadas no SendMessage.', 'warn')
+                    addLog('⚠️ Nenhuma lista encontrada no perfil.', 'warn')
                 }
             } else {
-                addLog(`❌ Resposta inesperada do servidor.`, 'err');
-                console.log('Resposta completa:', resp);
+                addLog(`❌ Falha ao obter metadados (resp.ok: ${resp.ok}, status: ${resp.status})`, 'err');
+                console.error('[SM Import] Erro de resposta do backend:', resp);
             }
         } catch (e) {
             addLog(`❌ Falha de conexão: ${e.message}`, 'err')
@@ -314,6 +314,15 @@
         if (isRunning) return
         isRunning = true
         isStopRequested = false
+
+        // Step 0: Check if we are on Google Maps
+        if (!window.location.href.includes('google.com/maps')) {
+            addLog('❌ Abra o Google Maps primeiro!', 'err')
+            isRunning = false
+            return
+        }
+
+        addLog('[SM Import] Etapa 1: Página Maps detectada', 'info')
 
         const listId = shadow.getElementById('listSelect').value
         if (autoImport && !listId) {
@@ -337,6 +346,10 @@
             while (!isStopRequested) {
                 // Step 1: find new unprocessed cards
                 const cards = getResultCards()
+                if (cards.length > 0) {
+                    addLog(`[SM Import] Etapa 2: ${cards.length} cards visíveis no feed`, 'info');
+                }
+                
                 const newCards = cards.filter(card => {
                     const name = getCardName(card)
                     return name && !processedNames.has(name)
@@ -371,8 +384,7 @@
                     updateStats()
 
                     let contact = extractCardData(card)
-
-                    // Full mode: click to get phone
+                    addLog(`[SM Import] Etapa 3: Extraindo: ${name}`, 'info');
                     if (mode === 'full') {
                         try {
                             const prevUrl = window.location.href
@@ -434,7 +446,8 @@
                 }
             }
         } catch (err) {
-            addLog(`❌ Erro inesperado: ${err.message}`, 'err')
+            addLog(`❌ Erro crítico no loop: ${err.message}`, 'err')
+            console.error('[SM Import] Erro no startAutoExtraction:', err);
         } finally {
             shadow.getElementById('btnStart').style.display = 'flex'
             shadow.getElementById('btnStop').style.display = 'none'
@@ -456,94 +469,185 @@
     // ─── Import single contact ───────────────────────────────────────────────────
     async function importSingle(contact, listId) {
         try {
+            const payload = {
+                list_id: listId,
+                name: contact.name,
+                phone: (contact.phone || '').replace(/\D/g, ''),
+                email: '',
+                category: contact.category || 'Maps',
+                cep: '',
+                rating: contact.rating ? String(contact.rating) : '',
+                address: contact.address || '',
+                website: contact.website || ''
+            };
+            
+            console.log('[SM Import] Etapa 4: Enviando ao backend:', payload.name);
+
             const resp = await backendFetch(`${config.backendUrl}/api/contacts`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${config.authToken}`,
                 },
-                body: JSON.stringify({
-                    list_id: listId,
-                    name: contact.name,
-                    phone: (contact.phone || '').replace(/\D/g, ''),
-                    email: '',
-                    category: contact.category || 'Maps',
-                    cep: '',
-                    rating: contact.rating ? String(contact.rating) : '',
-                })
+                body: JSON.stringify(payload)
             })
+
+            console.log(`[SM Import] Etapa 5: Resposta backend status ${resp.status} para ${contact.name}`);
+
             if (resp.ok) return 'ok'
             if (resp.status === 409) return 'dup'
+            
+            addLog(`❌ Erro ao importar: ${contact.name} (Status: ${resp.status})`, 'err');
             return 'err'
-        } catch { return 'err' }
+        } catch (e) { 
+            console.error('[SM Import] Falha no fetch de importação:', e);
+            addLog(`❌ Erro de rede ao importar: ${contact.name}`, 'err');
+            return 'err' 
+        }
     }
 
     // ─── Import all (manual button) ──────────────────────────────────────────────
     async function importAll() {
         const listId = shadow.getElementById('listSelect').value
         if (!listId) { addLog('⚠️ Selecione uma lista.', 'warn'); return }
-        if (!extractedContacts.length) { addLog('⚠️ Nenhum contato para importar.', 'warn'); return }
+        
+        const contactsToImport = extractedContacts.filter(c => !c._imported);
+        if (!contactsToImport.length) { addLog('⚠️ Nenhum novo contato para importar.', 'warn'); return }
 
         const btn = shadow.getElementById('btnImport')
         btn.disabled = true
         btn.textContent = '⟳ Importando...'
-        addLog(`📤 Importando ${extractedContacts.length} contato(s)...`, 'info')
+        
+        addLog(`[SM Import] Etapa 4: Enviando ${contactsToImport.length} registros ao backend`, 'info')
 
         let ok = 0, dup = 0, err = 0
-        for (const c of extractedContacts) {
+        for (const c of contactsToImport) {
             const r = await importSingle(c, listId)
-            if (r === 'ok') ok++
-            if (r === 'dup') dup++
-            if (r === 'err') err++
+            if (r === 'ok') { ok++; c._imported = true; }
+            else if (r === 'dup') { dup++; c._imported = true; c._dup = true; }
+            else err++
+            
+            updateStats()
         }
 
-        importedCount += ok
-        updateStats()
-        addLog(`✅ ${ok} importados, ${dup} já existiam, ${err} erros.`, ok > 0 ? 'ok' : 'warn')
+        addLog(`[SM Import] Etapa 5: Importação concluída. Sucesso: ${ok}, Duplicados: ${dup}, Erros: ${err}`, ok > 0 ? 'ok' : 'err')
         btn.textContent = '⬆️ Importar tudo agora'
         btn.disabled = false
     }
 
     // ─── DOM helpers ────────────────────────────────────────────────────────────
     function getResultCards() {
-        const feed = document.querySelector('[role="feed"]')
-        if (!feed) return []
-        const cards = feed.querySelectorAll('div.Nv2PK, [role="article"]')
-        return cards.length > 0 ? Array.from(cards) : Array.from(feed.children)
+        // Diversas formas de encontrar os cards de resultados
+        const selectors = [
+            '[role="feed"] div.Nv2PK',
+            '[role="feed"] [role="article"]',
+            'div.Nv2PK',
+            'div.m6QErb div.hfpxzc', // Algumas versões do Maps
+            'a.hfpxzc' // Último recurso: pegar os links diretos
+        ];
+        
+        for (const sel of selectors) {
+            const el = document.querySelectorAll(sel);
+            if (el.length > 0) {
+                // Se for o link, precisamos subir para o container
+                if (sel === 'a.hfpxzc') {
+                    return Array.from(el).map(a => a.closest('div.Nv2PK') || a.parentElement).filter(Boolean);
+                }
+                return Array.from(el);
+            }
+        }
+        
+        // Fallback para o feed
+        const feed = document.querySelector('[role="feed"]');
+        if (feed) return Array.from(feed.children).filter(c => c.tagName === 'DIV');
+        
+        return [];
     }
 
     function getCardName(card) {
-        return (
+        // Seletores atualizados e mais abrangentes para o nome da empresa
+        const nameEl = 
             card.querySelector('.fontHeadlineSmall') ||
             card.querySelector('.qBF1Pd') ||
-            card.querySelector('[class*="fontHeadline"]')
-        )?.textContent?.trim() || ''
+            card.querySelector('.lS69S') ||
+            card.querySelector('[aria-label]') || 
+            card.querySelector('div[role="link"] div:first-child');
+            
+        let name = nameEl?.textContent?.trim() || '';
+        
+        // Se pegou o aria-label de um link, às vezes ele contém "Ver detalhes de..."
+        if (name.includes('Ver detalhes de')) {
+            name = name.replace('Ver detalhes de ', '');
+        }
+        
+        return name;
     }
 
     function extractCardData(card) {
         const name = getCardName(card)
-        const rating = card.querySelector('.MW4etd')?.textContent?.trim() || ''
-        const metaEls = Array.from(card.querySelectorAll('.W4Efsd span'))
-            .map(el => el.textContent?.trim())
-            .filter(t => t && t.length > 1)
-        const category = metaEls[0] || ''
-        const address = metaEls.slice(1).join(' ') || ''
+        const rating = card.querySelector('.MW4etd')?.textContent?.trim() || 
+                       card.querySelector('.AJB71c')?.textContent?.trim() || '';
+        
+        // Meta data (category, address)
+        // O Maps costuma colocar em spans dentro de containers .W4Efsd
+        const metaContainers = card.querySelectorAll('.W4Efsd');
+        let category = '';
+        let address = '';
+        
+        if (metaContainers.length > 0) {
+            const spans = Array.from(metaContainers[0].querySelectorAll('span'))
+                .map(s => s.textContent?.trim())
+                .filter(t => t && t.length > 1 && !t.includes('·') && !t.includes('('));
+            
+            category = spans[0] || '';
+            
+            // Address costuma estar no segundo container meta
+            if (metaContainers.length > 1) {
+                const addSpans = Array.from(metaContainers[1].querySelectorAll('span'))
+                    .map(s => s.textContent?.trim())
+                    .filter(t => t && t.length > 1 && !t.includes('·'));
+                address = addSpans.join(', ');
+            }
+        }
+
         return { name, rating, category, address, phone: '', website: '' }
     }
 
     function extractPhoneFromDetail() {
-        const btn =
-            document.querySelector('[data-item-id*="phone"]') ||
-            document.querySelector('button[aria-label*="Telefone"]') ||
-            document.querySelector('button[aria-label*="Phone"]')
-        if (!btn) return null
-        const text = btn.querySelector('.Io6YTe')?.textContent?.trim() ||
-            btn.querySelector('span')?.textContent?.trim()
-        return text && /\d/.test(text) ? text : null
+        // Seletores robustos para telefone no painel de detalhes
+        const phoneSelectors = [
+            '[data-item-id*="phone"] .Io6YTe',
+            'button[aria-label*="Telefone"] .Io6YTe',
+            'button[aria-label*="Phone"] .Io6YTe',
+            'img[src*="phone_black"]', // Pelo ícone se o texto falhar
+            '[data-tooltip*="telefone"]',
+            '[data-tooltip*="Phone"]'
+        ];
+
+        for (const sel of phoneSelectors) {
+            const el = document.querySelector(sel);
+            if (!el) continue;
+            
+            let text = '';
+            if (sel.includes('img')) {
+                text = el.closest('button')?.textContent?.trim() || '';
+            } else {
+                text = el.textContent?.trim();
+            }
+            
+            if (text && /\d{2,}/.test(text)) return text;
+        }
+        return null;
     }
 
     function extractWebsiteFromDetail() {
-        return document.querySelector('a[data-item-id="authority"]')?.href || null
+        const webEl = 
+            document.querySelector('a[data-item-id="authority"]') ||
+            document.querySelector('a[aria-label*="Website"]') ||
+            document.querySelector('a[aria-label*="Site"]') ||
+            document.querySelector('img[src*="public_black"]')?.closest('a');
+            
+        return webEl?.href || null;
     }
 
     async function waitForPhone(ms) {
@@ -577,10 +681,12 @@
         const panel =
             document.querySelector('.m6QErb.WNBkOb.tLjsW.eKbjU') ||
             document.querySelector('.m6QErb.WNBkOb') ||
-            document.querySelector('.m6QErb[tabindex]') ||
-            document.querySelector('.DxyBCb')
+            document.querySelector('.m6QErb[tabindex="-1"]') ||
+            document.querySelector('.DxyBCb') ||
+            document.querySelector('div[role="main"][aria-label]');
+            
         if (panel) {
-            panel.scrollTop += 500
+            panel.scrollTop = panel.scrollHeight; // Rola tudo para garantir carregamento
         }
     }
 
@@ -649,9 +755,14 @@
     // ─── UI helpers ──────────────────────────────────────────────────────────────
     function updateStats() {
         shadow.getElementById('statExtracted').textContent = extractedContacts.length
-        shadow.getElementById('statImported').textContent = importedCount
+        
+        const imported = extractedContacts.filter(c => c._imported && !c._dup).length
         const dups = extractedContacts.filter(c => c._dup).length
+        
+        shadow.getElementById('statImported').textContent = imported
         shadow.getElementById('statSkipped').textContent = dups
+        
+        importedCount = imported
     }
 
     function addLog(msg, type = 'info') {

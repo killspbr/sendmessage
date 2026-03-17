@@ -318,13 +318,35 @@ app.get('/api/contacts', authenticateToken, async (req, res) => {
 app.post('/api/contacts', authenticateToken, async (req, res) => {
   try {
     const { list_id, name, phone, email, category, cep, rating, address, city, state, instagram, facebook, whatsapp, website } = req.body;
+    
+    console.log(`[Backend Import] Recebido contato: ${name} para lista: ${list_id}`);
+    
+    if (!list_id || !name) {
+      console.warn('[Backend Import] Falha na validação: list_id ou name ausente');
+      return res.status(400).json({ error: 'list_id e name são obrigatórios' });
+    }
+
+    // Verifica se já existe esse contato na mesma lista para este usuário (Deduplicação)
+    const existing = await query(
+      'SELECT id FROM contacts WHERE user_id = $1 AND list_id = $2 AND (name = $3 OR (phone = $4 AND phone != \'\'))',
+      [req.user.id, list_id, name, phone || '']
+    );
+
+    if (existing.rows.length > 0) {
+      console.log(`[Backend Import] Contato duplicado ignorado: ${name}`);
+      return res.status(409).json({ error: 'Contato já existe nesta lista', id: existing.rows[0].id });
+    }
+
     const result = await query(
       'INSERT INTO contacts (user_id, list_id, name, phone, email, category, cep, rating, address, city, state, instagram, facebook, whatsapp, website) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) RETURNING *',
       [req.user.id, list_id, name, phone, email, category, cep, rating, address, city, state, instagram, facebook, whatsapp, website]
     );
+    
+    console.log(`[Backend Import] Contato inserido com sucesso ID: ${result.rows[0].id}`);
     res.status(201).json(result.rows[0]);
   } catch (error) {
-    res.status(500).json({ error: 'Erro ao criar contato' });
+    console.error('[Backend Import] Erro crítico ao inserir contato:', error);
+    res.status(500).json({ error: 'Erro interno ao salvar contato', detail: error.message });
   }
 });
 
@@ -463,18 +485,23 @@ app.delete('/api/campaigns/history', authenticateToken, async (req, res) => {
 // --- ENDPOINT PARA A EXTENSÃO CHROME ---
 app.get('/api/extension/info', authenticateToken, async (req, res) => {
   try {
+    console.log(`[Extension] Conexão recebida de: ${req.user.email}`);
+    
     const listsResult = await query(
       'SELECT id, name FROM lists WHERE user_id = $1 ORDER BY name ASC',
       [req.user.id]
     );
+
+    console.log(`[Extension] Enviando ${listsResult.rows.length} listas para: ${req.user.email}`);
+    
     res.json({
       ok: true,
       user: { id: req.user.id, email: req.user.email },
       lists: listsResult.rows,
     });
   } catch (error) {
-    console.error('[Extension] Erro ao buscar listas:', error);
-    res.status(500).json({ error: 'Erro ao buscar listas', details: error.message });
+    console.error('[Extension] Erro crítico ao buscar metadados para extensão:', error);
+    res.status(500).json({ error: 'Erro ao buscar listas ou perfil', details: error.message });
   }
 });
 
@@ -1270,13 +1297,16 @@ app.get('/api/admin/gemini-keys', authenticateToken, checkAdmin, async (req, res
 app.post('/api/admin/gemini-keys', authenticateToken, checkAdmin, async (req, res) => {
   try {
     const { nome, api_key, status, observacoes } = req.body;
+    console.log('Tentando cadastrar chave Gemini:', { nome, status, userId: req.user?.id });
     const result = await query(
       'INSERT INTO gemini_api_keys (user_id, nome, api_key, status, observacoes) VALUES ($1, $2, $3, $4, $5) RETURNING id, nome, status',
       [req.user.id, nome, api_key, status || 'ativa', observacoes]
     );
+    console.log('Chave Gemini cadastrada com sucesso:', result.rows[0]);
     res.status(201).json({ success: true, data: result.rows[0] });
   } catch (error) {
-    res.status(500).json({ success: false, error: 'Erro ao cadastrar chave Gemini' });
+    console.error('Erro detalhado ao cadastrar chave Gemini:', error);
+    res.status(500).json({ success: false, error: 'Erro ao cadastrar chave Gemini', detail: error.message });
   }
 });
 
