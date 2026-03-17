@@ -137,44 +137,40 @@ FORMATO DE SAÍDA:
         }
 
         try {
-            const apiUrl = `https://generativelanguage.googleapis.com/${geminiApiVersion}/models/${geminiModel}:generateContent?key=${effectiveAiKey}`
+            const token = localStorage.getItem('token')
+            const baseUrl = (import.meta as any).env.VITE_API_URL || 'https://sendmessage-backend.up.railway.app'
+            const apiUrl = `${baseUrl}/api/ai/proxy`
 
             const tempAdjust = mode === 'suggest' ? 0.1 : -0.1
             const finalTemp = Math.max(0, Math.min(1, geminiTemperature + tempAdjust))
 
             const response = await fetch(apiUrl, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
                 body: JSON.stringify({
-                    contents: [{ parts: [{ text: prompt }] }],
-                    generationConfig: {
-                        temperature: finalTemp,
-                        maxOutputTokens: geminiMaxTokens,
-                        topP: 0.95,
-                        topK: 40
-                    },
+                    prompt: prompt,
+                    model: geminiModel,
+                    temperature: finalTemp,
+                    maxTokens: geminiMaxTokens
                 }),
             })
 
             if (!response.ok) {
-                const rawErrorText = await response.text()
-                console.error('Erro HTTP ao chamar Gemini:', response.status, rawErrorText)
-                throw new Error(`Erro ${response.status}`)
+                const data = await response.json()
+                throw new Error(data.error || `Erro ${response.status}`)
             }
 
             const data = await response.json()
-            const candidate = data?.candidates?.[0]
-            const parts = candidate?.content?.parts || []
+            const parts = data?.candidates?.[0]?.content?.parts || []
             const generatedText = parts.map((p: any) => p.text).join('')
 
-            if (candidate?.finishReason === 'MAX_TOKENS') {
-                console.warn('Alerta: A resposta da IA foi cortada por atingir o limite de tokens.')
-            }
-
             return cleanHtmlOutput(generatedText)
-        } catch (error) {
-            console.error('Gemini API Error:', error)
-            alert('Erro ao se comunicar com a inteligência artificial. Verifique sua chave de API ou tente novamente.')
+        } catch (error: any) {
+            console.error('Gemini API Error (Proxy):', error)
+            alert(error.message || 'Erro ao se comunicar com a inteligência artificial. Verifique se há chaves Gemini ativas no painel administrativo.')
             return null
         }
     }

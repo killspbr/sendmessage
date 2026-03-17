@@ -1,7 +1,7 @@
 import type { ChangeEvent } from 'react'
 import { useEffect, useState } from 'react'
 import { apiFetch } from './api'
-import { Sidebar } from './components/layout/Sidebar'
+import { Sidebar, type SidebarPage } from './components/layout/Sidebar'
 import { Header } from './components/layout/Header'
 import { ContactForm } from './components/contacts/ContactForm'
 import { ContactsHeader } from './components/contacts/ContactsHeader'
@@ -16,6 +16,8 @@ import {
   ReportsPage,
   SchedulesPage,
 } from './pages'
+import GeminiKeysPage from './pages/GeminiKeysPage'
+import SecurityDashboardPage from './pages/SecurityDashboardPage'
 import { usePermissions } from './hooks/usePermissions'
 import { useAuth } from './hooks/useAuth'
 import { useLists } from './hooks/useLists'
@@ -441,11 +443,9 @@ function App() {
   }, [debugEnabled])
 
   // currentListId agora vem do hook useListsWithSupabase; mantemos apenas a persistência
-  const [currentPage, setCurrentPage] = useState<
-    'dashboard' | 'contacts' | 'campaigns' | 'schedules' | 'settings' | 'reports' | 'admin' | 'profile'
-  >(() => {
+  const [currentPage, setCurrentPage] = useState<SidebarPage>(() => {
     try {
-      const stored = localStorage.getItem('sendmessage_currentPage') as
+      const stored = localStorage.getItem('sendmessage_currentPage') as SidebarPage
         | 'dashboard'
         | 'contacts'
         | 'campaigns'
@@ -1036,6 +1036,20 @@ function App() {
     }
 
     setSendConfirmCampaignId(camp.id)
+  }
+
+  const handleScheduleCampaign = async (id: string, config: any) => {
+    try {
+      await apiFetch(`/api/campaigns/${id}/schedule`, {
+        method: 'POST',
+        body: JSON.stringify(config)
+      })
+      await reloadCampaigns()
+      setLastMoveMessage('Campanha agendada com sucesso no sistema profissional.')
+    } catch (e) {
+      logError('campaigns.schedule', 'Erro ao agendar campanha', e)
+      setLastMoveMessage('Erro ao agendar campanha.')
+    }
   }
 
   // Calcula quantos contatos ainda não receberam a campanha
@@ -3042,6 +3056,7 @@ function App() {
                 geminiApiKey={effectiveAiKey}
                 userHasConfiguredAi={userHasConfiguredAi}
                 onGenerateCampaignContentWithAI={handleGenerateCampaignContentWithAI}
+                onScheduleCampaign={handleScheduleCampaign}
               />
             ) : currentPage === 'schedules' ? (
               <SchedulesPage
@@ -3110,6 +3125,10 @@ function App() {
                 impersonatedUserId={impersonatedUserId}
                 onImpersonateUser={setImpersonatedUserId}
               />
+            ) : currentPage === 'gemini-keys' ? (
+              <GeminiKeysPage />
+            ) : currentPage === 'security' ? (
+              <SecurityDashboardPage />
             ) : null}
           </div>
         </main>

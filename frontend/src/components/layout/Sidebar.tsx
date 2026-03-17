@@ -1,6 +1,6 @@
 import { useState } from 'react'
 
-export type SidebarPage = 'dashboard' | 'contacts' | 'campaigns' | 'schedules' | 'settings' | 'reports' | 'admin' | 'profile'
+export type SidebarPage = 'dashboard' | 'contacts' | 'campaigns' | 'schedules' | 'settings' | 'reports' | 'admin' | 'profile' | 'gemini-keys' | 'security'
 
 type SidebarProps = {
   currentPage: SidebarPage
@@ -132,17 +132,41 @@ export function Sidebar({ currentPage, onChangePage, can, userEmail, userName, o
           </div>
         )}
         {canViewSettings && (
-          <button
-            className={`w-full flex items-center justify-start gap-2 px-3 py-2 rounded-xl text-xs font-medium transition ${currentPage === 'settings'
-                ? 'bg-emerald-500/20 border border-emerald-400/50 text-slate-50 shadow-sm shadow-emerald-600/40'
-                : 'text-slate-400 hover:bg-slate-900/80 hover:text-slate-50'
-              }`}
-            onClick={() => handlePageChange('settings')}
-            title="Configurações"
-          >
-            <span className="h-6 w-6 rounded-lg bg-slate-900/80 flex items-center justify-center text-[11px] shrink-0">⚙️</span>
-            <span className="inline text-xs">Configurações</span>
-          </button>
+          <div className="space-y-1">
+            <button
+              className={`w-full flex items-center justify-start gap-2 px-3 py-2 rounded-xl text-xs font-medium transition ${currentPage === 'settings'
+                  ? 'bg-emerald-500/20 border border-emerald-400/50 text-slate-50 shadow-sm shadow-emerald-600/40'
+                  : 'text-slate-400 hover:bg-slate-900/80 hover:text-slate-50'
+                }`}
+              onClick={() => handlePageChange('settings')}
+              title="Configurações"
+            >
+              <span className="h-6 w-6 rounded-lg bg-slate-900/80 flex items-center justify-center text-[11px] shrink-0">⚙️</span>
+              <span className="inline text-xs">Configurações</span>
+            </button>
+            <button
+              className={`w-full flex items-center justify-start gap-2 px-3 py-2 rounded-xl text-xs font-medium transition ${currentPage === 'security'
+                  ? 'bg-emerald-500/20 border border-emerald-400/50 text-slate-50 shadow-sm shadow-emerald-600/40'
+                  : 'text-slate-400 hover:bg-slate-900/80 hover:text-slate-50'
+                }`}
+              onClick={() => handlePageChange('security')}
+              title="Painel de Segurança"
+            >
+              <span className="h-6 w-6 rounded-lg bg-slate-900/80 flex items-center justify-center text-[11px] shrink-0">🛡️</span>
+              <span className="inline text-xs">Segurança Operacional</span>
+            </button>
+            <button
+              className={`w-full flex items-center justify-start gap-2 px-3 py-2 rounded-xl text-xs font-medium transition ${currentPage === 'gemini-keys'
+                  ? 'bg-emerald-500/20 border border-emerald-400/50 text-slate-50 shadow-sm shadow-emerald-600/40'
+                  : 'text-slate-400 hover:bg-slate-900/80 hover:text-slate-50'
+                }`}
+              onClick={() => handlePageChange('gemini-keys')}
+              title="Gerenciar APIs Gemini"
+            >
+              <span className="h-6 w-6 rounded-lg bg-slate-900/80 flex items-center justify-center text-[11px] shrink-0">🤖</span>
+              <span className="inline text-xs">APIs Gemini</span>
+            </button>
+          </div>
         )}
         {canViewAdmin && (
           <button

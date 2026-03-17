@@ -1,6 +1,6 @@
 import React from 'react'
 
-export type HeaderPage = 'dashboard' | 'contacts' | 'campaigns' | 'schedules' | 'settings' | 'reports' | 'admin' | 'profile' | 'extract'
+export type HeaderPage = 'dashboard' | 'contacts' | 'campaigns' | 'schedules' | 'settings' | 'reports' | 'admin' | 'profile' | 'extract' | 'gemini-keys' | 'security'
 
 type HeaderProps = {
   currentPage: HeaderPage
@@ -29,7 +29,11 @@ export function Header({ currentPage, onImportCsv, onExportCsv, onToggleMobileMe
                     ? 'Meu perfil'
                     : currentPage === 'extract'
                       ? 'Extrair contatos'
-                      : 'Contatos'
+                      : currentPage === 'gemini-keys'
+                        ? 'APIs Gemini'
+                        : currentPage === 'security'
+                          ? 'Segurança Operacional'
+                          : 'Contatos'
 
   const subtitle =
     currentPage === 'dashboard'
@@ -50,7 +54,11 @@ export function Header({ currentPage, onImportCsv, onExportCsv, onToggleMobileMe
                     ? 'Ajuste suas preferências pessoais de IA e webhooks.'
                     : currentPage === 'extract'
                       ? 'Extraia informações de imagens com Inteligência Artificial.'
-                      : 'Gerencie suas listas e prepare envios via n8n.'
+                      : currentPage === 'gemini-keys'
+                        ? 'Gerenciamento de múltiplas chaves da API do Gemini.'
+                        : currentPage === 'security'
+                          ? 'Monitoramento de saúde da conta e comportamento de envio.'
+                          : 'Gerencie suas listas e prepare envios via n8n.'
 
   return (
     <header className="h-14 md:h-16 shrink-0 border-b border-slate-200 bg-white/80 backdrop-blur flex items-center justify-between px-3 md:px-6">

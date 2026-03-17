@@ -57,6 +57,7 @@ type CampaignsPageProps = {
   onSendCampaign: (campaign: Campaign) => void
   onContinueCampaign: (campaign: Campaign) => void
   onSetSendConfirmCampaignId: (id: string | null) => void
+  onScheduleCampaign: (id: string, config: any) => Promise<void>
 
   // Handlers do relatório
   onSetReportCampaignId: (id: string | null) => void
@@ -134,6 +135,7 @@ export function CampaignsPage({
   geminiApiKey,
   userHasConfiguredAi,
   onGenerateCampaignContentWithAI,
+  onScheduleCampaign,
 }: CampaignsPageProps) {
   const canViewCampaigns = !can || can('campaigns.view')
 
@@ -145,6 +147,16 @@ export function CampaignsPage({
   const [aiSegmentOther, setAiSegmentOther] = useState<string>('')
   const [aiUseEmojis, setAiUseEmojis] = useState<boolean>(true)
   const [aiLengthLevel, setAiLengthLevel] = useState<number>(5) // 0 (curto) a 10 (detalhado)
+
+  // Estado para Agendamento Profissional
+  const [showScheduleModal, setShowScheduleModal] = useState<string | null>(null)
+  const [schedConfig, setSchedConfig] = useState({
+    intervalo_minimo: 30,
+    intervalo_maximo: 90,
+    mensagens_por_lote: 40,
+    tempo_pausa_lote: 10,
+    limite_diario: 150
+  })
 
   const canCreateCampaign = !can || can('campaigns.create')
   const canEditCampaign = !can || can('campaigns.edit')
@@ -829,6 +841,15 @@ export function CampaignsPage({
                           Disparar
                         </button>
                       )}
+                      {canSendCampaign && (
+                        <button
+                          type="button"
+                          className="text-[10px] px-2 py-0.5 rounded-md border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 whitespace-nowrap"
+                          onClick={(e) => { e.stopPropagation(); setShowScheduleModal(camp.id) }}
+                        >
+                          ⏰ Agendar Pro
+                        </button>
+                      )}
                       {(() => {
                         const { pendingContacts, contactsForList } = getPendingContacts(camp)
                         const sentCount = contactsForList.length - pendingContacts.length
@@ -1069,6 +1090,109 @@ export function CampaignsPage({
           )
         )}
       </section>
+
+      {/* Modal de Agendamento Profissional */}
+      {showScheduleModal && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden border border-slate-100">
+            <div className="bg-slate-50 px-6 py-4 border-b border-slate-200 flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-bold text-slate-800">Agendamento de Alta Segurança</h3>
+                <p className="text-[10px] text-slate-500 uppercase font-bold tracking-wider">Configuração de Anti-Bloqueio</p>
+              </div>
+              <button 
+                onClick={() => setShowScheduleModal(null)}
+                className="text-slate-400 hover:text-slate-600 transition"
+              >
+                ✕
+              </button>
+            </div>
+            
+            <div className="p-6 space-y-6">
+              <div className="grid grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <label className="text-[11px] font-bold text-slate-500 uppercase">Intervalo Mínimo (s)</label>
+                  <input 
+                    type="number"
+                    value={schedConfig.intervalo_minimo}
+                    onChange={(e) => setSchedConfig({...schedConfig, intervalo_minimo: Number(e.target.value)})}
+                    className="w-full h-10 px-3 rounded-xl border border-slate-200 text-sm focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[11px] font-bold text-slate-500 uppercase">Intervalo Máximo (s)</label>
+                  <input 
+                    type="number"
+                    value={schedConfig.intervalo_maximo}
+                    onChange={(e) => setSchedConfig({...schedConfig, intervalo_maximo: Number(e.target.value)})}
+                    className="w-full h-10 px-3 rounded-xl border border-slate-200 text-sm focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <label className="text-[11px] font-bold text-slate-500 uppercase">Msgs por Lote</label>
+                  <input 
+                    type="number"
+                    value={schedConfig.mensagens_por_lote}
+                    onChange={(e) => setSchedConfig({...schedConfig, mensagens_por_lote: Number(e.target.value)})}
+                    className="w-full h-10 px-3 rounded-xl border border-slate-200 text-sm focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[11px] font-bold text-slate-500 uppercase">Pausa Lote (minutos)</label>
+                  <input 
+                    type="number"
+                    value={schedConfig.tempo_pausa_lote}
+                    onChange={(e) => setSchedConfig({...schedConfig, tempo_pausa_lote: Number(e.target.value)})}
+                    className="w-full h-10 px-3 rounded-xl border border-slate-200 text-sm focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-[11px] font-bold text-slate-500 uppercase">Limite Diário da Campanha</label>
+                <input 
+                  type="number"
+                  value={schedConfig.limite_diario}
+                  onChange={(e) => setSchedConfig({...schedConfig, limite_diario: Number(e.target.value)})}
+                  className="w-full h-10 px-3 rounded-xl border border-slate-200 text-sm focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                />
+                <p className="text-[10px] text-slate-400 italic">O sistema pausará automaticamente ao atingir este volume no dia.</p>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-100 flex gap-3 items-start">
+                <span className="text-lg">🛡️</span>
+                <p className="text-[11px] text-emerald-800 leading-relaxed">
+                  Esta configuração utiliza <b>Mecanismos Operacionais Profissionais</b>. O envio será processado em segundo plano mesmo com o navegador fechado.
+                </p>
+              </div>
+            </div>
+
+            <div className="px-6 py-4 bg-slate-50 border-t border-slate-200 flex items-center justify-end gap-3">
+              <button 
+                onClick={() => setShowScheduleModal(null)}
+                className="px-4 py-2 text-sm font-semibold text-slate-500 hover:text-slate-700"
+              >
+                Cancelar
+              </button>
+              <button 
+                onClick={async () => {
+                  const campId = showScheduleModal;
+                  setShowScheduleModal(null);
+                  if (onScheduleCampaign && campId) {
+                    await onScheduleCampaign(campId, schedConfig);
+                  }
+                }}
+                className="px-6 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold rounded-xl shadow-lg shadow-emerald-600/20 transition-all hover:scale-[1.02] active:scale-[0.98]"
+              >
+                Ativar Agendamento
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   )
 }

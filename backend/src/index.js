@@ -171,13 +171,14 @@ app.get('/api/campaigns', authenticateToken, async (req, res) => {
 
 app.post('/api/campaigns', authenticateToken, async (req, res) => {
   try {
-    const { name, status, channels, list_name, message, interval_min_seconds, interval_max_seconds } = req.body;
+    const { name, status, channels, list_name, message, variations, interval_min_seconds, interval_max_seconds } = req.body;
     const result = await query(
-      'INSERT INTO campaigns (user_id, name, status, channels, list_name, message, interval_min_seconds, interval_max_seconds) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *',
-      [req.user.id, name, status || 'rascunho', channels || [], list_name, message, interval_min_seconds || 30, interval_max_seconds || 90]
+      'INSERT INTO campaigns (user_id, name, status, channels, list_name, message, variations, interval_min_seconds, interval_max_seconds) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *',
+      [req.user.id, name, status || 'rascunho', channels || [], list_name, message, JSON.stringify(variations || []), interval_min_seconds || 30, interval_max_seconds || 90]
     );
     res.status(201).json(result.rows[0]);
   } catch (error) {
+    console.error('Erro ao criar campanha:', error);
     res.status(500).json({ error: 'Erro ao criar campanha' });
   }
 });
@@ -185,13 +186,14 @@ app.post('/api/campaigns', authenticateToken, async (req, res) => {
 app.put('/api/campaigns/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, status, channels, list_name, message, interval_min_seconds, interval_max_seconds } = req.body;
+    const { name, status, channels, list_name, message, variations, interval_min_seconds, interval_max_seconds } = req.body;
     const result = await query(
-      'UPDATE campaigns SET name = $1, status = $2, channels = $3, list_name = $4, message = $5, interval_min_seconds = $6, interval_max_seconds = $7 WHERE id = $8 AND user_id = $9 RETURNING *',
-      [name, status, channels, list_name, message, interval_min_seconds, interval_max_seconds, id, req.user.id]
+      'UPDATE campaigns SET name = $1, status = $2, channels = $3, list_name = $4, message = $5, variations = $6, interval_min_seconds = $7, interval_max_seconds = $8 WHERE id = $9 AND user_id = $10 RETURNING *',
+      [name, status, channels, list_name, message, JSON.stringify(variations || []), interval_min_seconds, interval_max_seconds, id, req.user.id]
     );
     res.json(result.rows[0]);
   } catch (error) {
+    console.error('Erro ao atualizar campanha:', error);
     res.status(500).json({ error: 'Erro ao atualizar campanha' });
   }
 });
@@ -1000,9 +1002,11 @@ app.post('/api/ai/extract-contact', async (req, res) => {
       return res.status(400).json({ error: 'imageBase64 é obrigatório.' });
     }
 
-    const apiKey = geminiApiKey || process.env.GEMINI_API_KEY;
+    const keyData = await getActiveGeminiKey();
+    const apiKey = keyData ? keyData.api_key : (geminiApiKey || process.env.GEMINI_API_KEY);
+    
     if (!apiKey) {
-      return res.status(400).json({ error: 'Gemini API Key não informada.' });
+      return res.status(400).json({ error: 'Nenhuma chave Gemini disponível.' });
     }
 
     const prompt = `Você é um extrator de dados de contato.
@@ -1032,9 +1036,9 @@ Retorne APENAS um JSON válido, sem texto extra, exatamente no formato:
   "state": string | null
 }`;
 
-    const url = 'https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent';
+    const url = 'https://generativelanguage.googleapis.com/v1/models/gemini-2.0-flash:generateContent';
 
-    const response = await fetch(`${url}?key=${encodeURIComponent(apiKey)}`, {
+    const aiRes = await fetch(`${url}?key=${encodeURIComponent(apiKey)}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -1046,61 +1050,75 @@ Retorne APENAS um JSON válido, sem texto extra, exatamente no formato:
                 inlineData: {
                   mimeType: 'image/jpeg',
                   data: imageBase64.replace(/^data:image\/[a-zA-Z]+;base64,/, ''),
-                },
-              },
-            ],
-          },
-        ],
+                }
+              }
+            ]
+          }
+        ]
       }),
     });
 
-    if (!response.ok) {
-      const text = await response.text();
-      console.error('Erro Gemini API:', response.status, text);
-      return res.status(500).json({ error: 'Falha ao chamar API Gemini.', status: response.status, details: text });
+    const data = await aiRes.json();
+    
+    if (keyData) {
+      await incrementKeyUsage(keyData.id, 'extract-contact', 'JSON Extracted', aiRes.ok ? null : data);
     }
 
-    const data = await response.json();
-    let textResponse =
-      data?.candidates?.[0]?.content?.parts?.[0]?.text || data?.candidates?.[0]?.output_text || '';
+    if (!aiRes.ok) {
+      return res.status(aiRes.status).json(data);
+    }
+    
+    res.json(data);
+  } catch (error) {
+    console.error('Erro em extract-contact:', error);
+    res.status(500).json({ error: 'Falha na extração de contato' });
+  }
+});
 
-    // Alguns modelos retornam o JSON dentro de ```json ... ```
-    if (typeof textResponse === 'string') {
-      textResponse = textResponse.trim();
-      if (textResponse.startsWith('```')) {
-        textResponse = textResponse.replace(/^```[a-zA-Z]*\s*/, '').replace(/```\s*$/, '');
+// Proxy Geral de IA com Rotação de Chaves
+app.post('/api/ai/proxy', authenticateToken, async (req, res) => {
+  try {
+    const { prompt, model, systemInstruction, temperature, maxTokens } = req.body;
+    
+    const keyData = await getActiveGeminiKey();
+    if (!keyData) {
+      return res.status(503).json({ error: 'Cota de IA esgotada. Por favor, adicione novas chaves Gemini no painel administrativo.' });
+    }
+
+    const actualModel = model || 'gemini-1.5-flash-latest';
+    const url = `https://generativelanguage.googleapis.com/v1/models/${actualModel}:generateContent?key=${keyData.api_key}`;
+
+    const body = {
+      contents: [{ parts: [{ text: prompt }] }],
+      generationConfig: {
+        temperature: temperature || 0.7,
+        maxOutputTokens: maxTokens || 2048,
       }
-    }
-
-    let parsed = null;
-    try {
-      parsed = JSON.parse(textResponse);
-    } catch (e) {
-      console.error('Falha ao fazer parse do JSON retornado pelo Gemini:', textResponse);
-      return res.status(500).json({
-        error: 'Resposta do Gemini em formato inesperado. Ajuste o prompt.',
-        raw: textResponse,
-      });
-    }
-
-    const contact = {
-      name: parsed?.name || '',
-      phone: parsed?.phone || '',
-      email: parsed?.email || '',
-      category: parsed?.category || 'IA',
-      address: parsed?.address || '',
-      city: parsed?.city || '',
-      state: parsed?.state || '',
-      instagram: parsed?.instagram || '',
-      facebook: parsed?.facebook || '',
-      whatsapp: parsed?.whatsapp || '',
-      website: parsed?.website || '',
     };
 
-    res.json({ ok: true, contact, raw: parsed });
+    if (systemInstruction) {
+      body.systemInstruction = { parts: [{ text: systemInstruction }] };
+    }
+
+    const aiRes = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+
+    const data = await aiRes.json();
+    
+    // Incrementa uso e log
+    await incrementKeyUsage(keyData.id, 'proxy', 'AI Response', aiRes.ok ? null : data);
+
+    if (!aiRes.ok) {
+      return res.status(aiRes.status).json(data);
+    }
+
+    res.json(data);
   } catch (error) {
-    console.error('Erro em /api/ai/extract-contact:', error);
-    res.status(500).json({ error: 'Falha ao processar imagem com Gemini.', details: error.message });
+    console.error('[AI Proxy] Erro:', error);
+    res.status(500).json({ error: 'Erro interno no serviço de IA.' });
   }
 });
 
@@ -1213,14 +1231,144 @@ app.put('/api/admin/users/:id/settings', authenticateToken, async (req, res) => 
   }
 });
 
-// Adicionar permissão a um grupo (Admin)
-app.post('/api/admin/group-permissions', authenticateToken, async (req, res) => {
+// --- GESTÃO DE CHAVES GEMINI ---
+
+app.get('/api/admin/gemini-keys', authenticateToken, async (req, res) => {
   try {
-    const { group_id, permission_id } = req.body;
-    await query('INSERT INTO group_permissions (group_id, permission_id) VALUES ($1, $2) ON CONFLICT DO NOTHING', [group_id, permission_id]);
-    res.status(201).json({ ok: true });
+    const result = await query('SELECT id, nome, status, ultimo_uso, requests_count, data_cadastro, observacoes FROM gemini_api_keys ORDER BY data_cadastro DESC');
+    res.json(result.rows);
   } catch (error) {
-    res.status(500).json({ error: 'Erro ao adicionar permissão ao grupo' });
+    res.status(500).json({ error: 'Erro ao buscar chaves Gemini' });
+  }
+});
+
+app.post('/api/admin/gemini-keys', authenticateToken, async (req, res) => {
+  try {
+    const { nome, api_key, status, observacoes } = req.body;
+    const result = await query(
+      'INSERT INTO gemini_api_keys (nome, api_key, status, observacoes) VALUES ($1, $2, $3, $4) RETURNING id, nome, status',
+      [nome, api_key, status || 'ativa', observacoes]
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (error) {
+    res.status(500).json({ error: 'Erro ao cadastrar chave Gemini' });
+  }
+});
+
+app.delete('/api/admin/gemini-keys/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    await query('DELETE FROM gemini_api_keys WHERE id = $1', [id]);
+    res.json({ ok: true });
+  } catch (error) {
+    res.status(500).json({ error: 'Erro ao deletar chave Gemini' });
+  }
+});
+
+app.post('/api/admin/gemini-keys/reset', authenticateToken, async (req, res) => {
+  try {
+    await query('UPDATE gemini_api_keys SET requests_count = 0, status = CASE WHEN status = \'limite_atingido\' THEN \'ativa\' ELSE status END');
+    res.json({ ok: true });
+  } catch (error) {
+    res.status(500).json({ error: 'Erro ao resetar contadores Gemini' });
+  }
+});
+
+// --- OPERAÇÕES DE AGENDAMENTO E FILA ---
+
+app.post('/api/campaigns/:id/schedule', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { data_inicio, hora_inicio, limite_diario, intervalo_minimo, intervalo_maximo, mensagens_por_lote, tempo_pausa_lote } = req.body;
+    
+    // Cancela agendamentos anteriores da mesma campanha
+    await query('UPDATE campaign_schedule SET status = \'cancelado\' WHERE campaign_id = $1 AND status = ANY($2)', [id, ['agendado', 'em_execucao', 'pausado']]);
+
+    const result = await query(
+      'INSERT INTO campaign_schedule (campaign_id, user_id, data_inicio, hora_inicio, limite_diario, intervalo_minimo, intervalo_maximo, mensagens_por_lote, tempo_pausa_lote) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *',
+      [id, req.user.id, data_inicio || new Date().toISOString().split('T')[0], hora_inicio || new Date().toTimeString().split(' ')[0], limite_diario || 300, intervalo_minimo || 30, intervalo_maximo || 90, mensagens_por_lote || 45, tempo_pausa_lote || 15]
+    );
+    
+    // Atualiza status da campanha
+    await query('UPDATE campaigns SET status = \'agendado\', last_scheduled_at = CURRENT_TIMESTAMP WHERE id = $1', [id]);
+
+    res.status(201).json(result.rows[0]);
+  } catch (error) {
+    console.error('Erro ao agendar campanha:', error);
+    res.status(500).json({ error: 'Erro ao agendar campanha' });
+  }
+});
+
+app.get('/api/admin/operational-stats', authenticateToken, async (req, res) => {
+  try {
+    const stats = {
+      enviadas_hoje: 0,
+      enviadas_ultima_hora: 0,
+      fila_pendente: 0,
+      falhas_hoje: 0,
+      campanhas_em_execucao: 0
+    };
+
+    const resHoje = await query("SELECT count(*) FROM message_queue WHERE status = 'enviado' AND data_envio >= CURRENT_DATE");
+    stats.enviadas_hoje = parseInt(resHoje.rows[0].count);
+
+    const resHora = await query("SELECT count(*) FROM message_queue WHERE status = 'enviado' AND data_envio >= (NOW() - INTERVAL '1 hour')");
+    stats.enviadas_ultima_hora = parseInt(resHora.rows[0].count);
+
+    const resFila = await query("SELECT count(*) FROM message_queue WHERE status = 'pendente'");
+    stats.fila_pendente = parseInt(resFila.rows[0].count);
+
+    const resFalhas = await query("SELECT count(*) FROM message_queue WHERE status = 'falhou' AND data_criacao >= CURRENT_DATE");
+    stats.falhas_hoje = parseInt(resFalhas.rows[0].count);
+
+    const resExec = await query("SELECT count(*) FROM campaign_schedule WHERE status = 'em_execucao'");
+    stats.campanhas_em_execucao = parseInt(resExec.rows[0].count);
+
+    res.json(stats);
+  } catch (error) {
+    res.status(500).json({ error: 'Erro ao buscar estatísticas operacionais' });
+  }
+});
+
+app.delete('/api/campaigns/:id/schedule', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    // Remove mensagens pendentes da fila
+    await query('DELETE FROM message_queue WHERE campaign_id = $1 AND status = $2', [id, 'pendente']);
+    // Atualiza status do agendamento
+    await query("UPDATE campaign_schedule SET status = 'cancelado' WHERE campaign_id = $1", [id]);
+    res.json({ ok: true });
+  } catch (error) {
+    res.status(500).json({ error: 'Erro ao cancelar agendamento' });
+  }
+});
+
+app.get('/api/admin/schedules', authenticateToken, async (req, res) => {
+  try {
+    const resSched = await query(`
+      SELECT s.*, c.name as campaign_name 
+      FROM campaign_schedule s
+      LEFT JOIN campaigns c ON s.campaign_id = c.id
+      ORDER BY s.data_criacao DESC
+    `);
+    res.json(resSched.rows);
+  } catch (error) {
+    res.status(500).json({ error: 'Erro ao buscar agendamentos profissionais' });
+  }
+});
+
+app.get('/api/admin/queue', authenticateToken, async (req, res) => {
+  try {
+    const resQueue = await query(`
+      SELECT q.*, c.name as campaign_name 
+      FROM message_queue q
+      LEFT JOIN campaigns c ON q.campaign_id = c.id
+      ORDER BY q.data_criacao DESC
+      LIMIT 100
+    `);
+    res.json(resQueue.rows);
+  } catch (error) {
+    res.status(500).json({ error: 'Erro ao buscar fila de mensagens' });
   }
 });
 
@@ -1278,6 +1426,65 @@ async function runMigrations() {
       send_interval_min INTEGER DEFAULT 30,
       send_interval_max INTEGER DEFAULT 90,
       updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    )`,
+    // Nova arquitetura: Agendamento, Fila e APIs Gemini
+    `CREATE EXTENSION IF NOT EXISTS "pgcrypto"`,
+    `CREATE TABLE IF NOT EXISTS campaign_schedule (
+      id SERIAL PRIMARY KEY,
+      campaign_id INTEGER NOT NULL,
+      user_id INTEGER NOT NULL,
+      data_inicio DATE NOT NULL,
+      hora_inicio TIME NOT NULL,
+      limite_diario INTEGER DEFAULT 300,
+      intervalo_minimo INTEGER DEFAULT 30,
+      intervalo_maximo INTEGER DEFAULT 90,
+      mensagens_por_lote INTEGER DEFAULT 45,
+      tempo_pausa_lote INTEGER DEFAULT 15,
+      status TEXT DEFAULT 'agendado',
+      data_criacao TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    )`,
+    `CREATE TABLE IF NOT EXISTS message_queue (
+      id SERIAL PRIMARY KEY,
+      campaign_id INTEGER NOT NULL,
+      user_id INTEGER NOT NULL,
+      contact_id INTEGER,
+      telefone TEXT NOT NULL,
+      nome TEXT,
+      mensagem TEXT NOT NULL,
+      status TEXT DEFAULT 'pendente',
+      tentativas INTEGER DEFAULT 0,
+      data_criacao TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+      data_envio TIMESTAMP WITH TIME ZONE,
+      erro TEXT
+    )`,
+    `CREATE TABLE IF NOT EXISTS gemini_api_keys (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER,
+      nome TEXT NOT NULL,
+      api_key TEXT NOT NULL,
+      status TEXT DEFAULT 'ativa',
+      ultimo_uso TIMESTAMP WITH TIME ZONE,
+      requests_count INTEGER DEFAULT 0,
+      data_cadastro TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+      observacoes TEXT
+    )`,
+    `CREATE TABLE IF NOT EXISTS gemini_api_usage_logs (
+      id SERIAL PRIMARY KEY,
+      key_id INTEGER NOT NULL,
+      user_id INTEGER,
+      module TEXT,
+      resultado TEXT,
+      erro TEXT,
+      data_solicitacao TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    )`,
+    // Adicionar colunas extras em tabelas existentes
+    `ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS variations JSONB DEFAULT '[]'::jsonb`,
+    `ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS last_scheduled_at TIMESTAMP WITH TIME ZONE`,
+    `CREATE TABLE IF NOT EXISTS scheduler_logs (
+      id SERIAL PRIMARY KEY,
+      event TEXT NOT NULL,
+      details TEXT,
+      data_evento TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
     )`,
   ];
 
