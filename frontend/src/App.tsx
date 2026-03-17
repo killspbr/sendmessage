@@ -669,6 +669,18 @@ function App() {
     // citação
     text = text.replace(/<blockquote[^>]*>([\s\S]*?)<\/blockquote>/gi, '> $1\n')
 
+    // links
+    text = text.replace(/<a[^>]+href="([^">]+)"[^>]*>([\s\S]*?)<\/a>/gi, (_match, url, label) => {
+      const cleanLabel = label.replace(/<[^>]+>/g, '').trim()
+      const cleanUrl = url.replace(/^(mailto|https?|tel):/i, '').replace(/^\/\//, '').replace(/\/$/, '').trim()
+      const cleanLabelCompare = cleanLabel.replace(/^(mailto|https?|tel):/i, '').replace(/^\/\//, '').replace(/\/$/, '').trim()
+
+      if (cleanUrl === cleanLabelCompare || !cleanLabel) {
+        return url.startsWith('mailto:') ? cleanLabel : url
+      }
+      return `${cleanLabel} (${url})`
+    })
+
     // separadores de blocos: títulos e listas
     text = text
       .replace(/<\/?(ul|ol)[^>]*>/gi, '\n')

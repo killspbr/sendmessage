@@ -857,7 +857,12 @@ app.post('/api/campaigns/:id/send', authenticateToken, async (req, res) => {
       // links
       text = text.replace(/<a[^>]+href="([^">]+)"[^>]*>([\s\S]*?)<\/a>/gi, (match, url, label) => {
         const cleanLabel = label.replace(/<[^>]+>/g, '').trim();
-        if (url === cleanLabel || !cleanLabel) return url;
+        const cleanUrl = url.replace(/^(mailto|https?|tel):/i, '').replace(/^\/\//, '').replace(/\/$/, '').trim();
+        const cleanLabelCompare = cleanLabel.replace(/^(mailto|https?|tel):/i, '').replace(/^\/\//, '').replace(/\/$/, '').trim();
+        
+        if (cleanUrl === cleanLabelCompare || !cleanLabel) {
+          return url.startsWith('mailto:') ? cleanLabel : url;
+        }
         return `${cleanLabel} (${url})`;
       });
 
