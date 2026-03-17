@@ -1233,7 +1233,7 @@ app.put('/api/admin/users/:id/settings', authenticateToken, async (req, res) => 
 
 // --- GESTÃO DE CHAVES GEMINI ---
 
-app.get('/api/admin/gemini-keys', authenticateToken, async (req, res) => {
+app.get('/api/admin/gemini-keys', authenticateToken, checkAdmin, async (req, res) => {
   try {
     const result = await query('SELECT id, nome, status, ultimo_uso, requests_count, data_cadastro, observacoes FROM gemini_api_keys ORDER BY data_cadastro DESC');
     res.json({ success: true, data: result.rows });
@@ -1299,7 +1299,7 @@ app.post('/api/campaigns/:id/schedule', authenticateToken, async (req, res) => {
   }
 });
 
-app.get('/api/admin/operational-stats', authenticateToken, async (req, res) => {
+app.get('/api/admin/operational-stats', authenticateToken, checkAdmin, async (req, res) => {
   try {
     const stats = {
       enviadas_hoje: 0,
@@ -1353,7 +1353,7 @@ app.delete('/api/campaigns/:id/schedule', authenticateToken, async (req, res) =>
   }
 });
 
-app.get('/api/admin/schedules', authenticateToken, async (req, res) => {
+app.get('/api/admin/schedules', authenticateToken, checkAdmin, async (req, res) => {
   try {
     const resSched = await query(`
       SELECT s.*, c.name as campaign_name 
@@ -1368,10 +1368,13 @@ app.get('/api/admin/schedules', authenticateToken, async (req, res) => {
   }
 });
 
-app.get('/api/admin/queue', authenticateToken, async (req, res) => {
+app.get('/api/admin/queue', authenticateToken, checkAdmin, async (req, res) => {
   try {
     const resQueue = await query(`
-      SELECT q.*, c.name as campaign_name 
+      SELECT q.*, c.name as campaign_name,
+             (SELECT json_agg(l.*) FROM scheduler_logs l 
+              WHERE (l.details::jsonb->>'message_id')::integer = q.id 
+              AND l.event IN ('zombie_recovered', 'zombie_failed')) as recovery_logs
       FROM message_queue q
       LEFT JOIN campaigns c ON q.campaign_id = c.id
       ORDER BY q.data_criacao DESC
@@ -1453,8 +1456,8 @@ async function runMigrations() {
      END $$;`,
     `CREATE TABLE IF NOT EXISTS campaign_schedule (
       id SERIAL PRIMARY KEY,
-      campaign_id UUID NOT NULL,
-      user_id UUID NOT NULL,
+      campaign_id UUID NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
+      user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
       data_inicio DATE NOT NULL,
       hora_inicio TIME NOT NULL,
       limite_diario INTEGER DEFAULT 300,
@@ -1467,9 +1470,10 @@ async function runMigrations() {
     )`,
     `CREATE TABLE IF NOT EXISTS message_queue (
       id SERIAL PRIMARY KEY,
-      campaign_id UUID NOT NULL,
-      user_id UUID NOT NULL,
-      contact_id UUID,
+      schedule_id INTEGER REFERENCES campaign_schedule(id) ON DELETE CASCADE,
+      campaign_id UUID NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
+      user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      contact_id UUID REFERENCES contacts(id) ON DELETE SET NULL,
       telefone TEXT NOT NULL,
       nome TEXT,
       mensagem TEXT NOT NULL,
@@ -1477,11 +1481,14 @@ async function runMigrations() {
       tentativas INTEGER DEFAULT 0,
       data_criacao TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
       data_envio TIMESTAMP WITH TIME ZONE,
+      processing_started_at TIMESTAMP WITH TIME ZONE,
+      recovered_at TIMESTAMP WITH TIME ZONE,
       erro TEXT
     )`,
+    `CREATE INDEX IF NOT EXISTS idx_mq_user_status ON message_queue(user_id, status)`,
     `CREATE TABLE IF NOT EXISTS gemini_api_keys (
       id SERIAL PRIMARY KEY,
-      user_id UUID,
+      user_id UUID REFERENCES users(id) ON DELETE CASCADE,
       nome TEXT NOT NULL,
       api_key TEXT NOT NULL,
       status TEXT DEFAULT 'ativa',
@@ -1508,7 +1515,7 @@ async function runMigrations() {
     // Sistema de Reputação WhatsApp
     `CREATE TABLE IF NOT EXISTS whatsapp_reputation (
       id SERIAL PRIMARY KEY,
-      user_id UUID NOT NULL UNIQUE,
+      user_id UUID NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
       score INTEGER DEFAULT 50,
       level TEXT DEFAULT 'NOVO',
       volume_24h INTEGER DEFAULT 0,
@@ -1517,6 +1524,8 @@ async function runMigrations() {
     )`,
     `ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS variations JSONB DEFAULT '[]'::jsonb`,
     `ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS last_scheduled_at TIMESTAMP WITH TIME ZONE`,
+    `ALTER TABLE message_queue ADD COLUMN IF NOT EXISTS processing_started_at TIMESTAMP WITH TIME ZONE`,
+    `ALTER TABLE message_queue ADD COLUMN IF NOT EXISTS recovered_at TIMESTAMP WITH TIME ZONE`,
   ];
 
   for (const sql of migrations) {

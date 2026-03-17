@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "node src/index.js",
     "start": "node src/index.js",
-    "worker": "node src/scheduledWorker.js",
+    "worker": "node src/queueWorker.js",
     "build": "echo Build not required for plain JS backend"
   },
   "dependencies": {

@@ -174,3 +174,24 @@ export const resetPassword = async (req, res) => {
         res.status(500).json({ error: 'Erro interno ao alterar senha.' });
     }
 };
+
+
+export const checkAdmin = async (req, res, next) => {
+    try {
+        const result = await query(`
+            SELECT g.name 
+            FROM user_profiles p
+            JOIN user_groups g ON p.group_id = g.id
+            WHERE p.id = $1
+        `, [req.user.id]);
+
+        if (result.rows.length > 0 && result.rows[0].name === 'Administrador') {
+            next();
+        } else {
+            res.status(403).json({ success: false, error: 'Acesso restrito a administradores.' });
+        }
+    } catch (error) {
+        console.error('[Auth] Erro ao verificar admin:', error);
+        res.status(500).json({ success: false, error: 'Erro interno ao validar permissões.' });
+    }
+};

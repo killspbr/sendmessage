@@ -27,8 +27,16 @@ type QueueItem = {
     tentativas: number
     data_criacao: string
     data_envio?: string
+    processing_started_at?: string
+    recovered_at?: string
     erro?: string
     campaign_name?: string
+    recovery_logs?: Array<{
+        id: number
+        event: string
+        details: string
+        data_evento: string
+    }>
 }
 
 type SchedulesPageProps = {
@@ -198,25 +206,61 @@ export function SchedulesPage({ effectiveUserId }: SchedulesPageProps) {
                                             </div>
                                         </td>
                                         <td className="px-6 py-5">
-                                            <span className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase border ${
-                                                q.status === 'enviado' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' :
-                                                q.status === 'falhou' ? 'bg-red-50 text-red-600 border-red-100' :
-                                                q.status === 'processando' ? 'bg-sky-50 text-sky-600 border-sky-100 animate-pulse' :
-                                                'bg-slate-50 text-slate-500 border-slate-200'
-                                            }`}>
-                                                {q.status} {q.tentativas > 0 && `(tentat: ${q.tentativas})`}
-                                            </span>
+                                            <div className="flex flex-col gap-1">
+                                                <span className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase border w-fit ${
+                                                    q.status === 'enviado' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' :
+                                                    q.status === 'falhou' ? 'bg-red-50 text-red-600 border-red-100' :
+                                                    q.status === 'processando' ? 'bg-sky-50 text-sky-600 border-sky-100 animate-pulse' :
+                                                    'bg-slate-50 text-slate-500 border-slate-200'
+                                                }`}>
+                                                    {q.status}
+                                                </span>
+                                                {q.recovered_at && (
+                                                    <span className="bg-amber-100 text-amber-700 text-[9px] font-black px-1.5 py-0.5 rounded border border-amber-200 uppercase w-fit">
+                                                        ⚡ Recuperado
+                                                    </span>
+                                                )}
+                                                {q.tentativas > 0 && (
+                                                    <span className="text-[9px] text-slate-400 font-bold uppercase">
+                                                        Tentativas: {q.tentativas}
+                                                    </span>
+                                                )}
+                                            </div>
                                         </td>
                                         <td className="px-6 py-5 text-xs">
-                                            <span className="text-slate-500 font-medium">
-                                                {q.data_envio ? new Date(q.data_envio).toLocaleTimeString('pt-BR') : 'Aguardando...'}
-                                            </span>
+                                            <div className="flex flex-col">
+                                                <span className="text-slate-700 font-bold">
+                                                    {q.data_envio ? new Date(q.data_envio).toLocaleTimeString('pt-BR') : '...'}
+                                                </span>
+                                                {q.processing_started_at && !q.data_envio && (
+                                                    <span className="text-[9px] text-slate-400">
+                                                        Iniciado: {new Date(q.processing_started_at).toLocaleTimeString('pt-BR')}
+                                                    </span>
+                                                )}
+                                            </div>
                                         </td>
                                         <td className="px-6 py-5">
                                             {q.erro && (
-                                                <span className="text-[10px] text-red-400 bg-red-50 px-2 py-1 rounded-lg border border-red-100 max-w-[200px] truncate block" title={q.erro}>
-                                                    {q.erro}
-                                                </span>
+                                                <div className="flex flex-col gap-1 max-w-[250px]">
+                                                    <span className="text-[10px] text-red-400 bg-red-50 px-2 py-1 rounded-lg border border-red-100 truncate block font-medium" title={q.erro}>
+                                                        {q.erro}
+                                                    </span>
+                                                    {q.recovery_logs && q.recovery_logs.length > 0 && (
+                                                        <div className="mt-2 p-2 bg-slate-900 rounded-lg text-[8px] font-mono text-emerald-400 space-y-1">
+                                                            <div className="text-white border-b border-slate-700 pb-1 mb-1 font-bold">AUDITORIA DE RECUPERAÇÃO</div>
+                                                            {q.recovery_logs.map(log => {
+                                                                const details = JSON.parse(log.details);
+                                                                return (
+                                                                    <div key={log.id} className="leading-tight">
+                                                                        [{new Date(log.data_evento).toLocaleTimeString()}] {log.event === 'zombie_recovered' ? 'RETOMADA' : 'FALHA'}
+                                                                        <br/>Motivo: {details.motivo}
+                                                                        <br/>Tentativa: {details.tentativa_final}
+                                                                    </div>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    )}
+                                                </div>
                                             )}
                                         </td>
                                     </tr>
