@@ -195,3 +195,26 @@ export const checkAdmin = async (req, res, next) => {
         res.status(500).json({ success: false, error: 'Erro interno ao validar permissões.' });
     }
 };
+
+/**
+ * Reseta a senha de um usuário para a senha padrão '123456' (Admin apenas)
+ */
+export const resetUserPasswordToDefault = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const defaultPassword = '123456';
+        
+        const salt = await bcrypt.genSalt(10);
+        const passwordHash = await bcrypt.hash(defaultPassword, salt);
+
+        await query(
+            'UPDATE users SET password_hash = $1, reset_password_token = NULL, reset_password_expires = NULL WHERE id = $2',
+            [passwordHash, id]
+        );
+
+        res.json({ success: true, message: `Senha do usuário resetada para "${defaultPassword}" com sucesso.` });
+    } catch (error) {
+        console.error('[Auth] Erro ao resetar senha do usuário:', error);
+        res.status(500).json({ success: false, error: 'Erro interno ao resetar senha.' });
+    }
+};

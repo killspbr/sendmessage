@@ -31,6 +31,11 @@ self.addEventListener('activate', (event) => {
         })
       );
 
+      // Habilita navigation preload se suportado
+      if (self.registration.navigationPreload) {
+        await self.registration.navigationPreload.enable();
+      }
+
       // Assume controle imediatamente das abas abertas
       await self.clients.claim();
 
@@ -52,18 +57,31 @@ self.addEventListener('fetch', (event) => {
   if (event.request.url.includes('/api/')) return;
 
   event.respondWith(
-    fetch(event.request)
-      .then((response) => {
-        // Clone the response before caching
-        const responseClone = response.clone();
-        caches.open(CACHE_NAME).then((cache) => {
-          cache.put(event.request, responseClone);
-        });
-        return response;
-      })
-      .catch(() => {
-        // If network fails, try cache
-        return caches.match(event.request);
-      })
+    (async () => {
+      // 1. Tenta usar a preloadResponse se disponível
+      try {
+        const preloadResponse = await event.preloadResponse;
+        if (preloadResponse) {
+          return preloadResponse;
+        }
+      } catch (e) {
+        // Ignora erros de preload
+      }
+
+      // 2. Se for navegação, tenta rede primeiro
+      try {
+        const networkResponse = await fetch(event.request);
+        if (networkResponse && networkResponse.status === 200) {
+          const cache = await caches.open(CACHE_NAME);
+          cache.put(event.request, networkResponse.clone());
+        }
+        return networkResponse;
+      } catch (error) {
+        // 3. Se rede falhar, busca no cache
+        const cachedResponse = await caches.match(event.request);
+        if (cachedResponse) return cachedResponse;
+        throw error;
+      }
+    })()
   );
 });

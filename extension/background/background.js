@@ -52,7 +52,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 sendResponse({ ok, status, data });
             })
             .catch((error) => {
-                sendResponse({ ok: false, error: error.message });
+                sendResponse({ ok: false, status: 0, error: error.message });
             });
 
         return true; 

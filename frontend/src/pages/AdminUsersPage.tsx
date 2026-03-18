@@ -51,6 +51,26 @@ export function AdminUsersPage({
   const [savingPermission, setSavingPermission] = useState<boolean>(false)
   const [savingUserGroupId, setSavingUserGroupId] = useState<string | null>(null)
   const [savingUserSettingsId, setSavingUserSettingsId] = useState<string | null>(null)
+  const [resetingPasswordId, setResetingPasswordId] = useState<string | null>(null)
+
+  const handleResetPassword = async (userId: string, userName: string) => {
+    if (!window.confirm(`Tem certeza que deseja resetar a senha de "${userName}" para "123456"?`)) return
+    
+    setResetingPasswordId(userId)
+    setError(null)
+
+    try {
+      await apiFetch(`/api/admin/users/${userId}/reset-password`, {
+        method: 'POST'
+      })
+      alert(`Senha de "${userName}" resetada para "123456" com sucesso!`)
+    } catch (e) {
+      console.error('Erro ao resetar senha do usuário:', e)
+      setError('Erro ao resetar senha do usuário.')
+    } finally {
+      setResetingPasswordId(null)
+    }
+  }
 
   const handleToggleUserSetting = async (
     userId: string,
@@ -296,6 +316,7 @@ export function AdminUsersPage({
                     <th className="px-2 py-1 text-left font-medium text-slate-600">Grupo</th>
                     <th className="px-2 py-1 text-left font-medium text-slate-600">IA global</th>
                     <th className="px-2 py-1 text-left font-medium text-slate-600">Ver como</th>
+                    <th className="px-2 py-1 text-left font-medium text-slate-600">Ações</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -364,6 +385,17 @@ export function AdminUsersPage({
                             {impersonatedUserId === u.id ? 'Sair do modo ver como' : 'Ver como'}
                           </button>
                         )}
+                      </td>
+                      <td className="px-2 py-1 align-top text-slate-700">
+                        <button
+                          type="button"
+                          className="px-2 py-0.5 rounded-md text-[10px] bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 disabled:opacity-50"
+                          title="Resetar senha para 123456"
+                          disabled={resetingPasswordId === u.id}
+                          onClick={() => handleResetPassword(u.id, u.displayName || u.userName || u.email || '')}
+                        >
+                          {resetingPasswordId === u.id ? '...' : 'Reset Senha'}
+                        </button>
                       </td>
                     </tr>
                   ))}

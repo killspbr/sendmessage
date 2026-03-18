@@ -219,7 +219,7 @@
             <!-- Footer -->
             <div class="footer">
                 <select class="list-select" id="listSelect">
-                    <option value="">Carregando listas...</option>
+                    <option value="">Selecione uma lista</option>
                 </select>
                 <button class="btn-import" id="btnImport" disabled>⬆️ Importar tudo agora</button>
             </div>
@@ -250,17 +250,22 @@
 
     // ─── Backend Fetch via Background (Manifest V3 CORS Fix) ──────────────────
     async function backendFetch(url, options = {}) {
-        return new Promise((resolve, reject) => {
+        return new Promise((resolve) => {
             chrome.runtime.sendMessage({
                 action: 'apiFetch',
                 params: { url, options }
             }, (response) => {
                 if (chrome.runtime.lastError) {
                     console.error('Fetch Error:', chrome.runtime.lastError);
-                    reject(new Error(chrome.runtime.lastError.message));
+                    resolve({ ok: false, status: 0, error: chrome.runtime.lastError.message });
                     return;
                 }
-                resolve(response);
+                // Garante que response nunca seja nulo/undefined
+                if (!response) {
+                    resolve({ ok: false, status: 0, error: 'Resposta vazia do background' });
+                } else {
+                    resolve(response);
+                }
             });
         });
     }
@@ -293,7 +298,8 @@
             if (info && info.lists && Array.isArray(info.lists)) {
                 const sel = shadow.getElementById('listSelect')
                 if (info.lists.length > 0) {
-                    sel.innerHTML = info.lists.map(l => `<option value="${l.id}">${l.name}</option>`).join('')
+                    sel.innerHTML = '<option value="">Selecione uma lista</option>' + 
+                                    info.lists.map(l => `<option value="${l.id}">${l.name}</option>`).join('')
                     shadow.getElementById('btnImport').disabled = false
                     addLog(`✅ Listas carregadas: ${info.lists.length}`, 'ok')
                 } else {
@@ -324,12 +330,21 @@
 
         addLog('[SM Import] Etapa 1: Página Maps detectada', 'info')
 
-        const listId = shadow.getElementById('listSelect').value
-        if (autoImport && !listId) {
-            addLog('⚠️ Selecione uma lista de destino antes de iniciar.', 'warn')
+        const listSelect = shadow.getElementById('listSelect')
+        const listId = listSelect.value
+        const listName = listSelect.options[listSelect.selectedIndex]?.text || 'Desconhecida'
+
+        const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(listId);
+
+        if (!listId || !isUuid) {
+            addLog('⚠️ Por favor, selecione uma lista válida antes de iniciar a extração.', 'err')
             isRunning = false
             return
         }
+
+        console.log(`[SM DEBUG] list_id: "${listId}", lista: "${listName}"`);
+
+        addLog(`📂 Lista destino: ${listName}`, 'info')
 
         // UI: show stop button
         shadow.getElementById('btnStart').style.display = 'none'
@@ -412,10 +427,16 @@
                                 else addLog(`  — sem telefone`, 'warn')
                             }
 
-                            // Volta rápido
+                            // Volta com segurança para a lista de resultados
                             await goBackToList(prevUrl)
+                            
+                            // Aguarda estabilização final para evitar refresh forçado pelo Maps
+                            await sleep(500)
                         } catch (e) {
-                            addLog(`  ⚠️ ${e.message}`, 'warn')
+                            addLog(`  ⚠️ Erro na navegação: ${e.message}`, 'warn')
+                            // Tenta forçar retorno ao estado anterior se falhou no meio
+                            window.history.back();
+                            await sleep(1500);
                         }
                     }
 
@@ -468,7 +489,17 @@
 
     // ─── Import single contact ───────────────────────────────────────────────────
     async function importSingle(contact, listId) {
+        if (contact._importing) return 'pending';
+        contact._importing = true;
+
         try {
+            const listSelect = shadow.getElementById('listSelect');
+            const listName = listSelect.options[listSelect.selectedIndex]?.text || 'Desconhecida';
+            
+            console.log(`[SM Import DEBUG] Payload para ${contact.name}:`);
+            console.log(` - list_id: ${listId}`);
+            console.log(` - listName: ${listName}`);
+            
             const payload = {
                 list_id: listId,
                 name: contact.name,
@@ -492,15 +523,26 @@
                 body: JSON.stringify(payload)
             })
 
-            console.log(`[SM Import] Etapa 5: Resposta backend status ${resp.status} para ${contact.name}`);
+            const status = resp?.status || 'desconhecido';
+            console.log(`[SM Import] Etapa 5: Resposta backend status ${status} para ${contact.name}`);
 
-            if (resp.ok) return 'ok'
-            if (resp.status === 409) return 'dup'
+            if (resp && resp.ok) {
+                contact._importing = false;
+                return 'ok';
+            }
+            if (resp && resp.status === 409) {
+                contact._importing = false;
+                return 'dup';
+            }
             
-            const detailStr = (resp.data && resp.data.detail) ? ` - Detalhe: ${resp.data.detail}` : (resp.data && resp.data.error) ? ` - Erro: ${resp.data.error}` : '';
-            addLog(`❌ Erro ao importar: ${contact.name} (Status: ${resp.status})${detailStr}`, 'err');
+            const errorMsg = resp?.data?.error || resp?.error || 'Erro interno';
+            const detailStr = resp?.data?.detail ? ` - Detalhe: ${resp.data.detail}` : '';
+            addLog(`❌ Erro ao importar: ${contact.name} (Status: ${status})${detailStr || ' - ' + errorMsg}`, 'err');
+            
+            contact._importing = false;
             return 'err'
         } catch (e) { 
+            contact._importing = false;
             console.error('[SM Import] Falha no fetch de importação:', e);
             addLog(`❌ Erro de rede ao importar: ${contact.name}`, 'err');
             return 'err' 
@@ -509,8 +551,16 @@
 
     // ─── Import all (manual button) ──────────────────────────────────────────────
     async function importAll() {
-        const listId = shadow.getElementById('listSelect').value
-        if (!listId) { addLog('⚠️ Selecione uma lista.', 'warn'); return }
+        const listSelect = shadow.getElementById('listSelect');
+        const listId = listSelect.value;
+        const listName = listSelect.options[listSelect.selectedIndex]?.text || 'Desconhecida';
+
+        const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(listId);
+        
+        if (!listId || !isUuid) { 
+            addLog(`❌ Erro: Selecione uma lista válida (ID: ${listId || 'vazio'}).`, 'err'); 
+            return 
+        }
         
         const contactsToImport = extractedContacts.filter(c => !c._imported);
         if (!contactsToImport.length) { addLog('⚠️ Nenhum novo contato para importar.', 'warn'); return }
@@ -524,14 +574,19 @@
         let ok = 0, dup = 0, err = 0
         for (const c of contactsToImport) {
             const r = await importSingle(c, listId)
-            if (r === 'ok') { ok++; c._imported = true; }
+            if (r === 'ok') { ok++; c._imported = true; c._dup = false; }
             else if (r === 'dup') { dup++; c._imported = true; c._dup = true; }
-            else err++
+            else if (r === 'err') { err++; }
             
             updateStats()
         }
 
-        addLog(`[SM Import] Etapa 5: Importação concluída. Sucesso: ${ok}, Duplicados: ${dup}, Erros: ${err}`, ok > 0 ? 'ok' : 'err')
+        const logType = (ok > 0 && err === 0) ? 'ok' : (ok > 0) ? 'warn' : 'err';
+        const msgFinal = (ok === 0 && dup === 0 && err > 0) 
+            ? `❌ Falha total na importação de ${err} contatos.`
+            : `📊 Importação concluída. SUCESSO: ${ok}, JÁ EXISTIAM: ${dup}, ERROS: ${err}`;
+        
+        addLog(msgFinal, logType)
         btn.textContent = '⬆️ Importar tudo agora'
         btn.disabled = false
     }
@@ -701,17 +756,26 @@
         if (btn) {
             btn.click()
         } else {
-            // Fallback: Escape key
+            // Fallback 1: History API (Mais estável que clique em alguns casos)
+            window.history.back();
+            // Fallback 2: Escape key
             document.dispatchEvent(new KeyboardEvent('keydown', {
                 key: 'Escape', code: 'Escape', bubbles: true, cancelable: true
             }))
         }
 
+        // Aguarda a URL voltar a ser a original de busca (previne refresh e reinício)
         if (searchUrl) {
-            await waitForUrlChange(window.location.href, 3000)
-        } else {
-            await sleep(300)
+            const returned = await waitForUrlChange(window.location.href, 5000);
+            if (!returned && window.location.href !== searchUrl) {
+                console.warn('[SM] URL não retornou. Forçando history.back()');
+                window.history.back();
+                await sleep(1000);
+            }
         }
+        
+        // Pequena pausa para o DOM da lista reconstruir (evita cliques em elementos fantasmas)
+        await sleep(600);
     }
 
     function scrollFeed() {

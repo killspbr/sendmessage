@@ -1,7 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import { query } from './db.js';
-import { login, signup, forgotPassword, resetPassword, authenticateToken, checkAdmin } from './auth.js';
+import { login, signup, forgotPassword, resetPassword, authenticateToken, checkAdmin, resetUserPasswordToDefault } from './auth.js';
 
 const app = express();
 const port = process.env.PORT || 4000;
@@ -319,39 +319,48 @@ app.post('/api/contacts', authenticateToken, async (req, res) => {
   try {
     const { list_id, name, phone, email, category, cep, rating, address, city, state, instagram, facebook, whatsapp, website } = req.body;
     
-    console.log(`[Backend Import] Recebido contato: ${name} para lista: ${list_id}`);
+    console.log(`[Backend DEBUG] --- INÍCIO IMPORTAÇÃO ---`);
+    console.log(`[Backend DEBUG] Usuário: ${req.user ? req.user.email : 'SEM USUÁRIO'} (ID: ${req.user ? req.user.id : 'N/A'})`);
+    console.log(`[Backend DEBUG] Payload:`, JSON.stringify(req.body, null, 2));
     
     if (!list_id || !name) {
       console.warn('[Backend Import] Falha na validação: list_id ou name ausente');
       return res.status(400).json({ error: 'list_id e name são obrigatórios' });
     }
 
-    // Verifica se já existe esse contato na mesma lista para este usuário (Deduplicação)
+    // Step 1: Check existence
+    console.log(`[Backend DEBUG] Pesquisando duplicado: Name="${name}", Phone="${phone}" na lista "${list_id}"`);
     const existing = await query(
       'SELECT id FROM contacts WHERE user_id = $1 AND list_id = $2 AND (name = $3 OR (phone = $4 AND phone != \'\'))',
       [req.user.id, list_id, name, phone || '']
     );
 
     if (existing.rows.length > 0) {
-      console.log(`[Backend Import] Contato duplicado ignorado: ${name}`);
+      console.log(`[Backend Import] Contato duplicado ignorado: ${name} (ID Existente: ${existing.rows[0].id})`);
       return res.status(409).json({ error: 'Contato já existe nesta lista', id: existing.rows[0].id });
     }
 
+    // Step 2: Insert
+    console.log(`[Backend DEBUG] Executando INSERT na tabela contacts...`);
     const result = await query(
       'INSERT INTO contacts (user_id, list_id, name, phone, email, category, cep, rating, address, city, state, instagram, facebook, whatsapp, website) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) RETURNING *',
       [req.user.id, list_id, name, phone, email, category, cep, rating, address, city, state, instagram, facebook, whatsapp, website]
     );
     
     console.log(`[Backend Import] Contato inserido com sucesso ID: ${result.rows[0].id}`);
+    console.log(`[Backend DEBUG] --- FIM IMPORTAÇÃO COM SUCESSO ---`);
     res.status(201).json(result.rows[0]);
   } catch (error) {
-    console.error('[Backend Import] Erro crítico ao inserir contato:', error);
+    console.error('[Backend ERROR] Falha crítica na importação de contato:', error.message);
+    console.error(error.stack);
     try {
-      await query('INSERT INTO sys_logs (info) VALUES ($1)', [`ERRO IMPORTACAO 500: ${error.message} - Stack: ${error.stack}`]);
+      await query('INSERT INTO sys_logs (info) VALUES ($1)', [`ERRO IMPORTACAO 500: ${error.message} - Stack: ${error.stack} - Payload: ${JSON.stringify(req.body)}`]);
       const fs = await import('fs');
       fs.appendFileSync('import_error.log', new Date().toISOString() + ' : ' + error.message + '\n' + error.stack + '\n\n');
-    } catch(e) {}
-    res.status(500).json({ error: 'Erro interno ao salvar contato', detail: error.message });
+    } catch(e) {
+      console.error('[Backend ERROR] Erro ao gravar log de falha:', e.message);
+    }
+    res.status(500).json({ error: 'Erro interno ao salvar contato', detail: error.message, stack: error.stack });
   }
 });
 
@@ -1287,6 +1296,8 @@ app.put('/api/admin/users/:id/settings', authenticateToken, async (req, res) => 
     res.status(500).json({ error: 'Erro ao atualizar configurações do usuário' });
   }
 });
+
+app.post('/api/admin/users/:id/reset-password', authenticateToken, checkAdmin, resetUserPasswordToDefault);
 
 // --- GESTÃO DE CHAVES GEMINI ---
 
