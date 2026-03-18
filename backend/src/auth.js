@@ -7,9 +7,10 @@ import 'dotenv/config';
 const JWT_SECRET = process.env.JWT_SECRET || 'super-secret-key-mudar-em-producao';
 
 /**
- * Middleware para proteger rotas
+ * Middleware para proteger rotas.
+ * Valida o JWT e verifica se o token_version ainda é válido no banco.
  */
-export const authenticateToken = (req, res, next) => {
+export const authenticateToken = async (req, res, next) => {
     const authHeader = req.headers['authorization'];
     const token = authHeader && authHeader.split(' ')[1];
 
@@ -17,13 +18,33 @@ export const authenticateToken = (req, res, next) => {
         return res.status(401).json({ error: 'Acesso negado. Token não fornecido.' });
     }
 
-    jwt.verify(token, JWT_SECRET, (err, user) => {
-        if (err) {
-            return res.status(403).json({ error: 'Token inválido ou expirado.' });
+    let decoded;
+    try {
+        decoded = jwt.verify(token, JWT_SECRET);
+    } catch (err) {
+        return res.status(403).json({ error: 'Token inválido ou expirado.' });
+    }
+
+    try {
+        // Verifica se o token_version do JWT ainda bate com o banco
+        const result = await query('SELECT token_version FROM users WHERE id = $1', [decoded.id]);
+        const user = result.rows[0];
+
+        if (!user) {
+            return res.status(401).json({ error: 'Usuário não encontrado.' });
         }
-        req.user = user;
+
+        // Se o token carrega uma versão mais antiga, a sessão foi invalidada
+        if (decoded.tv !== undefined && decoded.tv !== user.token_version) {
+            return res.status(401).json({ error: 'Sessão invalidada. Faça login novamente.' });
+        }
+
+        req.user = decoded;
         next();
-    });
+    } catch (error) {
+        console.error('[Auth] Erro ao validar token_version:', error);
+        return res.status(500).json({ error: 'Erro interno ao validar sessão.' });
+    }
 };
 
 /**
@@ -37,7 +58,6 @@ export const signup = async (req, res) => {
             return res.status(400).json({ error: 'Email e senha são obrigatórios.' });
         }
 
-        // Verifica se usuário já existe
         const existing = await query('SELECT id FROM users WHERE email = $1', [email]);
         if (existing.rows.length > 0) {
             return res.status(400).json({ error: 'Este e-mail já está cadastrado.' });
@@ -47,14 +67,13 @@ export const signup = async (req, res) => {
         const passwordHash = await bcrypt.hash(password, salt);
 
         const result = await query(
-            'INSERT INTO users (email, password_hash, name) VALUES ($1, $2, $3) RETURNING id, email, name',
+            'INSERT INTO users (email, password_hash, name) VALUES ($1, $2, $3) RETURNING id, email, name, token_version',
             [email, passwordHash, name]
         );
 
         const user = result.rows[0];
 
-        // Cria perfil automaticamente. 
-        // Se for o PRIMEIRO usuário do sistema, torna-o Administrador.
+        // Primeiro usuário vira Administrador
         const userCount = await query('SELECT count(*) FROM users');
         const isFirstUser = parseInt(userCount.rows[0].count) === 1;
 
@@ -72,9 +91,13 @@ export const signup = async (req, res) => {
             await query('INSERT INTO user_profiles (id) VALUES ($1)', [user.id]);
         }
 
-        const token = jwt.sign({ id: user.id, email: user.email }, JWT_SECRET, { expiresIn: '7d' });
+        const token = jwt.sign(
+            { id: user.id, email: user.email, tv: user.token_version },
+            JWT_SECRET,
+            { expiresIn: '7d' }
+        );
 
-        res.status(201).json({ user, token });
+        res.status(201).json({ user: { id: user.id, email: user.email, name: user.name }, token });
     } catch (error) {
         console.error('[Auth] Erro no signup:', error);
         res.status(500).json({ error: 'Erro interno ao criar conta.' });
@@ -100,7 +123,12 @@ export const login = async (req, res) => {
             return res.status(400).json({ error: 'Credenciais inválidas.' });
         }
 
-        const token = jwt.sign({ id: user.id, email: user.email }, JWT_SECRET, { expiresIn: '7d' });
+        // Inclui tv (token_version) no payload para validação posterior
+        const token = jwt.sign(
+            { id: user.id, email: user.email, tv: user.token_version },
+            JWT_SECRET,
+            { expiresIn: '7d' }
+        );
 
         res.json({
             user: { id: user.id, email: user.email, name: user.name },
@@ -111,6 +139,7 @@ export const login = async (req, res) => {
         res.status(500).json({ error: 'Erro interno ao fazer login.' });
     }
 };
+
 /**
  * Solicita redefinição de senha
  */
@@ -121,19 +150,17 @@ export const forgotPassword = async (req, res) => {
         const user = result.rows[0];
 
         if (!user) {
-            // Retornamos sucesso mesmo que não exista pra evitar enumeração de emails
             return res.json({ ok: true, message: 'Se o e-mail estiver cadastrado, as instruções serão enviadas.' });
         }
 
         const token = crypto.randomBytes(20).toString('hex');
-        const expires = new Date(Date.now() + 3600000); // 1 hora
+        const expires = new Date(Date.now() + 3600000);
 
         await query(
             'UPDATE users SET reset_password_token = $1, reset_password_expires = $2 WHERE id = $3',
             [token, expires, user.id]
         );
 
-        // MOCK: Em produção, enviaria um e-mail aqui.
         console.log(`[AUTH] Link de redefinição para ${email}: http://localhost:3000/reset-password/${token}`);
 
         res.json({ ok: true, message: 'Se o e-mail estiver cadastrado, as instruções serão enviadas.' });
@@ -144,7 +171,7 @@ export const forgotPassword = async (req, res) => {
 };
 
 /**
- * Define nova senha usando token
+ * Define nova senha usando token de redefinição
  */
 export const resetPassword = async (req, res) => {
     try {
@@ -175,7 +202,9 @@ export const resetPassword = async (req, res) => {
     }
 };
 
-
+/**
+ * Middleware — verifica se o usuário autenticado é Administrador
+ */
 export const checkAdmin = async (req, res, next) => {
     try {
         const result = await query(`
@@ -197,24 +226,58 @@ export const checkAdmin = async (req, res, next) => {
 };
 
 /**
- * Reseta a senha de um usuário para a senha padrão '123456' (Admin apenas)
+ * Reseta a senha de um usuário para '123456' e invalida as sessões dele (Admin)
  */
 export const resetUserPasswordToDefault = async (req, res) => {
     try {
         const { id } = req.params;
         const defaultPassword = '123456';
-        
+
         const salt = await bcrypt.genSalt(10);
         const passwordHash = await bcrypt.hash(defaultPassword, salt);
 
+        // Invalida sessões incrementando token_version
         await query(
-            'UPDATE users SET password_hash = $1, reset_password_token = NULL, reset_password_expires = NULL WHERE id = $2',
+            'UPDATE users SET password_hash = $1, reset_password_token = NULL, reset_password_expires = NULL, token_version = token_version + 1 WHERE id = $2',
             [passwordHash, id]
         );
 
-        res.json({ success: true, message: `Senha do usuário resetada para "${defaultPassword}" com sucesso.` });
+        res.json({ success: true, message: `Senha do usuário resetada para "${defaultPassword}" e sessões invalidadas.` });
     } catch (error) {
         console.error('[Auth] Erro ao resetar senha do usuário:', error);
         res.status(500).json({ success: false, error: 'Erro interno ao resetar senha.' });
+    }
+};
+
+/**
+ * Invalida as sessões de um usuário específico (Admin)
+ */
+export const invalidateUserSessions = async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        await query(
+            'UPDATE users SET token_version = token_version + 1 WHERE id = $1',
+            [id]
+        );
+
+        res.json({ success: true, message: 'Sessões do usuário invalidadas com sucesso.' });
+    } catch (error) {
+        console.error('[Auth] Erro ao invalidar sessões do usuário:', error);
+        res.status(500).json({ success: false, error: 'Erro ao invalidar sessões.' });
+    }
+};
+
+/**
+ * Invalida as sessões de TODOS os usuários (Admin)
+ */
+export const invalidateAllSessions = async (req, res) => {
+    try {
+        await query('UPDATE users SET token_version = token_version + 1');
+
+        res.json({ success: true, message: 'Sessões de todos os usuários invalidadas com sucesso.' });
+    } catch (error) {
+        console.error('[Auth] Erro ao invalidar todas as sessões:', error);
+        res.status(500).json({ success: false, error: 'Erro ao invalidar sessões.' });
     }
 };

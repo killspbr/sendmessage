@@ -1,7 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import { query } from './db.js';
-import { login, signup, forgotPassword, resetPassword, authenticateToken, checkAdmin, resetUserPasswordToDefault } from './auth.js';
+import { login, signup, forgotPassword, resetPassword, authenticateToken, checkAdmin, resetUserPasswordToDefault, invalidateUserSessions, invalidateAllSessions } from './auth.js';
 
 const app = express();
 const port = process.env.PORT || 4000;
@@ -1614,6 +1614,30 @@ async function runMigrations() {
 
   console.log('[Migration] Schema atualizado com sucesso.');
 }
+
+// --- ADMIN: Gestão de usuários ---
+app.get('/api/admin/users', authenticateToken, checkAdmin, async (req, res) => {
+  try {
+    const result = await query(`
+      SELECT u.id, u.email, u.name, u.created_at, ug.name as group_name
+      FROM users u
+      LEFT JOIN user_profiles up ON u.id = up.id
+      LEFT JOIN user_groups ug ON up.group_id = ug.id
+      ORDER BY u.created_at DESC
+    `);
+    res.json(result.rows);
+  } catch (error) {
+    res.status(500).json({ error: 'Erro ao listar usuários.' });
+  }
+});
+
+app.post('/api/admin/users/:id/reset-password', authenticateToken, checkAdmin, resetUserPasswordToDefault);
+
+app.post('/api/admin/users/:id/invalidate-sessions', authenticateToken, checkAdmin, invalidateUserSessions);
+
+app.post('/api/admin/invalidate-all-sessions', authenticateToken, checkAdmin, invalidateAllSessions);
+
+// --- FIM ADMIN ---
 
 app.listen(port, '0.0.0.0', async () => {
   console.log(`Backend listening on port ${port} (all interfaces)`);

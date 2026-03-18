@@ -52,6 +52,8 @@ export function AdminUsersPage({
   const [savingUserGroupId, setSavingUserGroupId] = useState<string | null>(null)
   const [savingUserSettingsId, setSavingUserSettingsId] = useState<string | null>(null)
   const [resetingPasswordId, setResetingPasswordId] = useState<string | null>(null)
+  const [invalidatingSessionId, setInvalidatingSessionId] = useState<string | null>(null)
+  const [invalidatingAll, setInvalidatingAll] = useState(false)
 
   const handleResetPassword = async (userId: string, userName: string) => {
     if (!window.confirm(`Tem certeza que deseja resetar a senha de "${userName}" para "123456"?`)) return
@@ -63,7 +65,7 @@ export function AdminUsersPage({
       await apiFetch(`/api/admin/users/${userId}/reset-password`, {
         method: 'POST'
       })
-      alert(`Senha de "${userName}" resetada para "123456" com sucesso!`)
+      alert(`Senha de "${userName}" resetada para "123456" e sessões invalidadas!`)
     } catch (e) {
       console.error('Erro ao resetar senha do usuário:', e)
       setError('Erro ao resetar senha do usuário.')
@@ -71,6 +73,39 @@ export function AdminUsersPage({
       setResetingPasswordId(null)
     }
   }
+
+  const handleInvalidateUserSessions = async (userId: string, userName: string) => {
+    if (!window.confirm(`Deslogar "${userName}" de todos os dispositivos? O usuário precisará fazer login novamente.`)) return
+
+    setInvalidatingSessionId(userId)
+    setError(null)
+    try {
+      await apiFetch(`/api/admin/users/${userId}/invalidate-sessions`, { method: 'POST' })
+      alert(`Sessões de "${userName}" invalidadas com sucesso!`)
+    } catch (e) {
+      console.error('Erro ao invalidar sessões:', e)
+      setError('Erro ao invalidar sessões do usuário.')
+    } finally {
+      setInvalidatingSessionId(null)
+    }
+  }
+
+  const handleInvalidateAllSessions = async () => {
+    if (!window.confirm('Deslogar TODOS os usuários do sistema? Todos precisarão fazer login novamente.')) return
+
+    setInvalidatingAll(true)
+    setError(null)
+    try {
+      await apiFetch('/api/admin/invalidate-all-sessions', { method: 'POST' })
+      alert('Todas as sessões foram invalidadas com sucesso!')
+    } catch (e) {
+      console.error('Erro ao invalidar todas as sessões:', e)
+      setError('Erro ao invalidar todas as sessões.')
+    } finally {
+      setInvalidatingAll(false)
+    }
+  }
+
 
   const handleToggleUserSetting = async (
     userId: string,
@@ -387,15 +422,26 @@ export function AdminUsersPage({
                         )}
                       </td>
                       <td className="px-2 py-1 align-top text-slate-700">
-                        <button
-                          type="button"
-                          className="px-2 py-0.5 rounded-md text-[10px] bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 disabled:opacity-50"
-                          title="Resetar senha para 123456"
-                          disabled={resetingPasswordId === u.id}
-                          onClick={() => handleResetPassword(u.id, u.displayName || u.userName || u.email || '')}
-                        >
-                          {resetingPasswordId === u.id ? '...' : 'Reset Senha'}
-                        </button>
+                        <div className="flex flex-col gap-0.5">
+                          <button
+                            type="button"
+                            className="px-2 py-0.5 rounded-md text-[10px] bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 disabled:opacity-50"
+                            title="Resetar senha para 123456 (invalida sessões)"
+                            disabled={resetingPasswordId === u.id}
+                            onClick={() => handleResetPassword(u.id, u.displayName || u.userName || u.email || '')}
+                          >
+                            {resetingPasswordId === u.id ? '...' : 'Reset Senha'}
+                          </button>
+                          <button
+                            type="button"
+                            className="px-2 py-0.5 rounded-md text-[10px] bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 disabled:opacity-50"
+                            title="Deslogar usuário de todos os dispositivos"
+                            disabled={invalidatingSessionId === u.id}
+                            onClick={() => handleInvalidateUserSessions(u.id, u.displayName || u.userName || u.email || '')}
+                          >
+                            {invalidatingSessionId === u.id ? '...' : 'Deslogar'}
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -509,6 +555,22 @@ export function AdminUsersPage({
             )}
           </div>
         </div>
+      </div>
+
+      {/* Ações Globais de Segurança */}
+      <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 flex flex-col gap-2">
+        <h3 className="text-xs font-semibold text-amber-800">⚠️ Ações de Segurança Globais</h3>
+        <p className="text-[11px] text-amber-700">
+          As ações abaixo afetam <strong>todos os usuários</strong> do sistema e exigem que façam login novamente.
+        </p>
+        <button
+          type="button"
+          className="self-start px-3 py-1.5 rounded-md text-[11px] font-medium bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 transition-colors"
+          disabled={invalidatingAll}
+          onClick={handleInvalidateAllSessions}
+        >
+          {invalidatingAll ? 'Invalidando...' : '🔒 Invalidar Sessões de Todos os Usuários'}
+        </button>
       </div>
     </section>
   )
