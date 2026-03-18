@@ -24,13 +24,23 @@ export function useAuth(): UseAuthResult {
 
             if (token && storedUser) {
                 try {
-                    // Verifica se o token ainda é válido chamando /me
+                    // Valida se o token ainda é aceito pelo backend
                     const user = await apiFetch('/api/auth/me')
                     setCurrentUser(user)
-                } catch (e) {
-                    console.error('Sessão expirada', e)
-                    localStorage.removeItem('auth_token')
-                    localStorage.removeItem('auth_user')
+                } catch (e: any) {
+                    if (e.message === 'AUTH_EXPIRED') {
+                        // Token inválido ou expirado — estado já limpo pelo apiFetch
+                        console.warn('[useAuth] Token expirado, redirecionando ao login.')
+                        setCurrentUser(null)
+                    } else {
+                        // Erro de rede ou outro problema temporário — mantém sessão usando cache local
+                        console.warn('[useAuth] Falha ao validar token (rede?), usando cache local.', e.message)
+                        try {
+                            setCurrentUser(JSON.parse(storedUser))
+                        } catch {
+                            setCurrentUser(null)
+                        }
+                    }
                 }
             }
             setAuthLoading(false)
@@ -38,6 +48,7 @@ export function useAuth(): UseAuthResult {
 
         void checkAuth()
     }, [])
+
 
     const login = async (credentials: any) => {
         setAuthLoading(true)

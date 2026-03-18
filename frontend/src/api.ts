@@ -22,10 +22,13 @@ export async function apiFetch(endpoint: string, options: RequestInit = {}) {
     });
 
     if (response.status === 401 || response.status === 403) {
-        // Token expirado ou inválido
+        // Token expirado ou inválido — limpa storage e lança erro controlado
+        // NÃO fazemos reload aqui: o React cuida do redirecionamento via estado
         localStorage.removeItem('auth_token');
         localStorage.removeItem('auth_user');
-        window.location.reload();
+        const authError = new Error('AUTH_EXPIRED');
+        (authError as any).status = response.status;
+        throw authError;
     }
 
     if (!response.ok) {
