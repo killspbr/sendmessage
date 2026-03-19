@@ -412,10 +412,13 @@
                     addLog(`[SM Import] Etapa 3: Extraindo: ${name}`, 'info');
                     if (mode === 'full') {
                         try {
+                            // Seletores robustos para garantir que o Maps abra o detalhe
                             const clickTarget =
-                                card.querySelector('article') ||
+                                card.querySelector('.hfpxzc') || 
+                                card.querySelector('a[href*="/maps/place"]') ||
                                 card.querySelector('.fontHeadlineSmall') ||
-                                card.querySelector('.UaR6Cc') ||
+                                card.querySelector('[role="link"]') ||
+                                card.querySelector('article') ||
                                 card;
                             
                             clickTarget.click();
