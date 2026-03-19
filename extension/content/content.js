@@ -417,32 +417,31 @@
                                 card
                             clickTarget.click()
 
-                            // Aguarda a URL mudar (detecção ultra rápida)
-                            const urlChanged = await waitForUrlChange(prevUrl, 5000)
+                            // Aguarda abertura do detalhe
+                            await sleep(2000)
 
-                            if (urlChanged) {
-                                // Rola e já tenta capturar (sem esperar 1s fixo)
-                                scrollDetailPanel()
+                            // Rola e já tenta capturar
+                            scrollDetailPanel()
 
-                                const phone = await waitForPhone(2500)
-                                const website = extractWebsiteFromDetail()
-                                contact.phone = phone || ''
-                                contact.website = website || ''
+                            const phone = await waitForPhone(2500)
+                            const website = extractWebsiteFromDetail()
+                            contact.phone = phone || ''
+                            contact.website = website || ''
 
-                                if (phone) addLog(`  ✅ ${phone}`, 'ok')
-                                else addLog(`  — sem telefone`, 'warn')
+                            if (phone) addLog(`  ✅ ${phone}`, 'ok')
+                            else addLog(`  — sem telefone`, 'warn')
+
+                            // FECHAMENTO SEGURO DO PAINEL LATERAL (Substitui o goBackToList)
+                            const closeBtn = document.querySelector('button[aria-label*="Fechar"], button[aria-label*="Close"], [data-value="Fechar"]');
+                            if (closeBtn) {
+                                closeBtn.click();
+                                await sleep(1000);
+                            } else {
+                                await sleep(500);
                             }
-
-                            // Volta com segurança para a lista de resultados
-                            await goBackToList(prevUrl)
-                            
-                            // Aguarda estabilização final para evitar refresh forçado pelo Maps
-                            await sleep(500)
                         } catch (e) {
-                            addLog(`  ⚠️ Erro na navegação: ${e.message}`, 'warn')
-                            // Tenta forçar retorno ao estado anterior se falhou no meio
-                            window.history.back();
-                            await sleep(1500);
+                            addLog(`  ⚠️ Erro na navegacao interna: ${e.message}`, 'warn')
+                            await sleep(1000);
                         }
                     }
 
