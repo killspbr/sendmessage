@@ -313,102 +313,11 @@ app.get('/api/contacts', authenticateToken, async (req, res) => {
   } catch (error) {
     res.status(500).json({ error: 'Erro ao buscar contatos' });
   }
-});
+});// Importação Refatorada (Controller / Service / Repo)
+import { ContactsController } from './controllers/contactsController.js';
+import { errorHandler } from './middleware/errorMiddleware.js';
 
-app.post('/api/contacts', authenticateToken, async (req, res) => {
-  try {
-    const { list_id, name, phone, email, category, cep, rating, address, city, state, instagram, facebook, whatsapp, website } = req.body;
-    
-    console.log(`[Backend DEBUG] --- INÍCIO IMPORTAÇÃO ---`);
-
-    // DIAGNÓSTICO PROFUNDO: Prova do Payload/Header recebido
-    console.log(`[Backend DEBUG] --- NOVA REQUISIÇÃO DE IMPORTAÇÃO ---`);
-    console.log(`[Backend DEBUG] Timestamp: ${new Date().toISOString()}`);
-    console.log(`[Backend DEBUG] Host: ${req.headers.host}`);
-    console.log(`[Backend DEBUG] Headers Principais:`, { 'content-type': req.headers['content-type'], 'user-agent': req.headers['user-agent'] });
-    console.log(`[Backend DEBUG] Usuário do Token: ${req.user ? req.user.email : 'NULO'} (ID: ${req.user ? req.user.id : 'NULO'})`);
-    console.log(`[Backend DEBUG] Body Bruto (req.body):`, JSON.stringify(req.body, null, 2));
-    
-    if (!list_id || !name) {
-      console.warn('[Backend Import] Falha na validação: list_id ou name ausente');
-      return res.status(400).json({ 
-        success: false, 
-        error: 'list_id e name são obrigatórios',
-        detail: 'Um ou ambos os campos obrigatórios (list_id, name) estão faltando no corpo da requisição.'
-      });
-    }
-
-    // Step 0: Sanitizar e Validar UUID (user_id e list_id)
-    const cleanedUserId = String(req.user ? req.user.id : '').trim();
-    const cleanedListId = String(list_id || '').trim();
-    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-    if (!cleanedUserId || !cleanedListId || !uuidRegex.test(cleanedUserId) || !uuidRegex.test(cleanedListId)) {
-        console.warn(`[Backend Import] Rejeitado por ID inválido: User="${cleanedUserId}", List="${cleanedListId}"`);
-        return res.status(400).json({ 
-            success: false, 
-            error: 'Formato de ID inválido ou ausente (UUID esperado)',
-            detail: 'O ID do usuário ou da lista não possui o formato de 36 caracteres do UUID.',
-            ids: { user: cleanedUserId, list: cleanedListId }
-        });
-    }
-
-    // Step 1: Check existence
-    console.log(`[Backend DEBUG] Pesquisando duplicado na lista "${cleanedListId}" para o nome "${name}"`);
-    const existing = await query(
-      'SELECT id FROM contacts WHERE user_id = $1 AND list_id = $2 AND (name = $3 OR (phone = $4 AND phone != \'\'))',
-      [cleanedUserId, cleanedListId, name, phone || '']
-    );
-
-    if (existing.rows.length > 0) {
-      console.log(`[Backend Import] Contato duplicado ignorado: ${name} (ID Existente: ${existing.rows[0].id})`);
-      return res.status(409).json({ success: false, error: 'Contato já existe nesta lista', id: existing.rows[0].id });
-    }
-
-    // Step 2: Insert (já sanitizado acima)
-    console.log(`[Backend DEBUG] Preparando INSERT de 15 colunas...`);
-    
-    const insertSql = `
-      INSERT INTO contacts (
-        user_id, list_id, name, phone, email, category, cep, rating, 
-        address, city, state, instagram, facebook, whatsapp, website
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) 
-      RETURNING *
-    `;
-
-    const insertValues = [
-      cleanedUserId, cleanedListId, name, phone || '', email || '', category || '', 
-      cep || '', rating || '', address || '', city || '', state || '', 
-      instagram || '', facebook || '', whatsapp || '', website || ''
-    ];
-
-    const result = await query(insertSql, insertValues);
-    
-    console.log(`[Backend Import] Sucesso! ID Gerado: ${result.rows[0].id}`);
-    console.log(`[Backend DEBUG] --- FIM IMPORTAÇÃO ---`);
-    res.status(201).json({ success: true, data: result.rows[0] });
-  } catch (error) {
-    console.error(`[Backend ERROR] Falha crítica na importação de contato:`, error.message);
-    
-    // GARANTIA: SEMPRE RETORNA JSON
-    const errorResponse = {
-      success: false,
-      error: 'Erro interno ao salvar contato no banco (Postgres)',
-      detail: error.message,
-      code: error.code || 'UNKNOWN',
-      timestamp: new Date().toISOString()
-    };
-    
-    try {
-      // Registrar log detalhado
-      await query('INSERT INTO sys_logs (info) VALUES ($1)', [`ERRO 500 IMPORTACAO: ${error.message} | Payload: ${JSON.stringify(req.body).substring(0, 1000)}`]);
-    } catch(e) {
-      console.error('[Backend ERROR] Erro crítico ao gravar log sys_logs:', e.message);
-    }
-
-    res.status(500).json(errorResponse);
-  }
-});
+app.post('/api/contacts', authenticateToken, ContactsController.importSingle);
 
 app.put('/api/contacts/:id', authenticateToken, async (req, res) => {
   try {

@@ -37,25 +37,21 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 const status = response.status;
                 const ok = response.ok;
                 const text = await response.text();
-                let data = null;
-                
+                let result = { ok, status, data: null, error: null, rawText: null };
+
                 try {
-                    data = JSON.parse(text);
+                    result.data = JSON.parse(text);
                 } catch (e) {
-                    // Resposta nao e JSON (ex: HTML de erro do Nginx/Easypanel)
-                    console.error('[SM Background] Resposta nao-JSON recebida:', text.substring(0, 500));
-                    data = { 
-                        error: 'Resposta nao-JSON do servidor (provavel erro de infra/proxy)', 
-                        status: status,
-                        rawText: text.substring(0, 1000) // Captura o HTML do erro para diagnostico
-                    };
+                    result.ok = false;
+                    result.error = 'Resposta do servidor não está em formato JSON';
+                    result.rawText = text;
                 }
 
-                sendResponse({ ok, status, data });
+                sendResponse(result);
             })
             .catch((error) => {
-                console.error('[SM Background] Erro de rede:', error.message);
-                sendResponse({ ok: false, status: 0, error: 'Falha na conexão com o servidor: ' + error.message });
+                console.error('[SM Background] Erro critico de rede:', error);
+                sendResponse({ ok: false, status: 0, error: 'Falha de rede ou servidor offline: ' + error.message });
             });
 
         return true; 

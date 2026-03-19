@@ -542,27 +542,44 @@
             })
 
             const status = resp?.status || 'desconhecido';
-            console.log(`[SM Import] Etapa 5: Resposta backend status ${status} para ${contact.name}`);
+            console.log(`[SM Import] Resposta backend status ${status}`, resp);
 
-            if (resp && resp.ok) {
+            if (resp && resp.ok && resp.data?.success) {
                 contact._importing = false;
                 return 'ok';
             }
-            if (resp && resp.status === 409) {
-                contact._importing = false;
-                return 'dup';
+
+            // Tratamento de Erros Estruturados
+            let errorMessage = 'Falha desconhecida';
+            if (resp) {
+                if (resp.status === 409) {
+                    contact._importing = false;
+                    return 'dup';
+                }
+
+                // Erro JSON vindo do nosso Backend
+                if (resp.data && resp.data.success === false) {
+                    errorMessage = `${resp.data.error}${resp.data.detail ? ` (${resp.data.detail})` : ''}`;
+                } 
+                // Erro de Infraestrutura (Nginx/Easypanel devolvendo HTML)
+                else if (resp.rawText) {
+                    const isHtml = resp.rawText.includes('<html');
+                    errorMessage = isHtml 
+                        ? `Erro de Infraestrutura (HTML 502/504): ${resp.rawText.substring(0, 100).replace(/<[^>]*>?/gm, '').trim()}...` 
+                        : `Resposta bruta: ${resp.rawText.substring(0, 100)}...`;
+                }
+                else {
+                    errorMessage = resp.error || `Status HTTP ${resp.status}`;
+                }
             }
-            
-            const errorMsg = resp?.data?.error || resp?.error || 'Erro interno';
-            const detailStr = resp?.data?.detail ? ` - Detalhe: ${resp.data.detail}` : '';
-            addLog(`❌ Erro ao importar: ${contact.name} (Status: ${status})${detailStr || ' - ' + errorMsg}`, 'err');
-            
+
+            addLog(`❌ Erro ao importar: ${contact.name} (Status: ${status}) - ${errorMessage}`, 'err');
             contact._importing = false;
             return 'err'
         } catch (e) { 
             contact._importing = false;
-            console.error('[SM Import] Falha no fetch de importação:', e);
-            addLog(`❌ Erro de rede ao importar: ${contact.name}`, 'err');
+            console.error('[SM Import] Crash no processo de importacao:', e);
+            addLog(`❌ Falha critica: ${e.message}`, 'err');
             return 'err' 
         }
     }

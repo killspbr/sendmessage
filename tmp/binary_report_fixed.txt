@@ -1,0 +1,40 @@
+﻿================================================
+   DIAGN├ôSTICO T├ëCNICO DE CORRUP├ç├âO DE UUID     
+================================================
+
+--- AN├üLISE DE USER_ID DO BANCO ---
+Valor Bruto: "e3b52f78-4a47-49d7-9d16-5beea054d102"
+Comprimento Real: 36
+UUID Esperado (36 chars) | Diferen├ºa: 0
+--- Detalhe de Caracteres (├Ültimos 10) ---
+Posi├º├úo 26: Char='e' | Code=101
+Posi├º├úo 27: Char='e' | Code=101
+Posi├º├úo 28: Char='a' | Code=97
+Posi├º├úo 29: Char='0' | Code=48
+Posi├º├úo 30: Char='5' | Code=53
+Posi├º├úo 31: Char='4' | Code=52
+Posi├º├úo 32: Char='d' | Code=100
+Posi├º├úo 33: Char='1' | Code=49
+Posi├º├úo 34: Char='0' | Code=48
+Posi├º├úo 35: Char='2' | Code=50
+V├ílido via Regex UUID? SIM
+
+--- AN├üLISE DE UUID FALHO NO LOG ---
+Valor Bruto: "749e283d-3b44-4fb1-9397-ea22f9b933aa3489"
+Comprimento Real: 40
+UUID Esperado (36 chars) | Diferen├ºa: 4
+--- Detalhe de Caracteres (├Ültimos 10) ---
+Posi├º├úo 30: Char='b' | Code=98
+Posi├º├úo 31: Char='9' | Code=57
+Posi├º├úo 32: Char='3' | Code=51
+Posi├º├úo 33: Char='3' | Code=51
+Posi├º├úo 34: Char='a' | Code=97
+Posi├º├úo 35: Char='a' | Code=97
+Posi├º├úo 36: Char='3' | Code=51
+Posi├º├úo 37: Char='4' | Code=52
+Posi├º├úo 38: Char='8' | Code=56
+Posi├º├úo 39: Char='9' | Code=57
+V├ílido via Regex UUID? N├âO
+
+--- VERIFICANDO INTEGRIDADE DO JWT NO AMBIENTE ---
+Todos os IDs persistidos na tabela "contacts" est├úo com 36 caracteres.

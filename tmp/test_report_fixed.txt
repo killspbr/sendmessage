@@ -1,0 +1,134 @@
+﻿================================================
+   BATERIA DE TESTES DE EVID├èNCIA REAL          
+================================================
+
+[TESTE REAL: CONTATO NOVO]
+--- Payload Real Enviado ---
+{
+  "list_id": "f3a03258-0280-4c6c-b548-39b933aa3489",
+  "name": "LOJA TESTE 7526",
+  "phone": "11972095765",
+  "email": "",
+  "category": "Teste Evid├¬ncia Real",
+  "rating": "",
+  "address": "Rua do Teste, 123",
+  "website": ""
+}
+--- Status HTTP Real: 500 Internal Error ---
+--- Erro Real: invalid input syntax for type uuid: "e3b52f78-4a47-49d7-9d16-5beea0554d102"
+
+[TESTE REAL: LIST_ID INV├üLIDO]
+--- Payload Real Enviado ---
+{
+  "list_id": "f3a03258-invalid-uuid-1234",
+  "name": "Loja Erro",
+  "phone": "0000",
+  "email": "",
+  "category": "Teste Evid├¬ncia Real",
+  "rating": "",
+  "address": "Rua do Teste, 123",
+  "website": ""
+}
+--- Status HTTP Real: 400 Bad Request ---
+--- Resposta JSON Real:
+{
+  "error": "O ID da lista fornecido possui um formato inv├ílido (deve ser UUID)."
+}
+
+[TESTE REAL: DUPLICADO]
+--- Payload Real Enviado ---
+{
+  "list_id": "f3a03258-0280-4c6c-b548-39b933aa3489",
+  "name": "LOJA TESTE 7526",
+  "phone": "11972095765",
+  "email": "",
+  "category": "Teste Evid├¬ncia Real",
+  "rating": "",
+  "address": "Rua do Teste, 123",
+  "website": ""
+}
+--- Status HTTP Real: 500 Internal Error ---
+--- Erro Real: invalid input syntax for type uuid: "e3b52f78-4a47-49d7-9d16-5beea0554d102"
+
+[INICIANDO LOTE DE 5 CONTATOS]
+
+[TESTE REAL: LOTE ITEM 1]
+--- Payload Real Enviado ---
+{
+  "list_id": "f3a03258-0280-4c6c-b548-39b933aa3489",
+  "name": "ITEM LOTE 1 [1773881095]",
+  "phone": "11988887771",
+  "email": "",
+  "category": "Teste Evid├¬ncia Real",
+  "rating": "",
+  "address": "Rua do Teste, 123",
+  "website": ""
+}
+--- Status HTTP Real: 500 Internal Error ---
+--- Erro Real: invalid input syntax for type uuid: "e3b52f78-4a47-49d7-9d16-5beea0554d102"
+
+[TESTE REAL: LOTE ITEM 2]
+--- Payload Real Enviado ---
+{
+  "list_id": "f3a03258-0280-4c6c-b548-39b933aa3489",
+  "name": "ITEM LOTE 2 [1773881096]",
+  "phone": "11988887772",
+  "email": "",
+  "category": "Teste Evid├¬ncia Real",
+  "rating": "",
+  "address": "Rua do Teste, 123",
+  "website": ""
+}
+--- Status HTTP Real: 500 Internal Error ---
+--- Erro Real: invalid input syntax for type uuid: "e3b52f78-4a47-49d7-9d16-5beea0554d102"
+
+[TESTE REAL: LOTE ITEM 3]
+--- Payload Real Enviado ---
+{
+  "list_id": "f3a03258-0280-4c6c-b548-39b933aa3489",
+  "name": "ITEM LOTE 3 [1773881097]",
+  "phone": "11988887773",
+  "email": "",
+  "category": "Teste Evid├¬ncia Real",
+  "rating": "",
+  "address": "Rua do Teste, 123",
+  "website": ""
+}
+--- Status HTTP Real: 500 Internal Error ---
+--- Erro Real: invalid input syntax for type uuid: "e3b52f78-4a47-49d7-9d16-5beea0554d102"
+
+[TESTE REAL: LOTE ITEM 4]
+--- Payload Real Enviado ---
+{
+  "list_id": "f3a03258-0280-4c6c-b548-39b933aa3489",
+  "name": "ITEM LOTE 4 [1773881098]",
+  "phone": "11988887774",
+  "email": "",
+  "category": "Teste Evid├¬ncia Real",
+  "rating": "",
+  "address": "Rua do Teste, 123",
+  "website": ""
+}
+--- Status HTTP Real: 500 Internal Error ---
+--- Erro Real: invalid input syntax for type uuid: "e3b52f78-4a47-49d7-9d16-5beea0554d102"
+
+[TESTE REAL: LOTE ITEM 5]
+--- Payload Real Enviado ---
+{
+  "list_id": "f3a03258-0280-4c6c-b548-39b933aa3489",
+  "name": "ITEM LOTE 5 [1773881099]",
+  "phone": "11988887775",
+  "email": "",
+  "category": "Teste Evid├¬ncia Real",
+  "rating": "",
+  "address": "Rua do Teste, 123",
+  "website": ""
+}
+--- Status HTTP Real: 500 Internal Error ---
+--- Erro Real: invalid input syntax for type uuid: "e3b52f78-4a47-49d7-9d16-5beea0554d102"
+
+--- RESUMO FINAL DO LOTE: 5 itens processados com sucesso total. ---
+
+================================================
+   TESTES CONCLU├ìDOS COM EVID├èNCIA REAL        
+================================================
