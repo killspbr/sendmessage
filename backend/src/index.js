@@ -328,30 +328,36 @@ app.post('/api/contacts', authenticateToken, async (req, res) => {
       return res.status(400).json({ error: 'list_id e name são obrigatórios' });
     }
 
-    // Validação explícita de formato UUID para evitar quebra no Postgres (Erro 500)
+    // Step 0: Sanitizar e Validar UUID (user_id e list_id)
+    const cleanedUserId = String(req.user.id).trim();
+    const cleanedListId = String(list_id).trim();
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    if (!uuidRegex.test(list_id)) {
-      console.warn(`[Backend Import] list_id com formato inválido: ${list_id}`);
-      return res.status(400).json({ error: 'O ID da lista fornecido possui um formato inválido (deve ser UUID).' });
+
+    console.log(`[Backend DEBUG] Validando IDs: User="${cleanedUserId}", List="${cleanedListId}"`);
+
+    if (!uuidRegex.test(cleanedUserId) || !uuidRegex.test(cleanedListId)) {
+        console.warn(`[Backend Import] Rejeitado: formato UUID inválido detectado.`);
+        return res.status(400).json({ 
+            success: false, 
+            error: 'Formato de ID inválido (UUID esperado)',
+            user_id: cleanedUserId,
+            list_id: cleanedListId 
+        });
     }
 
     // Step 1: Check existence
-    console.log(`[Backend DEBUG] Pesquisando duplicado: Name="${name}", Phone="${phone}" na lista "${list_id}"`);
+    console.log(`[Backend DEBUG] Pesquisando duplicado: Name="${name}", Phone="${phone}" na lista "${cleanedListId}"`);
     const existing = await query(
       'SELECT id FROM contacts WHERE user_id = $1 AND list_id = $2 AND (name = $3 OR (phone = $4 AND phone != \'\'))',
-      [req.user.id, list_id, name, phone || '']
+      [cleanedUserId, cleanedListId, name, phone || '']
     );
 
     if (existing.rows.length > 0) {
       console.log(`[Backend Import] Contato duplicado ignorado: ${name} (ID Existente: ${existing.rows[0].id})`);
-      return res.status(409).json({ error: 'Contato já existe nesta lista', id: existing.rows[0].id });
+      return res.status(409).json({ success: false, error: 'Contato já existe nesta lista', id: existing.rows[0].id });
     }
 
-    // Step 2: Insert
-    const cleanedUserId = String(req.user.id).trim();
-    const cleanedListId = String(list_id).trim();
-
-    console.log(`[Backend DEBUG] IDs Sanitizados: User=${cleanedUserId} (Len: ${cleanedUserId.length}), List=${cleanedListId} (Len: ${cleanedListId.length})`);
+    // Step 2: Insert (já sanitizado acima)
     console.log(`[Backend DEBUG] Preparando INSERT de 15 colunas...`);
     
     const insertSql = `
