@@ -421,7 +421,13 @@
                                 card.querySelector('article') ||
                                 card;
                             
-                            clickTarget.click();
+                            // Dispara clique manual para evitar que o navegador faca PRELOAD da URL (causa do erro de SW)
+                            const clickEvent = new MouseEvent('click', {
+                                view: window,
+                                bubbles: true,
+                                cancelable: true
+                            });
+                            clickTarget.dispatchEvent(clickEvent);
                             await sleep(2000); // Aguarda abertura e animacao do Maps
 
                             // Importante: Rolar ANTES de capturar para forcar o Maps a carregar os dados dinâmicos
