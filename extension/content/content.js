@@ -412,12 +412,33 @@
                     addLog(`[SM Import] Etapa 3: Extraindo: ${name}`, 'info');
                     if (mode === 'full') {
                         try {
+                            const clickTarget =
+                                card.querySelector('article') ||
+                                card.querySelector('.fontHeadlineSmall') ||
+                                card.querySelector('.UaR6Cc') ||
+                                card;
+                            
+                            clickTarget.click();
+                            await sleep(2000); // Aguarda abertura e animacao do Maps
 
-                            // FECHAMENTO SEGURO DO PAINEL LATERAL (Substitui o goBackToList)
+                            // Importante: Rolar ANTES de capturar para forcar o Maps a carregar os dados dinâmicos
+                            scrollDetailPanel();
+
+                            const phone = await waitForPhone(5000); // Timeout resiliente de 5s
+                            const website = extractWebsiteFromDetail();
+                            contact.phone = phone || '';
+                            contact.website = website || '';
+
+                            if (phone) addLog(`  ✅ ${phone}`, 'ok');
+
+                            // FECHAMENTO SEGURO (Só após capturar!)
                             const closeBtn = document.querySelector('button[aria-label*="Fechar"], button[aria-label*="Close"], [data-value="Fechar"]');
                             if (closeBtn) {
-                                closeBtn.click();
-                                await sleep(1000);
+
+                                const phone = await waitForPhone(5000) // Timeout aumentado para 5s
+                                const website = extractWebsiteFromDetail()
+                                contact.phone = phone || ''
+                                contact.website = website || ''
                             } else {
                                 await sleep(500);
                             }
