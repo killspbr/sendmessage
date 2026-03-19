@@ -43,15 +43,18 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                     try {
                         data = JSON.parse(text);
                     } catch (e) {
-                        data = { _raw: text, error: 'JSON malformado' };
+                        // Resposta nao e JSON (ex: HTML de erro do servidor)
+                        console.error('[SM Background] Resposta nao-JSON do servidor:', text.substring(0, 300));
+                        data = { _raw: text.substring(0, 200), error: `Resposta inesperada do servidor (status ${status})` };
                     }
                 } catch (e) {
-                    data = { error: 'Não foi possível ler a resposta' };
+                    data = { error: 'Nao foi possivel ler a resposta: ' + e.message };
                 }
 
                 sendResponse({ ok, status, data });
             })
             .catch((error) => {
+                console.error('[SM Background] Erro de rede:', error.message);
                 sendResponse({ ok: false, status: 0, error: error.message });
             });
 

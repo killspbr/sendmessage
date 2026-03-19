@@ -328,6 +328,13 @@ app.post('/api/contacts', authenticateToken, async (req, res) => {
       return res.status(400).json({ error: 'list_id e name são obrigatórios' });
     }
 
+    // Validação explícita de formato UUID para evitar quebra no Postgres (Erro 500)
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(list_id)) {
+      console.warn(`[Backend Import] list_id com formato inválido: ${list_id}`);
+      return res.status(400).json({ error: 'O ID da lista fornecido possui um formato inválido (deve ser UUID).' });
+    }
+
     // Step 1: Check existence
     console.log(`[Backend DEBUG] Pesquisando duplicado: Name="${name}", Phone="${phone}" na lista "${list_id}"`);
     const existing = await query(
@@ -341,6 +348,7 @@ app.post('/api/contacts', authenticateToken, async (req, res) => {
     }
 
     // Step 2: Insert
+    console.log(`[Backend DEBUG] Tipos de parâmetros: user_id=${typeof req.user.id} (${req.user.id}), list_id=${typeof list_id} (${list_id})`);
     console.log(`[Backend DEBUG] Executando INSERT na tabela contacts...`);
     const result = await query(
       'INSERT INTO contacts (user_id, list_id, name, phone, email, category, cep, rating, address, city, state, instagram, facebook, whatsapp, website) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) RETURNING *',
@@ -351,16 +359,21 @@ app.post('/api/contacts', authenticateToken, async (req, res) => {
     console.log(`[Backend DEBUG] --- FIM IMPORTAÇÃO COM SUCESSO ---`);
     res.status(201).json(result.rows[0]);
   } catch (error) {
-    console.error('[Backend ERROR] Falha crítica na importação de contato:', error.message);
-    console.error(error.stack);
+    const errorTitle = `ERRO IMPORTACAO 500: ${error.message}`;
+    const payloadStr = `PAYLOAD: ${JSON.stringify(req.body)}`;
+    console.error(`[Backend ERROR] ${errorTitle}`);
+    
     try {
-      await query('INSERT INTO sys_logs (info) VALUES ($1)', [`ERRO IMPORTACAO 500: ${error.message} - Stack: ${error.stack} - Payload: ${JSON.stringify(req.body)}`]);
+      // Grava em logs separados para garantir que caibam no campo 'info' sem truncar
+      await query('INSERT INTO sys_logs (info) VALUES ($1)', [errorTitle]);
+      await query('INSERT INTO sys_logs (info) VALUES ($1)', [payloadStr.substring(0, 1500)]); // Pega o principal do payload
+      
       const fs = await import('fs');
-      fs.appendFileSync('import_error.log', new Date().toISOString() + ' : ' + error.message + '\n' + error.stack + '\n\n');
+      fs.appendFileSync('import_error.log', `${new Date().toISOString()} : ${errorTitle}\n${payloadStr}\n\n`);
     } catch(e) {
       console.error('[Backend ERROR] Erro ao gravar log de falha:', e.message);
     }
-    res.status(500).json({ error: 'Erro interno ao salvar contato', detail: error.message, stack: error.stack });
+    res.status(500).json({ error: 'Erro interno ao salvar contato no banco (Postgres)', detail: error.message });
   }
 });
 

@@ -331,18 +331,24 @@
         addLog('[SM Import] Etapa 1: Página Maps detectada', 'info')
 
         const listSelect = shadow.getElementById('listSelect')
-        const listId = listSelect.value
+        const rawListId = listSelect.value || ''
+        
+        // Sanitização: extrai exatamente o UUID de 36 chars
+        const uuidMatch = rawListId.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i)
+        const listId = uuidMatch ? uuidMatch[0] : ''
         const listName = listSelect.options[listSelect.selectedIndex]?.text || 'Desconhecida'
 
-        const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(listId);
+        console.group('[SM DEBUG] Início Extração');
+        console.log(' - ID Bruto Bruto:', `"${rawListId}"`);
+        console.log(' - ID Sanitizado:', `"${listId}"`);
+        console.log(' - Length Final:', listId.length);
+        console.groupEnd();
 
-        if (!listId || !isUuid) {
+        if (!listId || listId.length !== 36) {
             addLog('⚠️ Por favor, selecione uma lista válida antes de iniciar a extração.', 'err')
             isRunning = false
             return
         }
-
-        console.log(`[SM DEBUG] list_id: "${listId}", lista: "${listName}"`);
 
         addLog(`📂 Lista destino: ${listName}`, 'info')
 
@@ -496,12 +502,24 @@
             const listSelect = shadow.getElementById('listSelect');
             const listName = listSelect.options[listSelect.selectedIndex]?.text || 'Desconhecida';
             
-            console.log(`[SM Import DEBUG] Payload para ${contact.name}:`);
-            console.log(` - list_id: ${listId}`);
-            console.log(` - listName: ${listName}`);
+            // Sanitização profunda: busca o UUID no valor bruto
+            const rawVal = listId || listSelect.value || '';
+            const match = rawVal.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
+            const cleanListId = match ? match[0] : '';
+
+            console.group(`[SM Import DEBUG] Payload Unitário: ${contact.name}`);
+            console.log(' - Valor Bruto capturado:', `"${rawVal}"`);
+            console.log(' - Valor Final sanitizado:', `"${cleanListId}"`);
+            console.log(' - Length Final:', cleanListId.length);
+            console.groupEnd();
             
+            if (!cleanListId || cleanListId.length !== 36) {
+                console.error(`[SM Import] listId inválido detectado: "${cleanListId}"`);
+                return 'error_id';
+            }
+
             const payload = {
-                list_id: listId,
+                list_id: cleanListId,
                 name: contact.name,
                 phone: (contact.phone || '').replace(/\D/g, ''),
                 email: '',
