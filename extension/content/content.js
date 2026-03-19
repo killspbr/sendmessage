@@ -412,42 +412,32 @@
                     addLog(`[SM Import] Etapa 3: Extraindo: ${name}`, 'info');
                     if (mode === 'full') {
                         try {
-                            // Seletores robustos para garantir que o Maps abra o detalhe
                             const clickTarget =
-                                card.querySelector('.hfpxzc') || 
+                                card.querySelector('a.hfpxzc') || 
                                 card.querySelector('a[href*="/maps/place"]') ||
                                 card.querySelector('.fontHeadlineSmall') ||
                                 card.querySelector('[role="link"]') ||
-                                card.querySelector('article') ||
                                 card;
                             
-                            // Dispara clique manual para evitar que o navegador faca PRELOAD da URL (causa do erro de SW)
-                            const clickEvent = new MouseEvent('click', {
-                                view: window,
-                                bubbles: true,
-                                cancelable: true
-                            });
-                            clickTarget.dispatchEvent(clickEvent);
-                            await sleep(2000); // Aguarda abertura e animacao do Maps
+                            // Dispara eventos de baixo nível
+                            clickTarget.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+                            clickTarget.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+                            
+                            await sleep(3000); 
 
-                            // Importante: Rolar ANTES de capturar para forcar o Maps a carregar os dados dinâmicos
                             scrollDetailPanel();
 
-                            const phone = await waitForPhone(5000); // Timeout resiliente de 5s
+                            const phone = await waitForPhone(5000);
                             const website = extractWebsiteFromDetail();
                             contact.phone = phone || '';
                             contact.website = website || '';
 
                             if (phone) addLog(`  ✅ ${phone}`, 'ok');
 
-                            // FECHAMENTO SEGURO (Só após capturar!)
                             const closeBtn = document.querySelector('button[aria-label*="Fechar"], button[aria-label*="Close"], [data-value="Fechar"]');
                             if (closeBtn) {
-
-                                const phone = await waitForPhone(5000) // Timeout aumentado para 5s
-                                const website = extractWebsiteFromDetail()
-                                contact.phone = phone || ''
-                                contact.website = website || ''
+                                closeBtn.click();
+                                await sleep(1000);
                             } else {
                                 await sleep(500);
                             }
