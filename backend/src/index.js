@@ -348,32 +348,51 @@ app.post('/api/contacts', authenticateToken, async (req, res) => {
     }
 
     // Step 2: Insert
-    console.log(`[Backend DEBUG] Tipos de parâmetros: user_id=${typeof req.user.id} (${req.user.id}), list_id=${typeof list_id} (${list_id})`);
-    console.log(`[Backend DEBUG] Executando INSERT na tabela contacts...`);
-    const result = await query(
-      'INSERT INTO contacts (user_id, list_id, name, phone, email, category, cep, rating, address, city, state, instagram, facebook, whatsapp, website) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) RETURNING *',
-      [req.user.id, list_id, name, phone, email, category, cep, rating, address, city, state, instagram, facebook, whatsapp, website]
-    );
+    const cleanedUserId = String(req.user.id).trim();
+    const cleanedListId = String(list_id).trim();
+
+    console.log(`[Backend DEBUG] IDs Sanitizados: User=${cleanedUserId} (Len: ${cleanedUserId.length}), List=${cleanedListId} (Len: ${cleanedListId.length})`);
+    console.log(`[Backend DEBUG] Preparando INSERT de 15 colunas...`);
     
-    console.log(`[Backend Import] Contato inserido com sucesso ID: ${result.rows[0].id}`);
-    console.log(`[Backend DEBUG] --- FIM IMPORTAÇÃO COM SUCESSO ---`);
-    res.status(201).json(result.rows[0]);
+    const insertSql = `
+      INSERT INTO contacts (
+        user_id, list_id, name, phone, email, category, cep, rating, 
+        address, city, state, instagram, facebook, whatsapp, website
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) 
+      RETURNING *
+    `;
+
+    const insertValues = [
+      cleanedUserId, cleanedListId, name, phone || '', email || '', category || '', 
+      cep || '', rating || '', address || '', city || '', state || '', 
+      instagram || '', facebook || '', whatsapp || '', website || ''
+    ];
+
+    const result = await query(insertSql, insertValues);
+    
+    console.log(`[Backend Import] Sucesso! ID Gerado: ${result.rows[0].id}`);
+    console.log(`[Backend DEBUG] --- FIM IMPORTAÇÃO ---`);
+    res.status(201).json({ success: true, data: result.rows[0] });
   } catch (error) {
-    const errorTitle = `ERRO IMPORTACAO 500: ${error.message}`;
-    const payloadStr = `PAYLOAD: ${JSON.stringify(req.body)}`;
-    console.error(`[Backend ERROR] ${errorTitle}`);
+    console.error(`[Backend ERROR] Falha crítica na importação de contato:`, error.message);
+    
+    // GARANTIA: SEMPRE RETORNA JSON
+    const errorResponse = {
+      success: false,
+      error: 'Erro interno ao salvar contato no banco (Postgres)',
+      detail: error.message,
+      code: error.code || 'UNKNOWN',
+      timestamp: new Date().toISOString()
+    };
     
     try {
-      // Grava em logs separados para garantir que caibam no campo 'info' sem truncar
-      await query('INSERT INTO sys_logs (info) VALUES ($1)', [errorTitle]);
-      await query('INSERT INTO sys_logs (info) VALUES ($1)', [payloadStr.substring(0, 1500)]); // Pega o principal do payload
-      
-      const fs = await import('fs');
-      fs.appendFileSync('import_error.log', `${new Date().toISOString()} : ${errorTitle}\n${payloadStr}\n\n`);
+      // Registrar log detalhado
+      await query('INSERT INTO sys_logs (info) VALUES ($1)', [`ERRO 500 IMPORTACAO: ${error.message} | Payload: ${JSON.stringify(req.body).substring(0, 1000)}`]);
     } catch(e) {
-      console.error('[Backend ERROR] Erro ao gravar log de falha:', e.message);
+      console.error('[Backend ERROR] Erro crítico ao gravar log sys_logs:', e.message);
     }
-    res.status(500).json({ error: 'Erro interno ao salvar contato no banco (Postgres)', detail: error.message });
+
+    res.status(500).json(errorResponse);
   }
 });
 
