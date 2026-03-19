@@ -412,10 +412,16 @@
                     addLog(`[SM Import] Etapa 3: Extraindo: ${name}`, 'info');
                     if (mode === 'full') {
                         try {
+                            // GARANTIA: O card precisa estar visível na lista lateral para ser clicável
+                            card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                            await sleep(500); // Aguarda o scroll estabilizar
+
+                            // Seletores de Clique: Prioridade maxima no link invisivel que cobre o card (.hfpxzc)
+                            // Se nao achar, clicamos no elemento de titulo/link que quase sempre e um alvo valido
                             const clickTarget =
                                 card.querySelector('a.hfpxzc') || 
-                                card.querySelector('a[href*="/maps/place"]') ||
-                                card.querySelector('.fontHeadlineSmall') ||
+                                card.querySelector('.fontHeadlineSmall')?.closest('a') ||
+                                card.querySelector('a[aria-label*="' + name + '"]') ||
                                 card.querySelector('[role="link"]') ||
                                 card;
                             
