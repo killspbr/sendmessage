@@ -381,7 +381,7 @@
                 })
 
                 if (newCards.length === 0) {
-                    dryScrolls++
+                dryScrolls++
                     if (dryScrolls > MAX_DRY_SCROLLS) {
                         addLog('✅ Todos os resultados processados!', 'ok')
                         break
@@ -416,19 +416,48 @@
                             card.scrollIntoView({ behavior: 'smooth', block: 'center' });
                             await sleep(500); // Aguarda o scroll estabilizar
 
-                            // Seletores de Clique: Prioridade maxima no link invisivel que cobre o card (.hfpxzc)
-                            // Se nao achar, clicamos no elemento de titulo/link que quase sempre e um alvo valido
-                            const clickTarget =
-                                card.querySelector('a.hfpxzc') || 
-                                card.querySelector('.fontHeadlineSmall')?.closest('a') ||
-                                card.querySelector('a[aria-label*="' + name + '"]') ||
-                                card.querySelector('[role="link"]') ||
-                                card;
-                            
-                            // Dispara eventos de baixo nível
-                            clickTarget.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
-                            clickTarget.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
-                            
+                            // SOLUÇÃO DE ALTA PRECISÃO: Clique na Área Central Neutra do Card
+                            // Isso evita botões de 'Ligar', 'Rotas' ou links de 'Anúncio'
+                            const cardRect = card.getBoundingClientRect();
+                            const centerX = cardRect.left + (cardRect.width / 2);
+                            const centerY = cardRect.top + (cardRect.height / 2);
+
+                            console.log(`[SM Debug] Calculando clique para "${name}" em X:${centerX}, Y:${centerY}`);
+                            addLog(`  🖱️ Clicando em X:${Math.round(centerX)}, Y:${Math.round(centerY)}`, 'info');
+
+                            // SOLUÇÃO NUCLEAR: Remover HREF temporariamente para impedir NAVEGAÇÃO do Browser
+                            // Prioriza o link invisível se existir, senão usa o próprio card como alvo para remover o href
+                            const clickTargetForHref = card.querySelector('a.hfpxzc') || card;
+                            const originalHref = clickTargetForHref.getAttribute('href');
+                            if (originalHref) {
+                                clickTargetForHref.setAttribute('data-old-href', originalHref);
+                                clickTargetForHref.removeAttribute('href');
+                                console.log(`[SM Debug] HREF de "${name}" neutralizado temporariamente.`);
+                                addLog(`  🔗 HREF neutralizado para evitar navegação.`, 'info');
+                            }
+
+                            // Dispara eventos simulando um clique de mapeamento de coordenadas (mais seguro no Maps)
+                            // O evento é disparado no próprio card, mas com as coordenadas calculadas
+                            const mdown = new MouseEvent('mousedown', {
+                                bubbles: true, cancelable: true,
+                                clientX: centerX, clientY: centerY
+                            });
+                            const clk = new MouseEvent('click', {
+                                bubbles: true, cancelable: true,
+                                clientX: centerX, clientY: centerY
+                            });
+
+                            card.dispatchEvent(mdown);
+                            card.dispatchEvent(clk);
+
+                            // RESTAURAR HREF (opcional, mas bom para manter o Maps funcional)
+                            if (originalHref) {
+                                setTimeout(() => {
+                                    if (clickTarget) clickTarget.setAttribute('href', originalHref);
+                                    console.log(`[SM Debug] HREF de "${name}" restaurado.`);
+                                }, 500);
+                            }
+
                             await sleep(3000); 
 
                             scrollDetailPanel();
