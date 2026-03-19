@@ -320,33 +320,41 @@ app.post('/api/contacts', authenticateToken, async (req, res) => {
     const { list_id, name, phone, email, category, cep, rating, address, city, state, instagram, facebook, whatsapp, website } = req.body;
     
     console.log(`[Backend DEBUG] --- INÍCIO IMPORTAÇÃO ---`);
-    console.log(`[Backend DEBUG] Usuário: ${req.user ? req.user.email : 'SEM USUÁRIO'} (ID: ${req.user ? req.user.id : 'N/A'})`);
-    console.log(`[Backend DEBUG] Payload:`, JSON.stringify(req.body, null, 2));
+
+    // DIAGNÓSTICO PROFUNDO: Prova do Payload/Header recebido
+    console.log(`[Backend DEBUG] --- NOVA REQUISIÇÃO DE IMPORTAÇÃO ---`);
+    console.log(`[Backend DEBUG] Timestamp: ${new Date().toISOString()}`);
+    console.log(`[Backend DEBUG] Host: ${req.headers.host}`);
+    console.log(`[Backend DEBUG] Headers Principais:`, { 'content-type': req.headers['content-type'], 'user-agent': req.headers['user-agent'] });
+    console.log(`[Backend DEBUG] Usuário do Token: ${req.user ? req.user.email : 'NULO'} (ID: ${req.user ? req.user.id : 'NULO'})`);
+    console.log(`[Backend DEBUG] Body Bruto (req.body):`, JSON.stringify(req.body, null, 2));
     
     if (!list_id || !name) {
       console.warn('[Backend Import] Falha na validação: list_id ou name ausente');
-      return res.status(400).json({ error: 'list_id e name são obrigatórios' });
+      return res.status(400).json({ 
+        success: false, 
+        error: 'list_id e name são obrigatórios',
+        detail: 'Um ou ambos os campos obrigatórios (list_id, name) estão faltando no corpo da requisição.'
+      });
     }
 
     // Step 0: Sanitizar e Validar UUID (user_id e list_id)
-    const cleanedUserId = String(req.user.id).trim();
-    const cleanedListId = String(list_id).trim();
+    const cleanedUserId = String(req.user ? req.user.id : '').trim();
+    const cleanedListId = String(list_id || '').trim();
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-    console.log(`[Backend DEBUG] Validando IDs: User="${cleanedUserId}", List="${cleanedListId}"`);
-
-    if (!uuidRegex.test(cleanedUserId) || !uuidRegex.test(cleanedListId)) {
-        console.warn(`[Backend Import] Rejeitado: formato UUID inválido detectado.`);
+    if (!cleanedUserId || !cleanedListId || !uuidRegex.test(cleanedUserId) || !uuidRegex.test(cleanedListId)) {
+        console.warn(`[Backend Import] Rejeitado por ID inválido: User="${cleanedUserId}", List="${cleanedListId}"`);
         return res.status(400).json({ 
             success: false, 
-            error: 'Formato de ID inválido (UUID esperado)',
-            user_id: cleanedUserId,
-            list_id: cleanedListId 
+            error: 'Formato de ID inválido ou ausente (UUID esperado)',
+            detail: 'O ID do usuário ou da lista não possui o formato de 36 caracteres do UUID.',
+            ids: { user: cleanedUserId, list: cleanedListId }
         });
     }
 
     // Step 1: Check existence
-    console.log(`[Backend DEBUG] Pesquisando duplicado: Name="${name}", Phone="${phone}" na lista "${cleanedListId}"`);
+    console.log(`[Backend DEBUG] Pesquisando duplicado na lista "${cleanedListId}" para o nome "${name}"`);
     const existing = await query(
       'SELECT id FROM contacts WHERE user_id = $1 AND list_id = $2 AND (name = $3 OR (phone = $4 AND phone != \'\'))',
       [cleanedUserId, cleanedListId, name, phone || '']
