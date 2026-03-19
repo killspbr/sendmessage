@@ -195,9 +195,9 @@
 
             <!-- Controls -->
             <div class="controls">
-                <button class="btn-start" id="btnStart">▶️ Iniciar Extração</button>
-                <button class="btn-stop"  id="btnStop">⏹️ Parar</button>
-                <button class="btn-clear" id="btnClear" title="Limpar resultados">🗑️</button>
+                <button type="button" class="btn-start" id="btnStart">▶️ Iniciar Extração</button>
+                <button type="button" class="btn-stop"  id="btnStop">⏹️ Parar</button>
+                <button type="button" class="btn-clear" id="btnClear" title="Limpar resultados">🗑️</button>
             </div>
 
             <!-- Progress -->
@@ -221,7 +221,7 @@
                 <select class="list-select" id="listSelect">
                     <option value="">Selecione uma lista</option>
                 </select>
-                <button class="btn-import" id="btnImport" disabled>⬆️ Importar tudo agora</button>
+                <button type="button" class="btn-import" id="btnImport" disabled>⬆️ Importar tudo agora</button>
             </div>
         </div>
         `
@@ -239,7 +239,11 @@
             autoImport = e.target.checked
         })
 
-        $('btnStart').addEventListener('click', startAutoExtraction)
+        $('btnStart').addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            startAutoExtraction();
+        })
         $('btnStop').addEventListener('click', () => {
             isStopRequested = true
             addLog('⏹️ Parando após a empresa atual...', 'warn')
@@ -408,28 +412,6 @@
                     addLog(`[SM Import] Etapa 3: Extraindo: ${name}`, 'info');
                     if (mode === 'full') {
                         try {
-                            const prevUrl = window.location.href
-
-                            const clickTarget =
-                                card.querySelector('a[href*="/maps/place"]') ||
-                                card.querySelector('a.hfpxzc') ||
-                                card.querySelector('[role="link"]') ||
-                                card
-                            clickTarget.click()
-
-                            // Aguarda abertura do detalhe
-                            await sleep(2000)
-
-                            // Rola e já tenta capturar
-                            scrollDetailPanel()
-
-                            const phone = await waitForPhone(2500)
-                            const website = extractWebsiteFromDetail()
-                            contact.phone = phone || ''
-                            contact.website = website || ''
-
-                            if (phone) addLog(`  ✅ ${phone}`, 'ok')
-                            else addLog(`  — sem telefone`, 'warn')
 
                             // FECHAMENTO SEGURO DO PAINEL LATERAL (Substitui o goBackToList)
                             const closeBtn = document.querySelector('button[aria-label*="Fechar"], button[aria-label*="Close"], [data-value="Fechar"]');
