@@ -116,6 +116,10 @@ function normalizeGeminiModel(model) {
   return legacyMap[requestedModel] || requestedModel;
 }
 
+function modelSupportsThinkingBudget(model) {
+  return /^gemini-2\.5-/i.test(String(model || '').trim());
+}
+
 // A partir daqui, as rotas podem ser protegidas se necessário
 // app.use(authenticateToken); 
 
@@ -1205,6 +1209,10 @@ app.post('/api/ai/proxy', authenticateToken, async (req, res) => {
         maxOutputTokens: maxTokens || 2048,
       }
     };
+
+    if (modelSupportsThinkingBudget(actualModel)) {
+      body.generationConfig.thinkingConfig = { thinkingBudget: 0 };
+    }
 
     if (systemInstruction) {
       body.systemInstruction = { parts: [{ text: systemInstruction }] };

@@ -74,7 +74,7 @@ function getChannelStrategy(channels: CampaignChannel[], messageSize: 'short' | 
                 label: 'WhatsApp',
                 sizeInstruction: 'Escreva uma mensagem curta de WhatsApp com 1 bloco principal e CTA claro. Meta: 40 a 70 palavras.',
                 structureInstruction: 'Use frases curtas, leitura rápida em mobile e no máximo 2 parágrafos curtos.',
-                tokenFloor: 320,
+                tokenFloor: 480,
             }
         }
         if (messageSize === 'medium') {
@@ -82,14 +82,14 @@ function getChannelStrategy(channels: CampaignChannel[], messageSize: 'short' | 
                 label: 'WhatsApp',
                 sizeInstruction: 'Escreva uma mensagem média de WhatsApp. Meta: 80 a 140 palavras.',
                 structureInstruction: 'Organize em 2 a 4 parágrafos curtos, com benefício claro e CTA objetivo.',
-                tokenFloor: 520,
+                tokenFloor: 900,
             }
         }
         return {
             label: 'WhatsApp',
             sizeInstruction: 'Escreva uma mensagem longa de WhatsApp sem virar parede de texto. Meta: 140 a 240 palavras.',
             structureInstruction: 'Use 4 a 6 blocos curtos, listas curtas quando fizer sentido e CTA final explícito.',
-            tokenFloor: 800,
+            tokenFloor: 1400,
         }
     }
 
@@ -99,7 +99,7 @@ function getChannelStrategy(channels: CampaignChannel[], messageSize: 'short' | 
                 label: 'Email',
                 sizeInstruction: 'Escreva um corpo de email curto. Meta: 80 a 140 palavras.',
                 structureInstruction: 'Use 2 a 3 parágrafos e fechamento com CTA simples.',
-                tokenFloor: 420,
+                tokenFloor: 700,
             }
         }
         if (messageSize === 'medium') {
@@ -107,14 +107,14 @@ function getChannelStrategy(channels: CampaignChannel[], messageSize: 'short' | 
                 label: 'Email',
                 sizeInstruction: 'Escreva um corpo de email médio. Meta: 160 a 260 palavras.',
                 structureInstruction: 'Use 3 a 5 parágrafos, podendo incluir uma lista curta de benefícios.',
-                tokenFloor: 720,
+                tokenFloor: 1300,
             }
         }
         return {
             label: 'Email',
             sizeInstruction: 'Escreva um corpo de email longo, denso e bem desenvolvido. Meta: 260 a 420 palavras.',
             structureInstruction: 'Use 5 a 7 parágrafos curtos ou blocos com bullets para manter boa leitura.',
-            tokenFloor: 1100,
+            tokenFloor: 2200,
         }
     }
 
@@ -123,7 +123,7 @@ function getChannelStrategy(channels: CampaignChannel[], messageSize: 'short' | 
             label: 'WhatsApp e Email',
             sizeInstruction: 'Escreva um texto híbrido curto que funcione bem em WhatsApp e ainda se sustente em email. Meta: 70 a 110 palavras.',
             structureInstruction: 'Use 2 ou 3 blocos curtos, linguagem direta e CTA simples.',
-            tokenFloor: 420,
+            tokenFloor: 700,
         }
     }
     if (messageSize === 'medium') {
@@ -131,14 +131,14 @@ function getChannelStrategy(channels: CampaignChannel[], messageSize: 'short' | 
             label: 'WhatsApp e Email',
             sizeInstruction: 'Escreva um texto híbrido médio. Meta: 120 a 220 palavras.',
             structureInstruction: 'Use 3 a 4 blocos curtos, equilíbrio entre objetividade e contexto.',
-            tokenFloor: 760,
+            tokenFloor: 1300,
         }
     }
     return {
         label: 'WhatsApp e Email',
         sizeInstruction: 'Escreva um texto híbrido longo, mantendo legibilidade em WhatsApp e profundidade suficiente para email. Meta: 220 a 340 palavras.',
         structureInstruction: 'Use blocos curtos, boa progressão de argumento e CTA bem destacado no fechamento.',
-        tokenFloor: 1100,
+        tokenFloor: 1800,
     }
 }
 
