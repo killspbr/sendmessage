@@ -225,7 +225,7 @@ export function UserSettingsPage({
               </div>
               <div className="flex flex-col items-start leading-tight">
                 <span className="text-sm">Baixar Extensão Atualizada</span>
-                <span className="text-[10px] opacity-80 font-medium">Versão 1.0.4 • Atualizado em 19/03/2026 às 20:26</span>
+                <span className="text-[10px] opacity-80 font-medium">Versão 1.0.5 • Atualizado em 19/03/2026 às 23:08</span>
               </div>
             </a>
             <p className="mt-3 text-[11px] text-slate-400 italic">

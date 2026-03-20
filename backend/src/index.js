@@ -488,7 +488,7 @@ app.use((err, req, res, next) => {
 });
 
 // --- CONFIGURAÇÕES GLOBAIS ---
-app.get('/api/settings', async (req, res) => {
+app.get('/api/settings', authenticateToken, async (req, res) => {
   try {
     const result = await query('SELECT * FROM app_settings LIMIT 1');
     res.json(result.rows[0] || {});
@@ -1163,7 +1163,7 @@ app.get('/api/permissions/me', authenticateToken, async (req, res) => {
 });
 
 // Listar todos os usuários (Admin)
-app.get('/api/admin/users', authenticateToken, async (req, res) => {
+app.get('/api/admin/users', authenticateToken, checkAdmin, async (req, res) => {
   try {
     const result = await query(
       `SELECT up.*, ug.name as group_name, u.name as user_name, u.email
@@ -1179,7 +1179,7 @@ app.get('/api/admin/users', authenticateToken, async (req, res) => {
 });
 
 // Listar todos os grupos (Admin)
-app.get('/api/admin/groups', authenticateToken, async (req, res) => {
+app.get('/api/admin/groups', authenticateToken, checkAdmin, async (req, res) => {
   try {
     const result = await query('SELECT * FROM user_groups ORDER BY name ASC');
     res.json(result.rows);
@@ -1189,7 +1189,7 @@ app.get('/api/admin/groups', authenticateToken, async (req, res) => {
 });
 
 // Listar todas as permissões (Admin)
-app.get('/api/admin/permissions', authenticateToken, async (req, res) => {
+app.get('/api/admin/permissions', authenticateToken, checkAdmin, async (req, res) => {
   try {
     const result = await query('SELECT * FROM permissions ORDER BY code ASC');
     res.json(result.rows);
@@ -1199,7 +1199,7 @@ app.get('/api/admin/permissions', authenticateToken, async (req, res) => {
 });
 
 // Listar todas as relações grupo-permissão (Admin)
-app.get('/api/admin/group-permissions', authenticateToken, async (req, res) => {
+app.get('/api/admin/group-permissions', authenticateToken, checkAdmin, async (req, res) => {
   try {
     const result = await query('SELECT * FROM group_permissions');
     res.json(result.rows);
@@ -1209,7 +1209,7 @@ app.get('/api/admin/group-permissions', authenticateToken, async (req, res) => {
 });
 
 // Atualizar grupo de um usuário (Admin)
-app.put('/api/admin/users/:id/group', authenticateToken, async (req, res) => {
+app.put('/api/admin/users/:id/group', authenticateToken, checkAdmin, async (req, res) => {
   try {
     const { id } = req.params;
     const { group_id } = req.body;
@@ -1221,7 +1221,7 @@ app.put('/api/admin/users/:id/group', authenticateToken, async (req, res) => {
 });
 
 // Atualizar configurações de um usuário (Admin)
-app.put('/api/admin/users/:id/settings', authenticateToken, async (req, res) => {
+app.put('/api/admin/users/:id/settings', authenticateToken, checkAdmin, async (req, res) => {
   try {
     const { id } = req.params;
     const fields = req.body;
@@ -1286,7 +1286,7 @@ app.post('/api/admin/gemini-keys', authenticateToken, checkAdmin, async (req, re
   }
 });
 
-app.delete('/api/admin/gemini-keys/:id', authenticateToken, async (req, res) => {
+app.delete('/api/admin/gemini-keys/:id', authenticateToken, checkAdmin, async (req, res) => {
   try {
     const { id } = req.params;
     await query('DELETE FROM gemini_api_keys WHERE id = $1', [id]);
@@ -1296,7 +1296,7 @@ app.delete('/api/admin/gemini-keys/:id', authenticateToken, async (req, res) => 
   }
 });
 
-app.post('/api/admin/gemini-keys/reset', authenticateToken, async (req, res) => {
+app.post('/api/admin/gemini-keys/reset', authenticateToken, checkAdmin, async (req, res) => {
   try {
     await query('UPDATE gemini_api_keys SET requests_count = 0, status = CASE WHEN status = \'limite_atingido\' THEN \'ativa\' ELSE status END');
     res.json({ success: true });
@@ -1419,7 +1419,7 @@ app.get('/api/admin/queue', authenticateToken, checkAdmin, async (req, res) => {
 });
 
 // Remover permissão de um grupo (Admin)
-app.delete('/api/admin/group-permissions', authenticateToken, async (req, res) => {
+app.delete('/api/admin/group-permissions', authenticateToken, checkAdmin, async (req, res) => {
   try {
     const { group_id, permission_id } = req.body;
     await query('DELETE FROM group_permissions WHERE group_id = $1 AND permission_id = $2', [group_id, permission_id]);
@@ -1570,29 +1570,13 @@ async function runMigrations() {
   console.log('[Migration] Schema atualizado com sucesso.');
 }
 
-// --- ADMIN: Gestão de usuários ---
-app.get('/api/admin/users', authenticateToken, checkAdmin, async (req, res) => {
-  try {
-    const result = await query(`
-      SELECT u.id, u.email, u.name, u.created_at, ug.name as group_name
-      FROM users u
-      LEFT JOIN user_profiles up ON u.id = up.id
-      LEFT JOIN user_groups ug ON up.group_id = ug.id
-      ORDER BY u.created_at DESC
-    `);
-    res.json(result.rows);
-  } catch (error) {
-    res.status(500).json({ error: 'Erro ao listar usuários.' });
-  }
-});
-
-app.post('/api/admin/users/:id/reset-password', authenticateToken, checkAdmin, resetUserPasswordToDefault);
-
 app.post('/api/admin/users/:id/invalidate-sessions', authenticateToken, checkAdmin, invalidateUserSessions);
 
 app.post('/api/admin/invalidate-all-sessions', authenticateToken, checkAdmin, invalidateAllSessions);
 
 // --- FIM ADMIN ---
+
+app.use(errorHandler);
 
 app.listen(port, '0.0.0.0', async () => {
   console.log(`Backend listening on port ${port} (all interfaces)`);
