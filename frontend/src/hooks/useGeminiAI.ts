@@ -137,9 +137,14 @@ FORMATO DE SAÍDA:
         }
 
         try {
-            const token = localStorage.getItem('token')
-            const baseUrl = (import.meta as any).env.VITE_API_URL || 'https://sendmessage-backend.up.railway.app'
+            const token = localStorage.getItem('auth_token')
+            const baseUrl = (import.meta as any).env.VITE_API_URL || 'https://clrodrigues-sendmessage-backend.rsybpi.easypanel.host'
             const apiUrl = `${baseUrl}/api/ai/proxy`
+
+            if (!token) {
+                alert('Sua sessão expirou. Faça login novamente para usar a IA.')
+                return null
+            }
 
             const tempAdjust = mode === 'suggest' ? 0.1 : -0.1
             const finalTemp = Math.max(0, Math.min(1, geminiTemperature + tempAdjust))
@@ -160,6 +165,11 @@ FORMATO DE SAÍDA:
 
             if (!response.ok) {
                 const data = await response.json()
+                if (response.status === 401 || response.status === 403) {
+                    localStorage.removeItem('auth_token')
+                    localStorage.removeItem('auth_user')
+                    throw new Error('Token inválido ou expirado. Faça login novamente.')
+                }
                 throw new Error(data.error || `Erro ${response.status}`)
             }
 
