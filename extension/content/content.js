@@ -94,12 +94,46 @@
                    document.querySelector('div[aria-label^="Resultados"]');
         },
 
+        looksLikeResultCard(card) {
+            if (!card || !card.isConnected) return false;
+
+            const hasTitle = !!card.querySelector(
+                '.qBF1Pd, .fontHeadlineSmall, .NrDZNb, .lS69S, a.hfpxzc, a[href*="/maps/place/"]'
+            );
+            const text = (card.innerText || '').trim();
+
+            return hasTitle && text.length > 0;
+        },
+
         getVisibleCards() {
-            // Seleciona todos os cards no feed
-            // O seletor .Nv2Y7z é comum para o container do card
             const feed = this.getFeed();
             if (!feed) return [];
-            return Array.from(feed.querySelectorAll('div.Nv2Y7z, div[role="article"]'));
+
+            const uniqueCards = new Set();
+            const resultCards = [];
+
+            const addCard = (node) => {
+                if (!node || uniqueCards.has(node) || !this.looksLikeResultCard(node)) return;
+                uniqueCards.add(node);
+                resultCards.push(node);
+            };
+
+            const anchors = Array.from(feed.querySelectorAll('a.hfpxzc, a[href*="/maps/place/"]'));
+            for (const anchor of anchors) {
+                addCard(
+                    anchor.closest('div.Nv2PK')
+                    || anchor.closest('div[role="article"]')
+                    || anchor.closest('div.Nv2Y7z')
+                    || anchor.parentElement
+                );
+            }
+
+            if (resultCards.length === 0) {
+                const fallbackCards = Array.from(feed.querySelectorAll('div.Nv2PK, div[role="article"], div.Nv2Y7z'));
+                for (const card of fallbackCards) addCard(card);
+            }
+
+            return resultCards;
         },
 
         scrollFeed() {
@@ -303,8 +337,8 @@
             const rawId = card.getAttribute('data-result-id');
             if (rawId) return rawId;
 
-            const href = card.querySelector('a.hfpxzc')?.getAttribute('href') || '';
-            const categoryText = card.querySelector('.W4Efsf:last-child')?.innerText || '';
+            const href = card.querySelector('a.hfpxzc, a[href*="/maps/place/"]')?.getAttribute('href') || '';
+            const categoryText = this.extractCardMeta(card).rawMeta || '';
             const seed = [name, href, categoryText]
                 .filter(Boolean)
                 .join('|')
@@ -315,10 +349,77 @@
             return `sm-${seed || `idx-${Date.now()}`}`;
         },
 
+        cleanCardText(value) {
+            return String(value || '')
+                .replace(/^Ver detalhes de\s+/i, '')
+                .replace(/^Results? for\s+/i, '')
+                .replace(/\s+/g, ' ')
+                .trim();
+        },
+
+        getCardName(card) {
+            const candidates = [
+                card.querySelector('.qBF1Pd'),
+                card.querySelector('.fontHeadlineSmall'),
+                card.querySelector('.NrDZNb'),
+                card.querySelector('.lS69S'),
+                card.querySelector('a.hfpxzc'),
+                card.querySelector('a[href*="/maps/place/"]'),
+                card.querySelector('[role="link"][aria-label]'),
+                card.querySelector('div[role="link"] div:first-child'),
+            ];
+
+            for (const element of candidates) {
+                if (!element) continue;
+
+                const rawValue = [
+                    element.innerText,
+                    element.textContent,
+                    element.getAttribute?.('aria-label'),
+                ].find(Boolean);
+
+                const value = this.cleanCardText(rawValue).split('\n')[0].trim();
+                if (value && !/^(patrocinado|anuncio)$/i.test(value)) {
+                    return value;
+                }
+            }
+
+            const lines = (card.innerText || '')
+                .split('\n')
+                .map((line) => this.cleanCardText(line))
+                .filter(Boolean)
+                .filter((line) => !/^(patrocinado|anuncio|fechado|aberto)$/i.test(line));
+
+            return lines[0] || 'Sem nome';
+        },
+
+        extractCardMeta(card) {
+            const metaCandidates = Array.from(
+                card.querySelectorAll('.W4Efsd, .W4Efsf, .W4Efsd > span, .W4Efsf > span')
+            )
+                .map((element) => (element.innerText || element.textContent || '').trim())
+                .filter(Boolean);
+
+            const rawMeta = metaCandidates.find((value) => /·|Â·/.test(value))
+                || metaCandidates.find((value) => value.length > 4)
+                || '';
+
+            const parts = rawMeta
+                .split(/·|Â·/)
+                .map((part) => part.trim())
+                .filter(Boolean);
+
+            return {
+                rawMeta,
+                category: parts[0] || 'Negocio',
+                address_short: parts.slice(1).join(' - '),
+            };
+        },
+
         // Dados rápidos do card (Nível 1)
         extractFromCard(card) {
-            const nameEl = card.querySelector('.qBF1Pd, .fontHeadlineSmall, .hfpxzc');
-            const name = nameEl?.innerText?.trim() || "Sem nome";
+            const name = this.getCardName(card);
+            const meta = this.extractCardMeta(card);
             
             // Gerar um ID baseado no nome e posição se não houver ID real
             const id = this.buildStableId(card, name);
@@ -326,9 +427,9 @@
             return {
                 id,
                 name,
-                rating: card.querySelector('.MW4T7d')?.innerText || '',
-                category: card.querySelector('.W4Efsf:last-child')?.innerText?.split('·')?.[0]?.trim() || 'Negócio',
-                address_short: card.querySelector('.W4Efsf:last-child')?.innerText?.split('·')?.[1]?.trim() || ''
+                rating: card.querySelector('.MW4T7d, .MW4etd, .AJB71c')?.innerText || '',
+                category: meta.category,
+                address_short: meta.address_short
             };
         },
 
