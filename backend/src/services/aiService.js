@@ -19,7 +19,30 @@ export async function getActiveGeminiKey() {
   return result.rows[0];
 }
 
-export async function incrementKeyUsage(keyId, module, resultText, error) {
+export async function logGeminiUsage({
+  keyId = null,
+  userId = null,
+  module = null,
+  resultText = '',
+  error = null,
+  source = 'admin-pool',
+  keyLabel = null,
+}) {
+  await query(
+    'INSERT INTO gemini_api_usage_logs (key_id, user_id, module, resultado, erro, source, key_label) VALUES ($1, $2, $3, $4, $5, $6, $7)',
+    [
+      keyId,
+      userId,
+      module,
+      String(resultText || '').substring(0, 100),
+      error ? String(error) : null,
+      source,
+      keyLabel,
+    ]
+  );
+}
+
+export async function incrementKeyUsage(keyId, module, resultText, error, userId = null, source = 'admin-pool', keyLabel = null) {
   try {
     // Incrementa contador
     await query(
@@ -33,11 +56,7 @@ export async function incrementKeyUsage(keyId, module, resultText, error) {
       await query('UPDATE gemini_api_keys SET status = $1 WHERE id = $2', ['limite_atingido', keyId]);
     }
 
-    // Registra log
-    await query(
-      'INSERT INTO gemini_api_usage_logs (key_id, module, resultado, erro) VALUES ($1, $2, $3, $4)',
-      [keyId, module, String(resultText || '').substring(0, 100), error ? String(error) : null]
-    );
+    await logGeminiUsage({ keyId, userId, module, resultText, error, source, keyLabel });
   } catch (e) {
     console.error('[GeminiService] Erro ao incrementar uso da chave:', e);
   }

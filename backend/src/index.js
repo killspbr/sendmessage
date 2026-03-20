@@ -3,7 +3,7 @@ import cors from 'cors';
 import { query } from './db.js';
 import { login, signup, forgotPassword, resetPassword, authenticateToken, checkAdmin, resetUserPasswordToDefault, invalidateUserSessions, invalidateAllSessions } from './auth.js';
 import { toEvolutionNumber } from './utils/messageUtils.js';
-import { getActiveGeminiKey, incrementKeyUsage } from './services/aiService.js';
+import { getActiveGeminiKey, incrementKeyUsage, logGeminiUsage } from './services/aiService.js';
 
 const app = express();
 const port = process.env.PORT || 4000;
@@ -1182,7 +1182,7 @@ Retorne APENAS um JSON válido, sem texto extra, exatamente no formato:
     const data = await aiRes.json();
     
     if (keyData) {
-      await incrementKeyUsage(keyData.id, 'extract-contact', 'JSON Extracted', aiRes.ok ? null : data);
+      await incrementKeyUsage(keyData.id, 'extract-contact', 'JSON Extracted', aiRes.ok ? null : data, req.user.id, 'admin-pool', keyData.nome || null);
     }
 
     if (!aiRes.ok) {
@@ -1237,7 +1237,25 @@ app.post('/api/ai/proxy', authenticateToken, async (req, res) => {
     const data = await parseJsonResponseSafe(aiRes);
 
     if (access.keyData?.id) {
-      await incrementKeyUsage(access.keyData.id, 'proxy', 'AI Response', aiRes.ok ? null : data);
+      await incrementKeyUsage(access.keyData.id, 'proxy', 'AI Response', aiRes.ok ? null : data, req.user.id, access.source, access.keyData.nome || null);
+    } else {
+      const sourceLabel =
+        access.source === 'global-settings'
+          ? 'global_ai_api_key'
+          : access.source === 'user-profile'
+            ? 'user_ai_api_key'
+            : access.source === 'environment'
+              ? 'env_gemini_api_key'
+              : null;
+
+      await logGeminiUsage({
+        userId: req.user.id,
+        module: 'proxy',
+        resultText: 'AI Response',
+        error: aiRes.ok ? null : data,
+        source: access.source,
+        keyLabel: sourceLabel,
+      });
     }
 
     if (!aiRes.ok) {
@@ -1558,7 +1576,11 @@ app.get('/api/admin/operational-stats', authenticateToken, checkAdmin, async (re
       campanhas_em_execucao: 0,
       ai: {
         requestsToday: 0,
-        activeKeys: 0
+        activeKeys: 0,
+        poolRequestsToday: 0,
+        globalRequestsToday: 0,
+        userRequestsToday: 0,
+        environmentRequestsToday: 0,
       }
     };
 
@@ -1581,8 +1603,22 @@ app.get('/api/admin/operational-stats', authenticateToken, checkAdmin, async (re
     const resAik = await query("SELECT count(*) FROM gemini_api_keys WHERE status = 'ativa'");
     stats.ai.activeKeys = parseInt(resAik.rows[0].count);
     
-    const resAiu = await query("SELECT sum(requests_count) FROM gemini_api_keys");
-    stats.ai.requestsToday = parseInt(resAiu.rows[0].sum || 0);
+    const resAiu = await query(
+      `SELECT
+         COUNT(*)::int AS requests_today,
+         COUNT(*) FILTER (WHERE source = 'admin-pool')::int AS pool_requests_today,
+         COUNT(*) FILTER (WHERE source = 'global-settings')::int AS global_requests_today,
+         COUNT(*) FILTER (WHERE source = 'user-profile')::int AS user_requests_today,
+         COUNT(*) FILTER (WHERE source = 'environment')::int AS environment_requests_today
+       FROM gemini_api_usage_logs
+       WHERE data_solicitacao >= CURRENT_DATE`
+    );
+
+    stats.ai.requestsToday = parseInt(resAiu.rows[0]?.requests_today || 0);
+    stats.ai.poolRequestsToday = parseInt(resAiu.rows[0]?.pool_requests_today || 0);
+    stats.ai.globalRequestsToday = parseInt(resAiu.rows[0]?.global_requests_today || 0);
+    stats.ai.userRequestsToday = parseInt(resAiu.rows[0]?.user_requests_today || 0);
+    stats.ai.environmentRequestsToday = parseInt(resAiu.rows[0]?.environment_requests_today || 0);
 
     res.json({ success: true, data: stats });
   } catch (error) {
@@ -1750,13 +1786,18 @@ async function runMigrations() {
     )`,
     `CREATE TABLE IF NOT EXISTS gemini_api_usage_logs (
       id SERIAL PRIMARY KEY,
-      key_id INTEGER NOT NULL,
+      key_id INTEGER,
       user_id UUID,
       module TEXT,
       resultado TEXT,
       erro TEXT,
+      source TEXT DEFAULT 'admin-pool',
+      key_label TEXT,
       data_solicitacao TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
     )`,
+    `ALTER TABLE gemini_api_usage_logs ALTER COLUMN key_id DROP NOT NULL`,
+    `ALTER TABLE gemini_api_usage_logs ADD COLUMN IF NOT EXISTS source TEXT DEFAULT 'admin-pool'`,
+    `ALTER TABLE gemini_api_usage_logs ADD COLUMN IF NOT EXISTS key_label TEXT`,
     `CREATE TABLE IF NOT EXISTS scheduler_logs (
       id SERIAL PRIMARY KEY,
       event TEXT NOT NULL,

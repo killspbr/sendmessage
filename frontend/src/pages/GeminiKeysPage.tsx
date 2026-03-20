@@ -15,6 +15,10 @@ type OperationalStats = {
   ai?: {
     activeKeys?: number
     requestsToday?: number
+    poolRequestsToday?: number
+    globalRequestsToday?: number
+    userRequestsToday?: number
+    environmentRequestsToday?: number
   }
 }
 
@@ -58,8 +62,18 @@ export default function GeminiKeysPage() {
   const capacity = useMemo(() => {
     const activeKeys = stats?.ai?.activeKeys || 0
     const requestsToday = stats?.ai?.requestsToday || 0
+    const poolRequestsToday = stats?.ai?.poolRequestsToday || 0
     const max = activeKeys * 20
-    return { activeKeys, requestsToday, max, remaining: Math.max(0, max - requestsToday) }
+    return {
+      activeKeys,
+      requestsToday,
+      poolRequestsToday,
+      globalRequestsToday: stats?.ai?.globalRequestsToday || 0,
+      userRequestsToday: stats?.ai?.userRequestsToday || 0,
+      environmentRequestsToday: stats?.ai?.environmentRequestsToday || 0,
+      max,
+      remaining: Math.max(0, max - poolRequestsToday),
+    }
   }, [stats])
 
   const handleAddKey = async () => {
@@ -130,7 +144,10 @@ export default function GeminiKeysPage() {
         <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
           <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Uso do dia</div>
           <div className="mt-3 text-3xl font-semibold text-slate-900">{capacity.requestsToday}</div>
-          <div className="mt-1 text-sm text-slate-500">requisições consumidas</div>
+          <div className="mt-1 text-sm text-slate-500">requisições totais registradas</div>
+          <div className="mt-2 text-xs text-slate-400">
+            Pool: {capacity.poolRequestsToday} · Global: {capacity.globalRequestsToday} · Pessoal: {capacity.userRequestsToday}
+          </div>
         </div>
         <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
           <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Chaves ativas</div>
@@ -140,7 +157,7 @@ export default function GeminiKeysPage() {
         <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
           <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Capacidade restante</div>
           <div className="mt-3 text-3xl font-semibold text-emerald-600">{capacity.remaining}</div>
-          <div className="mt-1 text-sm text-slate-500">de {capacity.max || 0} possíveis hoje</div>
+          <div className="mt-1 text-sm text-slate-500">de {capacity.max || 0} possíveis hoje no pool administrado</div>
         </div>
       </div>
 
