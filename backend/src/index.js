@@ -3,6 +3,7 @@ import cors from 'cors';
 import { query } from './db.js';
 import { login, signup, forgotPassword, resetPassword, authenticateToken, checkAdmin, resetUserPasswordToDefault, invalidateUserSessions, invalidateAllSessions } from './auth.js';
 import { toEvolutionNumber } from './utils/messageUtils.js';
+import { getActiveGeminiKey, incrementKeyUsage } from './services/aiService.js';
 
 const app = express();
 const port = process.env.PORT || 4000;
@@ -45,6 +46,56 @@ app.post('/api/auth/signup', signup);
 app.post('/api/auth/login', login);
 app.post('/api/auth/forgot-password', forgotPassword);
 app.post('/api/auth/reset-password', resetPassword);
+
+async function parseJsonResponseSafe(response) {
+  const rawText = await response.text();
+
+  if (!rawText) {
+    return {};
+  }
+
+  try {
+    return JSON.parse(rawText);
+  } catch {
+    return { error: rawText };
+  }
+}
+
+async function resolveGeminiAccessForUser(userId) {
+  const [profileResult, settingsResult] = await Promise.all([
+    query(
+      'SELECT use_global_ai, ai_api_key FROM user_profiles WHERE id = $1 LIMIT 1',
+      [userId]
+    ),
+    query('SELECT global_ai_api_key FROM app_settings LIMIT 1')
+  ]);
+
+  const profile = profileResult.rows[0] || {};
+  const settings = settingsResult.rows[0] || {};
+  const useGlobalAi = profile.use_global_ai ?? true;
+  const userAiKey = String(profile.ai_api_key || '').trim();
+  const globalAiKey = String(settings.global_ai_api_key || '').trim();
+
+  if (!useGlobalAi && userAiKey) {
+    return { apiKey: userAiKey, source: 'user-profile', keyData: null };
+  }
+
+  if (useGlobalAi && globalAiKey) {
+    return { apiKey: globalAiKey, source: 'global-settings', keyData: null };
+  }
+
+  const pooledKey = await getActiveGeminiKey();
+  if (pooledKey?.api_key) {
+    return { apiKey: pooledKey.api_key, source: 'admin-pool', keyData: pooledKey };
+  }
+
+  const envKey = String(process.env.GEMINI_API_KEY || '').trim();
+  if (envKey) {
+    return { apiKey: envKey, source: 'environment', keyData: null };
+  }
+
+  return { apiKey: null, source: 'none', keyData: null };
+}
 
 // A partir daqui, as rotas podem ser protegidas se necessário
 // app.use(authenticateToken); 
@@ -1116,14 +1167,16 @@ Retorne APENAS um JSON válido, sem texto extra, exatamente no formato:
 app.post('/api/ai/proxy', authenticateToken, async (req, res) => {
   try {
     const { prompt, model, systemInstruction, temperature, maxTokens } = req.body;
-    
-    const keyData = await getActiveGeminiKey();
-    if (!keyData) {
-      return res.status(503).json({ error: 'Cota de IA esgotada. Por favor, adicione novas chaves Gemini no painel administrativo.' });
+
+    const access = await resolveGeminiAccessForUser(req.user.id);
+    if (!access.apiKey) {
+      return res.status(503).json({
+        error: 'Nenhuma chave Gemini disponível para este usuário. Configure uma chave global, uma chave pessoal no perfil ou uma chave ativa no painel administrativo.'
+      });
     }
 
     const actualModel = model || 'gemini-1.5-flash-latest';
-    const url = `https://generativelanguage.googleapis.com/v1/models/${actualModel}:generateContent?key=${keyData.api_key}`;
+    const url = `https://generativelanguage.googleapis.com/v1/models/${actualModel}:generateContent?key=${access.apiKey}`;
 
     const body = {
       contents: [{ parts: [{ text: prompt }] }],
@@ -1143,10 +1196,11 @@ app.post('/api/ai/proxy', authenticateToken, async (req, res) => {
       body: JSON.stringify(body)
     });
 
-    const data = await aiRes.json();
-    
-    // Incrementa uso e log
-    await incrementKeyUsage(keyData.id, 'proxy', 'AI Response', aiRes.ok ? null : data);
+    const data = await parseJsonResponseSafe(aiRes);
+
+    if (access.keyData?.id) {
+      await incrementKeyUsage(access.keyData.id, 'proxy', 'AI Response', aiRes.ok ? null : data);
+    }
 
     if (!aiRes.ok) {
       return res.status(aiRes.status).json(data);
