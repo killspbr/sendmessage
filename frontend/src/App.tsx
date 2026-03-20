@@ -1,4 +1,4 @@
-﻿import type { ChangeEvent } from 'react'
+import type { ChangeEvent } from 'react'
 import { useEffect, useState } from 'react'
 import { apiFetch } from './api'
 import { Sidebar, type SidebarPage } from './components/layout/Sidebar'
@@ -58,7 +58,7 @@ const _defaultContacts: Contact[] = [
   },
   {
     id: 3,
-    name: 'Fabuloso DogÃ£o',
+    name: 'Fabuloso Dogão',
     phone: '(11) 95834-6544',
     category: 'Lanchonete',
     cep: '09831-505',
@@ -76,7 +76,7 @@ const _defaultContacts: Contact[] = [
   },
   {
     id: 5,
-    name: 'Casa do norte 2 irmÃ£s',
+    name: 'Casa do norte 2 irmãs',
     phone: '(11) 4397-5815',
     category: 'Restaurante',
     cep: '09837-312',
@@ -95,7 +95,7 @@ const _defaultContacts: Contact[] = [
 ]
 
 const _initialLists: ContactList[] = [
-  { id: 'default', name: 'Lista padrÃ£o' },
+  { id: 'default', name: 'Lista padrão' },
   { id: 'pizzarias', name: 'Pizzarias' },
   { id: 'hamburguerias', name: 'Hamburguerias' },
 ]
@@ -127,7 +127,7 @@ function App() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const APP_VERSION = '1.1.0'
 
-  // Verificar tokens de redefiniÃ§Ã£o de senha na URL
+  // Verificar tokens de redefinição de senha na URL
   useEffect(() => {
     const path = window.location.pathname
     if (path.startsWith('/reset-password/')) {
@@ -136,13 +136,13 @@ function App() {
         setResetToken(token)
         setAuthMode('reset-password')
         setAuthError('Defina sua nova senha abaixo.')
-        // Limpar a URL sem recarregar a pÃ¡gina
+        // Limpar a URL sem recarregar a página
         window.history.pushState({}, '', '/')
       }
     }
   }, [])
 
-  // Verificar versÃ£o e forÃ§ar atualizaÃ§Ã£o se necessÃ¡rio
+  // Verificar versão e forçar atualização se necessário
   useEffect(() => {
     const checkVersion = () => {
       try {
@@ -153,13 +153,13 @@ function App() {
           localStorage.setItem('app_version', APP_VERSION)
         }
       } catch (e) {
-        console.error('Erro ao verificar versÃ£o:', e)
+        console.error('Erro ao verificar versão:', e)
       }
     }
 
     checkVersion()
 
-    // Verificar periodicamente se hÃ¡ nova versÃ£o (a cada 5 minutos)
+    // Verificar periodicamente se há nova versão (a cada 5 minutos)
     const interval = setInterval(() => {
       fetch('/index.html', { cache: 'no-store' })
         .then(() => {
@@ -244,7 +244,7 @@ function App() {
           : prev,
       )
     } catch (e) {
-      logError('userSettings.saveOverrides', 'Erro inesperado ao salvar configuraÃ§Ãµes pessoais do usuÃ¡rio:', e)
+      logError('userSettings.saveOverrides', 'Erro inesperado ao salvar configurações pessoais do usuário:', e)
     }
   }
 
@@ -278,14 +278,14 @@ function App() {
         google_maps_api_key: data.google_maps_api_key ?? null,
       })
 
-      setLastMoveMessage('ConfiguraÃ§Ãµes globais salvas com sucesso.')
+      setLastMoveMessage('Configurações globais salvas com sucesso.')
     } catch (e) {
-      logError('globalSettings.save', 'Erro inesperado ao salvar configuraÃ§Ãµes globais de integraÃ§Ã£o', e)
-      setLastMoveMessage('Erro inesperado ao salvar as configuraÃ§Ãµes globais.')
+      logError('globalSettings.save', 'Erro inesperado ao salvar configurações globais de integração', e)
+      setLastMoveMessage('Erro inesperado ao salvar as configurações globais.')
     }
   }
 
-  // Carrega email/nome lembrados apenas na primeira inicializaÃ§Ã£o do App
+  // Carrega email/nome lembrados apenas na primeira inicialização do App
   useEffect(() => {
     try {
       const remembered = localStorage.getItem('sendmessage_authRemember') === 'true'
@@ -299,11 +299,11 @@ function App() {
     } catch (e) {
       logError('auth.loadRememberedLogin', 'Erro ao carregar dados de login lembrados', e)
     }
-    // Executa apenas uma vez na inicializaÃ§Ã£o
+    // Executa apenas uma vez na inicialização
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Escuta evento global disparado pelo Service Worker indicando nova versÃ£o disponÃ­vel
+  // Escuta evento global disparado pelo Service Worker indicando nova versão disponível
   useEffect(() => {
     const handler = () => {
       setUpdateAvailable(true)
@@ -315,7 +315,7 @@ function App() {
     }
   }, [])
 
-  // Carrega configuraÃ§Ãµes especÃ­ficas do usuÃ¡rio (webhooks / IA) de user_profiles
+  // Carrega configurações específicas do usuário (webhooks / IA) de user_profiles
   useEffect(() => {
     if (!effectiveUserId) {
       setUserSettings(null)
@@ -345,7 +345,7 @@ function App() {
           setUserSettings(null)
         }
       } catch (e) {
-        logError('userSettings.load', 'Erro inesperado ao carregar configuraÃ§Ãµes do usuÃ¡rio', e)
+        logError('userSettings.load', 'Erro inesperado ao carregar configurações do usuário', e)
       }
     }
 
@@ -356,7 +356,7 @@ function App() {
     }
   }, [effectiveUserId])
 
-  // Carrega configuraÃ§Ãµes globais de integraÃ§Ã£o (IA / Evolution) de app_settings
+  // Carrega configurações globais de integração (IA / Evolution) de app_settings
   useEffect(() => {
     const loadGlobalSettings = async () => {
       try {
@@ -412,7 +412,7 @@ function App() {
   const [geminiTemperature, setGeminiTemperature] = useState<number>(0.7)
   const [geminiMaxTokens, setGeminiMaxTokens] = useState<number>(4096)
 
-  // IA efetiva considerando configuraÃ§Ãµes globais x por usuÃ¡rio
+  // IA efetiva considerando configurações globais x por usuário
   const globalAiKey = globalSettings?.global_ai_api_key || geminiApiKey || ''
   const useGlobalAi = userSettings?.use_global_ai ?? true
   const userAiKey = userSettings?.ai_api_key || null
@@ -437,7 +437,7 @@ function App() {
   const [evolutionApiKey, setEvolutionApiKey] = useState<string>('')
   const [evolutionInstance, setEvolutionInstance] = useState<string>('')
 
-  // debugEnabled pode ficar local (preferÃªncia de UI por mÃ¡quina)
+  // debugEnabled pode ficar local (preferência de UI por máquina)
   const [debugEnabled, setDebugEnabled] = useState<boolean>(() => {
     try {
       return localStorage.getItem('sendmessage_debugEnabled') === 'true'
@@ -452,7 +452,7 @@ function App() {
     } catch { }
   }, [debugEnabled])
 
-  // currentListId agora vem do hook useListsWithSupabase; mantemos apenas a persistÃªncia
+  // currentListId agora vem do hook useListsWithSupabase; mantemos apenas a persistência
   const [currentPage, setCurrentPage] = useState<SidebarPage>(() => {
     try {
       const stored = localStorage.getItem('sendmessage_currentPage') as SidebarPage
@@ -478,7 +478,7 @@ function App() {
         return stored
       }
     } catch (e) {
-      logError('ui.loadCurrentPage', 'Erro ao ler pÃ¡gina atual do localStorage', e)
+      logError('ui.loadCurrentPage', 'Erro ao ler página atual do localStorage', e)
     }
     return 'contacts'
   })
@@ -527,7 +527,7 @@ function App() {
 
   const [idsNormalized, setIdsNormalized] = useState(false)
 
-  // Filtros de contatos: inicializaÃ§Ã£o preguiÃ§osa lendo do localStorage
+  // Filtros de contatos: inicialização preguiçosa lendo do localStorage
   const [searchName, setSearchName] = useState<string>(() => {
     try {
       return localStorage.getItem('sendmessage_contacts_searchName') || ''
@@ -608,7 +608,7 @@ function App() {
   const [confirmDeleteListOpen, setConfirmDeleteListOpen] = useState(false)
   const [_confirmCancelSendOpen, _setConfirmCancelSendOpen] = useState(false)
 
-  // FormulÃ¡rio integrado para criaÃ§Ã£o/ediÃ§Ã£o de contato
+  // Formulário integrado para criação/edição de contato
   const [editingContactId, setEditingContactId] = useState<number | null>(null)
   const [showContactForm, setShowContactForm] = useState(false)
   const [contactFormName, setContactFormName] = useState('')
@@ -659,24 +659,24 @@ function App() {
   const htmlToWhatsapp = (html: string): string => {
     if (!html) return ''
 
-    // Trabalha sobre o HTML bruto para preservar tags de parÃ¡grafo e listas
+    // Trabalha sobre o HTML bruto para preservar tags de parágrafo e listas
     let text = html
 
     // negrito
     text = text.replace(/<(b|strong)>([\s\S]*?)<\/(b|strong)>/gi, '*$2*')
-    // itÃ¡lico
+    // itálico
     text = text.replace(/<(i|em)>([\s\S]*?)<\/(i|em)>/gi, '_$2_')
     // rasurado
     text = text.replace(/<(s|del)>([\s\S]*?)<\/(s|del)>/gi, '~$2~')
-    // cÃ³digo em bloco
+    // código em bloco
     text = text.replace(/<pre[^>]*>([\s\S]*?)<\/pre>/gi, '``$1``')
-    // cÃ³digo inline
+    // código inline
     text = text.replace(/<code[^>]*>([\s\S]*?)<\/code>/gi, '$1')
 
     // listas com marcas (simples)
     text = text.replace(/<li[^>]*>([\s\S]*?)<\/li>/gi, '* $1\n')
 
-    // citaÃ§Ã£o
+    // citação
     text = text.replace(/<blockquote[^>]*>([\s\S]*?)<\/blockquote>/gi, '> $1\n')
 
     // links
@@ -691,15 +691,15 @@ function App() {
       return `${cleanLabel} (${url})`
     })
 
-    // separadores de blocos: tÃ­tulos e listas
+    // separadores de blocos: títulos e listas
     text = text
       .replace(/<\/?(ul|ol)[^>]*>/gi, '\n')
       .replace(/<h[1-6][^>]*>([\s\S]*?)<\/h[1-6]>/gi, '*$1*\n')
 
-    // quebras de linha e parÃ¡grafos
+    // quebras de linha e parágrafos
     // <br> vira uma quebra simples
     text = text.replace(/<br\s*\/?>/gi, '\n')
-    // Fim de parÃ¡grafo/div vira uma quebra simples (igual ao visual do HTML)
+    // Fim de parágrafo/div vira uma quebra simples (igual ao visual do HTML)
     text = text.replace(/<\/(p|div)>/gi, '\n')
 
     // remover demais tags
@@ -708,10 +708,10 @@ function App() {
     // decodificar entidades HTML
     text = decodeHtml(text)
 
-    // NormalizaÃ§Ã£o:
-    // 1. Remove espaÃ§os e tabs no final das linhas
+    // Normalização:
+    // 1. Remove espaços e tabs no final das linhas
     text = text.replace(/[ \t]+\n/g, '\n')
-    // 2. Remove linhas em branco extras (mantÃ©m no mÃ¡ximo 2 quebras seguidas)
+    // 2. Remove linhas em branco extras (mantém no máximo 2 quebras seguidas)
     text = text.replace(/\n{2,}/g, '\n\n')
 
     return text.trim()
@@ -788,7 +788,7 @@ function App() {
 
     return { backendOk, backendStatus }
   }
-  // FunÃ§Ã£o para salvar histÃ³rico de envio no backend
+  // Função para salvar histórico de envio no backend
   const saveSendHistory = async (entry: {
     campaignId: string
     contactName: string
@@ -813,24 +813,24 @@ function App() {
         })
       })
     } catch (e) {
-      console.error('Erro ao salvar histÃ³rico no backend:', e)
+      console.error('Erro ao salvar histórico no backend:', e)
     }
   }
 
   const handleCreateCampaign = async () => {
     if (!effectiveUserId) {
-      setLastMoveMessage('Ã‰ necessÃ¡rio estar logado para criar campanhas.')
+      setLastMoveMessage('É necessário estar logado para criar campanhas.')
       return
     }
     const name = newCampaignName.trim()
     const message = newCampaignMessage.trim()
     if (!name) {
-      setLastMoveMessage('DÃª um nome para a campanha.')
+      setLastMoveMessage('Dê um nome para a campanha.')
       return
     }
 
     if (!message) {
-      setLastMoveMessage('Digite o conteÃºdo da mensagem da campanha.')
+      setLastMoveMessage('Digite o conteúdo da mensagem da campanha.')
       return
     }
 
@@ -939,12 +939,12 @@ function App() {
   const handleStartEditCampaign = (camp: Campaign) => {
     setEditingCampaignId(camp.id)
     setNewCampaignName(camp.name)
-    // tenta achar o id da lista pelo nome; se nÃ£o achar, mantÃ©m o atual
+    // tenta achar o id da lista pelo nome; se não achar, mantém o atual
     const listByName = lists.find((l) => l.name === camp.listName)
     setNewCampaignListId(listByName?.id ?? newCampaignListId)
     setNewCampaignChannels(camp.channels)
     setNewCampaignMessage(camp.message)
-    // Intervalo especÃ­fico da campanha (fallback 30/90)
+    // Intervalo específico da campanha (fallback 30/90)
     setSendIntervalMinSeconds(camp.intervalMinSeconds ?? 30)
     setSendIntervalMaxSeconds(camp.intervalMaxSeconds ?? 90)
     const input = document.getElementById('new-campaign-name') as HTMLInputElement | null
@@ -953,7 +953,7 @@ function App() {
   }
 
   const handleDuplicateCampaign = (camp: Campaign) => {
-    const copyName = `${camp.name} (cÃ³pia)`
+    const copyName = `${camp.name} (cópia)`
     setEditingCampaignId(null)
     setNewCampaignName(copyName)
     const listByName = lists.find((l) => l.name === camp.listName)
@@ -979,7 +979,7 @@ function App() {
 
   const _handleConfirmDeleteCampaign = async (id: string) => {
     if (!effectiveUserId) {
-      setLastMoveMessage('Ã‰ necessÃ¡rio estar logado para excluir campanhas.')
+      setLastMoveMessage('É necessário estar logado para excluir campanhas.')
       return
     }
 
@@ -996,7 +996,7 @@ function App() {
         setNewCampaignMessage('')
       }
       setDeleteCampaignId(null)
-      setLastMoveMessage('Campanha excluÃ­da com sucesso.')
+      setLastMoveMessage('Campanha excluída com sucesso.')
     } catch (e) {
       console.error('Erro inesperado ao excluir campanha:', e)
       setLastMoveMessage('Erro inesperado ao excluir a campanha.')
@@ -1005,7 +1005,7 @@ function App() {
 
   const handleRequestSendCampaignToN8n = async (camp: Campaign) => {
     if (!currentUser) {
-      setLastMoveMessage('Ã‰ necessÃ¡rio estar logado para enviar campanhas.')
+      setLastMoveMessage('É necessário estar logado para enviar campanhas.')
       return
     }
 
@@ -1062,7 +1062,7 @@ function App() {
     }
   }
 
-  // Calcula quantos contatos ainda nÃ£o receberam a campanha
+  // Calcula quantos contatos ainda não receberam a campanha
   const getPendingContacts = (camp: Campaign) => {
     const campListNameLower = camp.listName.toLowerCase()
     const list =
@@ -1078,23 +1078,23 @@ function App() {
       ch === 'whatsapp' ? hasEvolutionConfigured : false,
     )
 
-    // Filtra contatos que ainda nÃ£o receberam em TODOS os canais configurados
+    // Filtra contatos que ainda não receberam em TODOS os canais configurados
     const pendingContacts = contactsForList.filter((contact) => {
       const phoneKey = normalizePhone(contact.phone)
 
       for (const channel of effectiveChannels) {
-        // Verifica se o contato tem o dado necessÃ¡rio para o canal
+        // Verifica se o contato tem o dado necessário para o canal
         if (channel === 'whatsapp' && !phoneKey) continue
         if (channel === 'email' && !(contact.email ?? '').trim()) continue
 
-        // Verifica se jÃ¡ foi enviado para este contato/canal/campanha
+        // Verifica se já foi enviado para este contato/canal/campanha
         const alreadySent = contactSendHistory.some(
           (h) => h.campaignId === camp.id && h.phoneKey === phoneKey && h.channel === channel && h.ok
         )
 
         if (!alreadySent) return true // Ainda tem canal pendente
       }
-      return false // Todos os canais jÃ¡ foram enviados com sucesso
+      return false // Todos os canais já foram enviados com sucesso
     })
 
     return { pendingContacts, contactsForList, effectiveChannels, list, listId }
@@ -1104,18 +1104,18 @@ function App() {
     const { pendingContacts, effectiveChannels, list, listId } = getPendingContacts(camp)
 
     if (pendingContacts.length === 0) {
-      setLastMoveMessage('Todos os contatos jÃ¡ receberam esta campanha para os canais configurados.')
+      setLastMoveMessage('Todos os contatos já receberam esta campanha para os canais configurados.')
       return
     }
 
     if (sendingCampaignId && sendingCampaignId !== camp.id) {
-      setLastMoveMessage('JÃ¡ existe uma campanha sendo enviada. Aguarde finalizar para iniciar outra.')
+      setLastMoveMessage('Já existe uma campanha sendo enviada. Aguarde finalizar para iniciar outra.')
       return
     }
 
     if (effectiveChannels.length === 0) {
       setLastMoveMessage(
-        'Nenhuma integraÃ§Ã£o estÃ¡ configurada para os canais desta campanha. Ajuste em ConfiguraÃ§Ãµes ou em Meu perfil.',
+        'Nenhuma integração está configurada para os canais desta campanha. Ajuste em Configurações ou em Meu perfil.',
       )
       return
     }
@@ -1146,11 +1146,11 @@ function App() {
       const phoneKey = normalizePhone(contact.phone)
 
       const sendPromises = effectiveChannels.map(async (channel) => {
-        // Verifica se jÃ¡ foi enviado com sucesso para este canal
+        // Verifica se já foi enviado com sucesso para este canal
         const alreadySent = contactSendHistory.some(
           (h) => h.campaignId === camp.id && h.phoneKey === phoneKey && h.channel === channel && h.ok
         )
-        if (alreadySent) return // Pula se jÃ¡ enviou
+        if (alreadySent) return // Pula se já enviou
 
         if (channel === 'whatsapp' && !phoneKey) return
         if (channel === 'email' && !(contact.email ?? '').trim()) return
@@ -1189,17 +1189,17 @@ function App() {
         try {
           const endpoint = channel === 'whatsapp' ? `${BACKEND_URL}/api/campaigns/${camp.id}/send` : `${BACKEND_URL}/api/n8n/trigger`
 
-          // Se for WhatsApp, o backend jÃ¡ faz o loop, mas para compatibilidade com o progresso do front, 
-          // poderÃ­amos passar o contato especÃ­fico se implementÃ¡ssemos send-single. 
-          // POR ENQUANTO: Para WhatsApp, vamos chamar o endpoint de Campanha que jÃ¡ refatoramos.
-          // NOTA: Isso vai disparar para todos. Para "limpar" de vez, o ideal Ã© o front apenas disparar o backend uma vez.
+          // Se for WhatsApp, o backend já faz o loop, mas para compatibilidade com o progresso do front, 
+          // poderíamos passar o contato específico se implementássemos send-single. 
+          // POR ENQUANTO: Para WhatsApp, vamos chamar o endpoint de Campanha que já refatoramos.
+          // NOTA: Isso vai disparar para todos. Para "limpar" de vez, o ideal é o front apenas disparar o backend uma vez.
 
-          // MUDANÃ‡A: Se o canal Ã© WhatsApp, vamos delegar ao backend COMPLETAMENTE e parar o loop do front para esse canal
+          // MUDANÇA: Se o canal é WhatsApp, vamos delegar ao backend COMPLETAMENTE e parar o loop do front para esse canal
           if (channel === 'whatsapp') {
             // Trigger backend once and break? No, let's keep it simple for now and fix the crash.
-            // Para nÃ£o quebrar a UI de progresso, vamos apenas 'pular' o disparo via front e assumir que o backend faz.
+            // Para não quebrar a UI de progresso, vamos apenas 'pular' o disparo via front e assumir que o backend faz.
             // Mas o backend /send envia para TODOS. 
-            // Melhor: Chamar o backend apenas uma vez no inÃ­cio.
+            // Melhor: Chamar o backend apenas uma vez no início.
           }
 
           // We shouldn't loop sending if the backend endpoint loops!
@@ -1314,32 +1314,32 @@ function App() {
         prev.map((c) => (c.id === camp.id ? { ...c, status: 'enviada' } : c)),
       )
       setLastMoveMessage(
-        `ContinuaÃ§Ã£o da campanha "${camp.name}" finalizada com sucesso para ${pendingContacts.length} contato(s).`,
+        `Continuação da campanha "${camp.name}" finalizada com sucesso para ${pendingContacts.length} contato(s).`,
       )
     } else {
       setCampaigns((prev) =>
         prev.map((c) => (c.id === camp.id ? { ...c, status: 'enviada_com_erros' } : c)),
       )
       setLastMoveMessage(
-        `ContinuaÃ§Ã£o da campanha "${camp.name}" finalizada com ${errorCount} erro(s) em ${pendingContacts.length} contato(s).`,
+        `Continuação da campanha "${camp.name}" finalizada com ${errorCount} erro(s) em ${pendingContacts.length} contato(s).`,
       )
     }
 
     setSendingNextDelaySeconds(null)
     setSendingCampaignId(null)
 
-    // Recarrega histÃ³rico do Supabase para refletir exatamente os envios persistidos
+    // Recarrega histórico do Supabase para refletir exatamente os envios persistidos
     await reloadContactSendHistory()
   }
 
   const handleSendCampaignToN8n = async (camp: Campaign) => {
     if (!currentUser) {
-      setLastMoveMessage('Ã‰ necessÃ¡rio estar logado para enviar campanhas.')
+      setLastMoveMessage('É necessário estar logado para enviar campanhas.')
       return
     }
 
     if (sendingCampaignId && sendingCampaignId !== camp.id) {
-      setLastMoveMessage('JÃ¡ existe uma campanha sendo enviada. Aguarde finalizar para iniciar outra.')
+      setLastMoveMessage('Já existe uma campanha sendo enviada. Aguarde finalizar para iniciar outra.')
       return
     }
 
@@ -1352,7 +1352,7 @@ function App() {
     const contactsForList = contactsByList[listId] ?? []
 
     if (contactsForList.length === 0) {
-      setLastMoveMessage('Esta lista nÃ£o possui contatos para enviar.')
+      setLastMoveMessage('Esta lista não possui contatos para enviar.')
       return
     }
 
@@ -1361,7 +1361,7 @@ function App() {
       (!!userSettings?.evolution_instance || !!globalSettings?.evolution_shared_instance)
 
     if (!hasEvolution) {
-      setLastMoveMessage('Nenhum serviÃ§o de envio (Evolution API) estÃ¡ configurado. Ajuste em ConfiguraÃ§Ãµes.')
+      setLastMoveMessage('Nenhum serviço de envio (Evolution API) está configurado. Ajuste em Configurações.')
       return
     }
 
@@ -1377,7 +1377,7 @@ function App() {
     })
 
     try {
-      // Uma Ãºnica chamada autenticada ao backend â€” ele faz o loop e os intervalos
+      // Uma única chamada autenticada ao backend — ele faz o loop e os intervalos
       const result = await apiFetch(`/api/campaigns/${camp.id}/send`, {
         method: 'POST',
         body: JSON.stringify({}),
@@ -1423,7 +1423,7 @@ function App() {
         return [entry, ...prev].slice(0, 50)
       })
 
-      // Grava histÃ³rico agregado
+      // Grava histórico agregado
       try {
         await apiFetch('/api/campaigns/history', {
           method: 'POST',
@@ -1437,7 +1437,7 @@ function App() {
           })
         })
       } catch (e) {
-        console.error('Erro ao gravar histÃ³rico agregado no backend', e)
+        console.error('Erro ao gravar histórico agregado no backend', e)
       }
 
       if (errorCount === 0) {
@@ -1449,7 +1449,7 @@ function App() {
         setCampaigns((prev) =>
           prev.map((c) => (c.id === camp.id ? { ...c, status: 'enviada_com_erros' } : c))
         )
-        setLastMoveMessage(`Campanha "${camp.name}" concluÃ­da com ${errorCount} erro(s) em ${total} contato(s).`)
+        setLastMoveMessage(`Campanha "${camp.name}" concluída com ${errorCount} erro(s) em ${total} contato(s).`)
       }
 
       await reloadContactSendHistory()
@@ -1465,7 +1465,7 @@ function App() {
 
   const contacts = contactsByList[currentListId] ?? []
 
-  // Listas ordenadas alfabeticamente para exibiÃ§Ã£o
+  // Listas ordenadas alfabeticamente para exibição
   const sortedLists = [...lists].sort((a, b) => a.name.localeCompare(b.name, 'pt-BR', { sensitivity: 'base' }))
 
   const filteredContacts = contacts.filter((contact) => {
@@ -1512,8 +1512,8 @@ function App() {
   }, [campaigns])
 
 
-  // Normaliza contatos existentes na inicializaÃ§Ã£o:
-  // - Remove duplicados por telefone normalizado em cada lista (mantÃ©m o primeiro)
+  // Normaliza contatos existentes na inicialização:
+  // - Remove duplicados por telefone normalizado em cada lista (mantém o primeiro)
   // - Move contatos sem telefone e sem email para a lista especial 'sem-contatos'
   // - Renumera IDs sequencialmente por lista
   useEffect(() => {
@@ -1564,7 +1564,7 @@ function App() {
         next[listId] = renumbered
       })
 
-      // Renumera tambÃ©m a lista 'sem-contatos'
+      // Renumera também a lista 'sem-contatos'
       if (collectedSemContatos.length > 0) {
         let counter = 1
         next[semContatosId] = collectedSemContatos.map((c) => ({
@@ -1579,7 +1579,7 @@ function App() {
     setIdsNormalized(true)
   }, [idsNormalized])
 
-  // Esconde automaticamente o toast de movimentaÃ§Ã£o apÃ³s alguns segundos
+  // Esconde automaticamente o toast de movimentação após alguns segundos
   useEffect(() => {
     if (!lastMoveMessage) return
     const timeout = setTimeout(() => {
@@ -1611,7 +1611,7 @@ function App() {
 
       const [, ...rows] = lines
 
-      // Garante IDs Ãºnicos por lista: comeÃ§a apÃ³s o maior ID existente na lista atual
+      // Garante IDs únicos por lista: começa após o maior ID existente na lista atual
       const existing = contactsByList[currentListId] ?? []
       const maxExistingId = existing.reduce((max, c) => (c.id > max ? c.id : max), 0)
       const baseId = maxExistingId + 1
@@ -1665,7 +1665,7 @@ function App() {
         const sameCep = already.cep === incoming.cep
         const sameRating = formatRating(already.rating) === formatRating(incoming.rating)
 
-        // Se todas as informaÃ§Ãµes relevantes forem idÃªnticas, ignorar esse registro
+        // Se todas as informações relevantes forem idênticas, ignorar esse registro
         if (sameName && sameCategory && sameCep && sameRating) {
           return
         }
@@ -1687,16 +1687,16 @@ function App() {
 
   const handleDeleteContact = async (id: number) => {
     if (!effectiveUserId || !currentListId) {
-      setLastMoveMessage('Ã‰ necessÃ¡rio estar logado e com uma lista selecionada para excluir contatos.')
+      setLastMoveMessage('É necessário estar logado e com uma lista selecionada para excluir contatos.')
       return
     }
 
     const current = contactsByList[currentListId] ?? []
     const existing = current.find((c) => c.id === id)
-    const supabaseId = existing?.supabaseId // No backend esse Ã© o ID (uuid ou serial)
+    const supabaseId = existing?.supabaseId // No backend esse é o ID (uuid ou serial)
 
     if (!supabaseId) {
-      setLastMoveMessage('NÃ£o foi possÃ­vel identificar o contato no banco para exclusÃ£o.')
+      setLastMoveMessage('Não foi possível identificar o contato no banco para exclusão.')
       return
     }
 
@@ -1709,7 +1709,7 @@ function App() {
         ...prev,
         [currentListId]: current.filter((c) => c.id !== id),
       }))
-      setLastMoveMessage('Contato excluÃ­do com sucesso.')
+      setLastMoveMessage('Contato excluído com sucesso.')
     } catch (e) {
       console.error('Erro inesperado ao excluir contato:', e)
       setLastMoveMessage('Erro inesperado ao excluir o contato.')
@@ -1730,7 +1730,7 @@ function App() {
   }
 
   const handleCreateContactManual = () => {
-    // Limpa o formulÃ¡rio para criaÃ§Ã£o de um novo contato
+    // Limpa o formulário para criação de um novo contato
     setEditingContactId(null)
     setContactFormName('')
     setContactFormPhone('')
@@ -1746,7 +1746,7 @@ function App() {
   const handleBackfillAddressFromCep = async () => {
     if (isBackfillingAddress) return
 
-    // Monta lista de contatos com CEP preenchido e endereÃ§o vazio
+    // Monta lista de contatos com CEP preenchido e endereço vazio
     const tasks: { listId: string; contactId: number; cep: string }[] = []
     Object.entries(contactsByList).forEach(([listId, contacts]) => {
       contacts.forEach((c) => {
@@ -1759,14 +1759,14 @@ function App() {
     })
 
     if (tasks.length === 0) {
-      setLastMoveMessage('Nenhum contato com CEP preenchido e endereÃ§o vazio foi encontrado.')
+      setLastMoveMessage('Nenhum contato com CEP preenchido e endereço vazio foi encontrado.')
       return
     }
 
     setIsBackfillingAddress(true)
     setBackfillProcessed(0)
     setBackfillTotal(tasks.length)
-    setLastMoveMessage(`IA completando endereÃ§os por CEP... 0/${tasks.length}`)
+    setLastMoveMessage(`IA completando endereços por CEP... 0/${tasks.length}`)
 
     let updatedCount = 0
     let errorCount = 0
@@ -1813,17 +1813,17 @@ function App() {
 
         const processed = i + 1
         setBackfillProcessed(processed)
-        setLastMoveMessage(`IA completando endereÃ§os por CEP... ${processed}/${tasks.length}`)
+        setLastMoveMessage(`IA completando endereços por CEP... ${processed}/${tasks.length}`)
       }
 
       if (updatedCount === 0) {
         setLastMoveMessage(
-          `IA concluiu a anÃ¡lise de ${tasks.length} contato(s) com CEP, mas nÃ£o conseguiu completar nenhum endereÃ§o.`,
+          `IA concluiu a análise de ${tasks.length} contato(s) com CEP, mas não conseguiu completar nenhum endereço.`,
         )
       } else {
         const msgErrors = errorCount > 0 ? ` com ${errorCount} erro(s)` : ''
         setLastMoveMessage(
-          `IA completou endereÃ§os para ${updatedCount} de ${tasks.length} contato(s)${msgErrors}. Revise os dados antes de enviar campanhas.`,
+          `IA completou endereços para ${updatedCount} de ${tasks.length} contato(s)${msgErrors}. Revise os dados antes de enviar campanhas.`,
         )
       }
     } finally {
@@ -1842,7 +1842,7 @@ function App() {
         if (!base64 || typeof base64 !== 'string') return
 
         if (!geminiApiKey) {
-          setLastMoveMessage('Informe a Gemini API Key na tela de ConfiguraÃ§Ãµes antes de usar a IA.')
+          setLastMoveMessage('Informe a Gemini API Key na tela de Configurações antes de usar a IA.')
           return
         }
 
@@ -1862,7 +1862,7 @@ function App() {
 
           const c = data.contact || {}
 
-          // Garante existÃªncia da lista "IA"
+          // Garante existência da lista "IA"
           setLists((prev) => {
             const exists = prev.some((l) => l.id === 'ia')
             if (exists) return prev
@@ -1893,7 +1893,7 @@ function App() {
             el.scrollIntoView({ behavior: 'smooth', block: 'start' })
           }
 
-          setLastMoveMessage('Dados extraÃ­dos pela IA. Revise e salve o contato na lista "IA".')
+          setLastMoveMessage('Dados extraídos pela IA. Revise e salve o contato na lista "IA".')
         } catch (err) {
           console.error('Erro ao chamar IA:', err)
           setLastMoveMessage('Erro inesperado ao chamar IA. Tente novamente.')
@@ -1923,7 +1923,7 @@ function App() {
 
   const handleSaveContactForm = async () => {
     if (!effectiveUserId || !currentListId) {
-      setLastMoveMessage('Ã‰ necessÃ¡rio estar logado e com uma lista selecionada para salvar contatos.')
+      setLastMoveMessage('É necessário estar logado e com uma lista selecionada para salvar contatos.')
       return
     }
 
@@ -1935,18 +1935,18 @@ function App() {
 
     const phoneDigits = normalizePhone(contactFormPhone)
     if (phoneDigits && phoneDigits.length !== 10 && phoneDigits.length !== 11) {
-      setLastMoveMessage('Telefone invÃ¡lido. Use apenas dÃ­gitos no formato 1199999999 ou 11999999999.')
+      setLastMoveMessage('Telefone inválido. Use apenas dígitos no formato 1199999999 ou 11999999999.')
       return
     }
     const current = contactsByList[currentListId] ?? []
 
     try {
       if (editingContactId != null) {
-        // EdiÃ§Ã£o de contato existente
+        // Edição de contato existente
         const existing = current.find((c) => c.id === editingContactId)
         const supabaseId = existing?.supabaseId
         if (!supabaseId) {
-          setLastMoveMessage('NÃ£o foi possÃ­vel identificar o contato no banco para ediÃ§Ã£o.')
+          setLastMoveMessage('Não foi possível identificar o contato no banco para edição.')
           return
         }
 
@@ -1982,7 +1982,7 @@ function App() {
           [currentListId]: current.map((c) => (c.id === editingContactId ? updatedContact : c)),
         }))
       } else {
-        // CriaÃ§Ã£o de novo contato
+        // Criação de novo contato
         const data = await apiFetch('/api/contacts', {
           method: 'POST',
           body: JSON.stringify({
@@ -2032,7 +2032,7 @@ function App() {
     if (!importNewContacts && !importConflicts) return
 
     if (!effectiveUserId || !currentListId) {
-      setLastMoveMessage('Ã‰ necessÃ¡rio estar logado e com uma lista selecionada para aplicar a importaÃ§Ã£o.')
+      setLastMoveMessage('É necessário estar logado e com uma lista selecionada para aplicar a importação.')
       return
     }
 
@@ -2042,7 +2042,7 @@ function App() {
     const toInsert: Contact[] = []
     const toUpdate: { supabaseId: string; data: Contact }[] = []
 
-    // Processa conflitos: quando o usuÃ¡rio escolhe "arquivo", atualizamos o contato existente
+    // Processa conflitos: quando o usuário escolhe "arquivo", atualizamos o contato existente
     if (importConflicts) {
       importConflicts.forEach((conflict) => {
         const key = normalizePhone(conflict.existing.phone || conflict.incoming.phone)
@@ -2054,11 +2054,11 @@ function App() {
         if (conflict.resolution === 'file') {
           toUpdate.push({ supabaseId: existing.supabaseId, data: conflict.incoming })
         }
-        // se resoluÃ§Ã£o for "existing", nÃ£o fazemos nada no banco
+        // se resolução for "existing", não fazemos nada no banco
       })
     }
 
-    // Novos contatos vindos do arquivo, que nÃ£o colidem com telefones existentes
+    // Novos contatos vindos do arquivo, que não colidem com telefones existentes
     if (importNewContacts) {
       importNewContacts.forEach((c) => {
         const key = normalizePhone(c.phone)
@@ -2069,7 +2069,7 @@ function App() {
         if (!hasPhone && !hasEmail) return
 
         if (hasPhone && byPhone.has(key)) {
-          // jÃ¡ foi tratado como conflito; nÃ£o inserir como novo
+          // já foi tratado como conflito; não inserir como novo
           return
         }
 
@@ -2097,7 +2097,7 @@ function App() {
             })
           })
         } catch (e) {
-          console.error('Erro ao atualizar contato durante importaÃ§Ã£o', e)
+          console.error('Erro ao atualizar contato durante importação', e)
         }
       }
 
@@ -2121,12 +2121,12 @@ function App() {
               })
             })
           } catch (e) {
-            console.error('Erro ao inserir contato durante importaÃ§Ã£o', e)
+            console.error('Erro ao inserir contato durante importação', e)
           }
         }
       }
 
-      // 3) Recarrega contatos da lista atual a partir do backend para garantir consistÃªncia
+      // 3) Recarrega contatos da lista atual a partir do backend para garantir consistência
       try {
         const data = await apiFetch(`/api/contacts?listId=${currentListId}`)
 
@@ -2148,13 +2148,13 @@ function App() {
           [currentListId]: mapped,
         }))
       } catch (e) {
-        console.error('Erro inesperado ao recarregar contatos apÃ³s importaÃ§Ã£o', e)
+        console.error('Erro inesperado ao recarregar contatos após importação', e)
       }
 
-      setLastMoveMessage('ImportaÃ§Ã£o aplicada e contatos salvos no backend.')
+      setLastMoveMessage('Importação aplicada e contatos salvos no backend.')
     } catch (e) {
-      console.error('Erro inesperado ao aplicar importaÃ§Ã£o de contatos', e)
-      setLastMoveMessage('Erro inesperado ao aplicar a importaÃ§Ã£o de contatos.')
+      console.error('Erro inesperado ao aplicar importação de contatos', e)
+      setLastMoveMessage('Erro inesperado ao aplicar a importação de contatos.')
     }
 
     setImportNewContacts(null)
@@ -2170,7 +2170,7 @@ function App() {
     const listContacts = contactsByList[currentListId] ?? []
     if (listContacts.length === 0) return
 
-    const header = 'Nome;NÃºmero de celular;AvaliaÃ§Ã£o;Categoria;Email;CEP'
+    const header = 'Nome;Número de celular;Avaliação;Categoria;Email;CEP'
     const rows = listContacts.map((c) => {
       const safe = (value: string) => value.replace(/;/g, ',')
       return [
@@ -2253,13 +2253,13 @@ function App() {
     }
 
     if (moveTargetListId === currentListId) {
-      setLastMoveMessage('A lista de destino Ã© a mesma lista atual.')
+      setLastMoveMessage('A lista de destino é a mesma lista atual.')
       return
     }
 
     const targetList = lists.find((l) => l.id === moveTargetListId)
     if (!targetList) {
-      setLastMoveMessage('Lista de destino invÃ¡lida.')
+      setLastMoveMessage('Lista de destino inválida.')
       return
     }
 
@@ -2315,7 +2315,7 @@ function App() {
         if (typeof text !== 'string') return
         const parsed = JSON.parse(text)
         if (!parsed || typeof parsed !== 'object') {
-          setLastMoveMessage('Arquivo de backup invÃ¡lido.')
+          setLastMoveMessage('Arquivo de backup inválido.')
           return
         }
         setImportPreview(parsed)
@@ -2328,10 +2328,10 @@ function App() {
     reader.readAsText(file)
   }
 
-  // Handler para confirmar importaÃ§Ã£o de backup
+  // Handler para confirmar importação de backup
   const handleConfirmImportBackup = async () => {
     if (!effectiveUserId || !importPreview?.data) {
-      setLastMoveMessage('Ã‰ necessÃ¡rio estar logado para importar os dados.')
+      setLastMoveMessage('É necessário estar logado para importar os dados.')
       return
     }
 
@@ -2340,7 +2340,7 @@ function App() {
     try {
       setLastMoveMessage('Importando dados para o servidor...')
 
-      // 1) Apaga listas, contatos e campanhas atuais do usuÃ¡rio (substituir tudo)
+      // 1) Apaga listas, contatos e campanhas atuais do usuário (substituir tudo)
       await apiFetch('/api/contacts', { method: 'DELETE' })
       await apiFetch('/api/campaigns', { method: 'DELETE' })
       await apiFetch('/api/lists', { method: 'DELETE' })
@@ -2361,7 +2361,7 @@ function App() {
               listIdMap.set(String(old.id ?? old.name), inserted.id)
             }
           } catch (e) {
-            console.error('Erro ao criar lista durante importaÃ§Ã£o', e, old)
+            console.error('Erro ao criar lista durante importação', e, old)
           }
         }
       }
@@ -2409,7 +2409,7 @@ function App() {
 
             const listName: string = typeof camp.listName === 'string'
               ? camp.listName
-              : 'Lista padrÃ£o'
+              : 'Lista padrão'
 
             await apiFetch('/api/campaigns', {
               method: 'POST',
@@ -2422,7 +2422,7 @@ function App() {
               })
             })
           } catch (e) {
-            console.error('Erro ao recriar campanha durante importaÃ§Ã£o', e, camp)
+            console.error('Erro ao recriar campanha durante importação', e, camp)
           }
         }
       }
@@ -2432,10 +2432,10 @@ function App() {
       await reloadCampaigns()
 
       if (Array.isArray(d.contactSendHistory) && d.contactSendHistory.length > 0) {
-        // Primeiro apaga histÃ³rico existente
+        // Primeiro apaga histórico existente
         await apiFetch('/api/history', { method: 'DELETE' })
 
-        // Insere histÃ³rico do backup em lotes de 10
+        // Insere histórico do backup em lotes de 10
         const historyItems = d.contactSendHistory as any[]
         const batchSize = 10
         for (let i = 0; i < historyItems.length; i += batchSize) {
@@ -2457,7 +2457,7 @@ function App() {
                 })
               })
             } catch (e) {
-              console.error('Erro ao importar item de histÃ³rico:', e)
+              console.error('Erro ao importar item de histórico:', e)
             }
           }
         }
@@ -2468,7 +2468,7 @@ function App() {
       if (d.sendIntervalMinSeconds != null) setSendIntervalMinSeconds(d.sendIntervalMinSeconds)
       if (d.sendIntervalMaxSeconds != null) setSendIntervalMaxSeconds(d.sendIntervalMaxSeconds)
 
-      // Limpa contatos em memÃ³ria; serÃ£o recarregados do Supabase ao trocar de lista
+      // Limpa contatos em memória; serão recarregados do Supabase ao trocar de lista
       setContactsByList({})
 
       setImportPreview(null)
@@ -2488,7 +2488,7 @@ function App() {
   const handleRenameCurrentList = () => {
     if (!currentUser) return
     if (currentListId === 'sem-contatos') {
-      setLastMoveMessage('Esta lista nÃ£o pode ser renomeada.')
+      setLastMoveMessage('Esta lista não pode ser renomeada.')
       return
     }
 
@@ -2500,7 +2500,7 @@ function App() {
   const handleDeleteCurrentList = () => {
     if (!currentUser) return
     if (currentListId === 'sem-contatos') {
-      setLastMoveMessage('Esta lista nÃ£o pode ser excluÃ­da.')
+      setLastMoveMessage('Esta lista não pode ser excluída.')
       return
     }
 
@@ -2562,7 +2562,7 @@ function App() {
   const handleConfirmDeleteList = async () => {
     if (!currentUser) return
     if (currentListId === 'sem-contatos') {
-      setLastMoveMessage('Esta lista nÃ£o pode ser excluÃ­da.')
+      setLastMoveMessage('Esta lista não pode ser excluída.')
       setConfirmDeleteListOpen(false)
       return
     }
@@ -2586,7 +2586,7 @@ function App() {
         setCurrentListId('')
       }
 
-      setLastMoveMessage('Lista excluÃ­da com sucesso.')
+      setLastMoveMessage('Lista excluída com sucesso.')
       setConfirmDeleteListOpen(false)
     } catch (e) {
       console.error('Erro ao excluir lista:', e)
@@ -2610,7 +2610,7 @@ function App() {
       if (authMode === 'signup') {
         await authSignup({ email, password, name })
         setAuthError(
-          'Cadastro realizado com sucesso. VocÃª jÃ¡ pode fazer login.',
+          'Cadastro realizado com sucesso. Você já pode fazer login.',
         )
         setAuthMode('login')
         setAuthPassword('')
@@ -2624,7 +2624,7 @@ function App() {
           method: 'POST',
           body: JSON.stringify({ email })
         })
-        setAuthError('Se o e-mail estiver cadastrado, as instruÃ§Ãµes serÃ£o enviadas para sua caixa de entrada.')
+        setAuthError('Se o e-mail estiver cadastrado, as instruções serão enviadas para sua caixa de entrada.')
         return
       } else if (authMode === 'reset-password') {
         if (!password || password.length < 6) {
@@ -2632,14 +2632,14 @@ function App() {
           return
         }
         if (!resetToken) {
-          setAuthError('Token de redefiniÃ§Ã£o ausente ou invÃ¡lido.')
+          setAuthError('Token de redefinição ausente ou inválido.')
           return
         }
         await apiFetch('/api/auth/reset-password', {
           method: 'POST',
           body: JSON.stringify({ token: resetToken, password })
         })
-        setAuthError('Senha alterada com sucesso! VocÃª jÃ¡ pode entrar com sua nova senha.')
+        setAuthError('Senha alterada com sucesso! Você já pode entrar com sua nova senha.')
         setAuthMode('login')
         setAuthPassword('')
         setResetToken(null)
@@ -2648,7 +2648,7 @@ function App() {
         await authLogin({ email, password })
       }
 
-      // PersistÃªncia de email/nome conforme "Lembrar de mim"
+      // Persistência de email/nome conforme "Lembrar de mim"
       try {
         if (rememberMe) {
           localStorage.setItem('sendmessage_authRemember', 'true')
@@ -2713,7 +2713,7 @@ function App() {
   if (authLoading) {
     return (
       <div className="h-screen flex items-center justify-center bg-slate-50 text-slate-700 text-sm">
-        Carregando autenticaÃ§Ã£o...
+        Carregando autenticação...
       </div>
     )
   }
@@ -2738,7 +2738,7 @@ function App() {
     )
   }
 
-  // Modal de atualizaÃ§Ã£o forÃ§ada
+  // Modal de atualização forçada
   if (forceUpdate) {
     return (
       <div className="h-screen bg-slate-950 flex items-center justify-center p-4">
@@ -2750,14 +2750,14 @@ function App() {
               </svg>
             </div>
             <h2 className="text-xl font-bold text-slate-900 mb-2">
-              AtualizaÃ§Ã£o DisponÃ­vel
+              Atualização Disponível
             </h2>
             <p className="text-sm text-slate-600 mb-4">
-              Uma nova versÃ£o do sistema estÃ¡ disponÃ­vel. Por favor, atualize para continuar usando.
+              Uma nova versão do sistema está disponível. Por favor, atualize para continuar usando.
             </p>
             <p className="text-xs text-slate-500">
-              VersÃ£o atual: {localStorage.getItem('app_version') || 'desconhecida'}<br />
-              Nova versÃ£o: {APP_VERSION}
+              Versão atual: {localStorage.getItem('app_version') || 'desconhecida'}<br />
+              Nova versão: {APP_VERSION}
             </p>
           </div>
           <button
@@ -2800,13 +2800,13 @@ function App() {
         />
       )}
 
-      {/* Ãrea de conteÃºdo */}
+      {/* Área de conteúdo */}
       <div className="flex-1 flex flex-col h-screen overflow-hidden min-w-0">
         {updateAvailable && (
           <div className="shrink-0 bg-emerald-600 text-white text-[11px] md:text-xs px-3 md:px-6 py-2 flex items-center justify-center z-40">
             <div className="max-w-6xl w-full flex flex-col md:flex-row md:items-center md:justify-between gap-2">
               <span className="font-medium text-center md:text-left">
-                Nova versÃ£o do sistema disponÃ­vel. Atualize para usar a versÃ£o mais recente.
+                Nova versão do sistema disponível. Atualize para usar a versão mais recente.
               </span>
               <div className="flex items-center justify-center gap-2">
                 <button
@@ -2821,7 +2821,7 @@ function App() {
                   className="p-1 hover:bg-white/10 rounded-full transition-colors"
                   onClick={() => setUpdateAvailable(false)}
                 >
-                  âœ•
+                  ✕
                 </button>
               </div>
             </div>
@@ -2843,11 +2843,11 @@ function App() {
                   Modo ver como ativo
                 </div>
                 <div>
-                  VocÃª estÃ¡ vendo o sistema como <span className="font-semibold">outro usuÃ¡rio</span>.
-                  {' '}Qualquer campanha, contato ou lista criada/alterada agora serÃ¡ salva na conta desse usuÃ¡rio.
+                  Você está vendo o sistema como <span className="font-semibold">outro usuário</span>.
+                  {' '}Qualquer campanha, contato ou lista criada/alterada agora será salva na conta desse usuário.
                 </div>
                 <div className="mt-0.5 text-[10px] text-amber-900/80">
-                  ID do usuÃ¡rio impersonado: <span className="font-mono break-all">{impersonatedUserId}</span>
+                  ID do usuário impersonado: <span className="font-mono break-all">{impersonatedUserId}</span>
                 </div>
               </div>
               <div className="flex md:flex-col items-stretch justify-end gap-1 md:gap-1 min-w-[160px] md:min-w-[180px]">
@@ -2879,7 +2879,7 @@ function App() {
                   <span className="hidden md:inline">{campaigns.find((c) => c.id === sendingCampaignId)?.name || 'Campanha'}</span>{' '}
                   ({sendingCurrentIndex}/{sendingTotal})
                   {sendingNextDelaySeconds != null && sendingNextDelaySeconds > 0 && (
-                    <span className="ml-1 md:ml-2">Ã¢â‚¬Â¢ {sendingNextDelaySeconds}s</span>
+                    <span className="ml-1 md:ml-2">â€¢ {sendingNextDelaySeconds}s</span>
                   )}
                 </span>
               </div>
@@ -2887,13 +2887,13 @@ function App() {
                 type="button"
                 className="shrink-0 text-[10px] px-2 py-0.5 rounded-md border border-red-300 bg-red-50 text-red-700 hover:bg-red-100"
                 onClick={() => {
-                  if (window.confirm('Tem certeza que deseja cancelar o envio? O progresso atual serÃ¡ perdido.')) {
+                  if (window.confirm('Tem certeza que deseja cancelar o envio? O progresso atual será perdido.')) {
                     setSendingCampaignId(null)
                     setSendingCurrentIndex(0)
                     setSendingTotal(0)
                     setSendingErrors(0)
                     setSendingNextDelaySeconds(null)
-                    setLastMoveMessage('Envio cancelado pelo usuÃ¡rio.')
+                    setLastMoveMessage('Envio cancelado pelo usuário.')
                   }
                 }}
               >
@@ -3186,7 +3186,7 @@ function App() {
           </div>
         )}
 
-        {/* Modal de confirmaÃ§Ã£o para excluir lista */}
+        {/* Modal de confirmação para excluir lista */}
         {confirmDeleteListOpen && (
           <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/60">
             <div className="bg-white rounded-xl shadow-xl border border-slate-200 w-full max-w-sm mx-4 p-4 space-y-3">
@@ -3199,7 +3199,7 @@ function App() {
                 </span>
                 {' '}?
                 <br />
-                Os contatos dessa lista tambÃ©m serÃ£o removidos.
+                Os contatos dessa lista também serão removidos.
               </div>
               <div className="flex justify-end gap-2 pt-1">
                 <button
@@ -3235,24 +3235,24 @@ function App() {
             </div>
             <div className="space-y-1">
               <div>
-                <span className="text-[9px] text-slate-400">UsuÃ¡rio:</span>{' '}
+                <span className="text-[9px] text-slate-400">Usuário:</span>{' '}
                 <span className="text-[10px] font-medium">
-                  {permissions.displayName || currentUser?.email || 'Ã¢â‚¬â€'}
+                  {permissions.displayName || currentUser?.email || '?'}
                 </span>
               </div>
               <div>
                 <span className="text-[9px] text-slate-400">Grupo:</span>{' '}
-                <span className="text-[10px] font-medium">{permissions.groupName || 'Ã¢â‚¬â€'}</span>
+                <span className="text-[10px] font-medium">{permissions.groupName || '?'}</span>
               </div>
               <div className="break-all">
                 <span className="text-[9px] text-slate-400">groupId:</span>{' '}
                 <span className="font-mono text-[9px]">{permissions.groupId || 'null'}</span>
               </div>
               <div>
-                <span className="text-[9px] text-slate-400">PermissÃµes ({permissions.permissionCodes.length}):</span>
+                <span className="text-[9px] text-slate-400">Permissões ({permissions.permissionCodes.length}):</span>
                 <div className="mt-0.5 max-h-24 overflow-auto space-y-0.5">
                   {permissions.permissionCodes.length === 0 ? (
-                    <div className="text-[9px] text-slate-500">nenhuma permissÃ£o carregada</div>
+                    <div className="text-[9px] text-slate-500">nenhuma permissão carregada</div>
                   ) : (
                     permissions.permissionCodes.map((code) => (
                       <div key={code} className="text-[9px] font-mono text-emerald-200">
