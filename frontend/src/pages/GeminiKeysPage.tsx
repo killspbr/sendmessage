@@ -17,6 +17,7 @@ type OperationalStats = {
     requestsToday?: number
     poolRequestsToday?: number
     globalRequestsToday?: number
+    legacyGlobalRequestsToday?: number
     userRequestsToday?: number
     environmentRequestsToday?: number
   }
@@ -69,6 +70,7 @@ export default function GeminiKeysPage() {
       requestsToday,
       poolRequestsToday,
       globalRequestsToday: stats?.ai?.globalRequestsToday || 0,
+      legacyGlobalRequestsToday: stats?.ai?.legacyGlobalRequestsToday || 0,
       userRequestsToday: stats?.ai?.userRequestsToday || 0,
       environmentRequestsToday: stats?.ai?.environmentRequestsToday || 0,
       max,
@@ -124,7 +126,7 @@ export default function GeminiKeysPage() {
             <p className="text-xs font-semibold uppercase tracking-[0.28em] text-cyan-200/80">Gemini</p>
             <h1 className="mt-2 text-2xl font-semibold tracking-tight">Gerenciamento de APIs Gemini</h1>
             <p className="mt-2 max-w-3xl text-sm text-slate-300">
-              Revise a rotação de chaves, consumo do dia e capacidade disponível para geração e reescrita de campanhas.
+              Todas as chaves ativas cadastradas aqui compõem a IA global compartilhada pelos usuários. O administrador também pode usar uma chave exclusiva no Meu perfil.
             </p>
           </div>
           <div className="flex gap-2">
@@ -146,8 +148,13 @@ export default function GeminiKeysPage() {
           <div className="mt-3 text-3xl font-semibold text-slate-900">{capacity.requestsToday}</div>
           <div className="mt-1 text-sm text-slate-500">requisições totais registradas</div>
           <div className="mt-2 text-xs text-slate-400">
-            Pool: {capacity.poolRequestsToday} · Global: {capacity.globalRequestsToday} · Pessoal: {capacity.userRequestsToday}
+            Pool global: {capacity.globalRequestsToday} · Exclusivas: {capacity.userRequestsToday}
           </div>
+          {capacity.legacyGlobalRequestsToday > 0 && (
+            <div className="mt-1 text-[11px] text-amber-600">
+              Legado: {capacity.legacyGlobalRequestsToday} requisições usando a chave global antiga em Configurações.
+            </div>
+          )}
         </div>
         <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
           <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Chaves ativas</div>
@@ -157,14 +164,14 @@ export default function GeminiKeysPage() {
         <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
           <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Capacidade restante</div>
           <div className="mt-3 text-3xl font-semibold text-emerald-600">{capacity.remaining}</div>
-          <div className="mt-1 text-sm text-slate-500">de {capacity.max || 0} possíveis hoje no pool administrado</div>
+          <div className="mt-1 text-sm text-slate-500">de {capacity.max || 0} possíveis hoje no pool global</div>
         </div>
       </div>
 
       <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
         <div className="border-b border-slate-200 px-5 py-4">
           <h2 className="text-lg font-semibold text-slate-900">Pool de chaves</h2>
-          <p className="text-sm text-slate-500">Confirme status, consumo e rotação das chaves usadas pelo sistema.</p>
+          <p className="text-sm text-slate-500">Confirme status, consumo e rotação das chaves que formam a IA global disponível para os usuários.</p>
         </div>
 
         <div className="overflow-x-auto">

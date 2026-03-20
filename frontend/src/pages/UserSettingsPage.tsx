@@ -191,7 +191,7 @@ export function UserSettingsPage({
 
           <SectionCard
             title="Inteligência artificial"
-            description="Você pode usar a chave global do sistema ou sua própria Gemini API Key."
+            description="Você pode usar o pool global administrado em APIs Gemini ou sua própria Gemini API Key. Administradores também podem definir uma chave exclusiva aqui para a própria conta."
             accent="bg-amber-500"
           >
             <div className="flex flex-col gap-4">

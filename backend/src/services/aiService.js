@@ -25,7 +25,7 @@ export async function logGeminiUsage({
   module = null,
   resultText = '',
   error = null,
-  source = 'admin-pool',
+  source = 'global-pool',
   keyLabel = null,
 }) {
   await query(
@@ -42,7 +42,7 @@ export async function logGeminiUsage({
   );
 }
 
-export async function incrementKeyUsage(keyId, module, resultText, error, userId = null, source = 'admin-pool', keyLabel = null) {
+export async function incrementKeyUsage(keyId, module, resultText, error, userId = null, source = 'global-pool', keyLabel = null) {
   try {
     // Incrementa contador
     await query(

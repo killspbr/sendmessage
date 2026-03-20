@@ -153,7 +153,7 @@ export function useGeminiAI({
     const callGeminiForCampaign = async (params: GeminiAIParams): Promise<string | null> => {
         if (!effectiveAiKey) {
             alert(
-                'Nenhuma API de IA está configurada. Peça ao administrador para definir uma chave global do Gemini ou informe sua própria chave em "Meu perfil".',
+                'Nenhuma API de IA está disponível. Peça ao administrador para cadastrar chaves na tela "APIs Gemini" ou informe sua própria chave em "Meu perfil".',
             )
             return null
         }

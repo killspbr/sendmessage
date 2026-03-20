@@ -157,14 +157,12 @@ export function SettingsPage({
         <div>
           <h3 className="text-xs font-semibold text-slate-800">Integração com IA (Gemini)</h3>
           <p className="text-[10px] text-slate-500">
-            Informe abaixo a chave de API global do Google Gemini que será usada por todos os clientes deste sistema.
-            Recomendamos usar, no mínimo, o plano gratuito oficial do Gemini (cerca de 20 requisições por dia),
-            lembrando que esse limite diário é compartilhado entre todos os clientes.
-            Para cargas maiores, considere habilitar billing no projeto e ajustar os limites conforme necessário.
+            A IA global compartilhada pelos usuários é formada pelas chaves cadastradas na tela <strong>APIs Gemini</strong>.
+            Use esta área apenas para ajustes padrão de modelo e, se necessário, uma chave legada de fallback.
           </p>
         </div>
         <div className="flex flex-col gap-1">
-          <label className="text-[10px] font-medium text-slate-600">Gemini API Key</label>
+          <label className="text-[10px] font-medium text-slate-600">Chave legada de fallback (opcional)</label>
           <input
             type="password"
             value={geminiApiKey}
@@ -173,7 +171,7 @@ export function SettingsPage({
             className="h-9 w-full px-2 rounded-md border border-slate-200 bg-white text-[11px] text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-emerald-400/80"
           />
           <p className="text-[10px] text-amber-600">
-            Esta chave é sensível. Não compartilhe telas ou exports contendo a API Key.
+            Prefira cadastrar as chaves globais na tela APIs Gemini. Esta chave é mantida só por compatibilidade e fallback.
           </p>
         </div>
 

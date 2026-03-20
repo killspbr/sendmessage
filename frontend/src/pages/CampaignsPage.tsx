@@ -182,7 +182,7 @@ export function CampaignsPage({
   const iaDisponivel = true
   const iaTooltip = geminiApiKey
     ? undefined
-    : 'Se a IA não funcionar, verifique se há API configurada em "Meu perfil" ou peça ao administrador para definir uma API global.'
+    : 'Se a IA não funcionar, verifique se há API própria em "Meu perfil" ou peça ao administrador para cadastrar chaves no pool global em "APIs Gemini".'
 
   const openScheduleModal = (campaignId: string) => {
     const nextNow = new Date()

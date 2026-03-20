@@ -413,11 +413,10 @@ function App() {
   const [geminiMaxTokens, setGeminiMaxTokens] = useState<number>(4096)
 
   // IA efetiva considerando configurações globais x por usuário
-  const globalAiKey = globalSettings?.global_ai_api_key || geminiApiKey || ''
   const useGlobalAi = userSettings?.use_global_ai ?? true
   const userAiKey = userSettings?.ai_api_key || null
 
-  const effectiveAiKey = useGlobalAi ? globalAiKey : userAiKey || ''
+  const effectiveAiKey = useGlobalAi ? '__global_pool__' : userAiKey || ''
 
   const { callGeminiForCampaign } = useGeminiAI({
     effectiveAiKey,
@@ -429,7 +428,7 @@ function App() {
   })
 
   const userHasConfiguredAi =
-    (useGlobalAi && !!globalAiKey) || (!useGlobalAi && !!userAiKey)
+    useGlobalAi || (!useGlobalAi && !!userAiKey)
 
 
   const [googleMapsApiKey, setGoogleMapsApiKey] = useState<string>('')

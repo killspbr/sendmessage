@@ -80,13 +80,13 @@ async function resolveGeminiAccessForUser(userId) {
     return { apiKey: userAiKey, source: 'user-profile', keyData: null };
   }
 
-  if (useGlobalAi && globalAiKey) {
-    return { apiKey: globalAiKey, source: 'global-settings', keyData: null };
-  }
-
   const pooledKey = await getActiveGeminiKey();
   if (pooledKey?.api_key) {
-    return { apiKey: pooledKey.api_key, source: 'admin-pool', keyData: pooledKey };
+    return { apiKey: pooledKey.api_key, source: 'global-pool', keyData: pooledKey };
+  }
+
+  if (useGlobalAi && globalAiKey) {
+    return { apiKey: globalAiKey, source: 'legacy-global-settings', keyData: null };
   }
 
   const envKey = String(process.env.GEMINI_API_KEY || '').trim();
@@ -1182,7 +1182,7 @@ Retorne APENAS um JSON válido, sem texto extra, exatamente no formato:
     const data = await aiRes.json();
     
     if (keyData) {
-      await incrementKeyUsage(keyData.id, 'extract-contact', 'JSON Extracted', aiRes.ok ? null : data, req.user.id, 'admin-pool', keyData.nome || null);
+      await incrementKeyUsage(keyData.id, 'extract-contact', 'JSON Extracted', aiRes.ok ? null : data, req.user.id, 'global-pool', keyData.nome || null);
     }
 
     if (!aiRes.ok) {
@@ -1240,8 +1240,8 @@ app.post('/api/ai/proxy', authenticateToken, async (req, res) => {
       await incrementKeyUsage(access.keyData.id, 'proxy', 'AI Response', aiRes.ok ? null : data, req.user.id, access.source, access.keyData.nome || null);
     } else {
       const sourceLabel =
-        access.source === 'global-settings'
-          ? 'global_ai_api_key'
+        access.source === 'legacy-global-settings'
+          ? 'legacy_global_ai_api_key'
           : access.source === 'user-profile'
             ? 'user_ai_api_key'
             : access.source === 'environment'
@@ -1579,6 +1579,7 @@ app.get('/api/admin/operational-stats', authenticateToken, checkAdmin, async (re
         activeKeys: 0,
         poolRequestsToday: 0,
         globalRequestsToday: 0,
+        legacyGlobalRequestsToday: 0,
         userRequestsToday: 0,
         environmentRequestsToday: 0,
       }
@@ -1606,8 +1607,8 @@ app.get('/api/admin/operational-stats', authenticateToken, checkAdmin, async (re
     const resAiu = await query(
       `SELECT
          COUNT(*)::int AS requests_today,
-         COUNT(*) FILTER (WHERE source = 'admin-pool')::int AS pool_requests_today,
-         COUNT(*) FILTER (WHERE source = 'global-settings')::int AS global_requests_today,
+         COUNT(*) FILTER (WHERE source IN ('admin-pool', 'global-pool'))::int AS global_pool_requests_today,
+         COUNT(*) FILTER (WHERE source = 'legacy-global-settings')::int AS legacy_global_requests_today,
          COUNT(*) FILTER (WHERE source = 'user-profile')::int AS user_requests_today,
          COUNT(*) FILTER (WHERE source = 'environment')::int AS environment_requests_today
        FROM gemini_api_usage_logs
@@ -1615,8 +1616,9 @@ app.get('/api/admin/operational-stats', authenticateToken, checkAdmin, async (re
     );
 
     stats.ai.requestsToday = parseInt(resAiu.rows[0]?.requests_today || 0);
-    stats.ai.poolRequestsToday = parseInt(resAiu.rows[0]?.pool_requests_today || 0);
-    stats.ai.globalRequestsToday = parseInt(resAiu.rows[0]?.global_requests_today || 0);
+    stats.ai.poolRequestsToday = parseInt(resAiu.rows[0]?.global_pool_requests_today || 0);
+    stats.ai.globalRequestsToday = parseInt(resAiu.rows[0]?.global_pool_requests_today || 0);
+    stats.ai.legacyGlobalRequestsToday = parseInt(resAiu.rows[0]?.legacy_global_requests_today || 0);
     stats.ai.userRequestsToday = parseInt(resAiu.rows[0]?.user_requests_today || 0);
     stats.ai.environmentRequestsToday = parseInt(resAiu.rows[0]?.environment_requests_today || 0);
 
@@ -1791,12 +1793,13 @@ async function runMigrations() {
       module TEXT,
       resultado TEXT,
       erro TEXT,
-      source TEXT DEFAULT 'admin-pool',
+      source TEXT DEFAULT 'global-pool',
       key_label TEXT,
       data_solicitacao TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
     )`,
     `ALTER TABLE gemini_api_usage_logs ALTER COLUMN key_id DROP NOT NULL`,
-    `ALTER TABLE gemini_api_usage_logs ADD COLUMN IF NOT EXISTS source TEXT DEFAULT 'admin-pool'`,
+    `ALTER TABLE gemini_api_usage_logs ADD COLUMN IF NOT EXISTS source TEXT DEFAULT 'global-pool'`,
+    `ALTER TABLE gemini_api_usage_logs ALTER COLUMN source SET DEFAULT 'global-pool'`,
     `ALTER TABLE gemini_api_usage_logs ADD COLUMN IF NOT EXISTS key_label TEXT`,
     `CREATE TABLE IF NOT EXISTS scheduler_logs (
       id SERIAL PRIMARY KEY,
