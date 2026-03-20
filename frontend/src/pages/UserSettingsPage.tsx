@@ -2,22 +2,25 @@ import React from 'react'
 
 type UserSettingsPageProps = {
   effectiveUserId: string | null
+  userDisplayName: string
+  userPhone: string
   useGlobalAi: boolean
   userAiKey: string
   userCompanyInfo: string | null
+  onChangeUserDisplayName: (val: string) => void
+  onChangeUserPhone: (val: string) => void
   onChangeUseGlobalAi: (val: boolean) => void
   onChangeUserAiKey: (val: string) => void
   onChangeUserCompanyInfo: (val: string) => void
-
-  // Evolution (Por usuário)
   userEvolutionUrl: string
   userEvolutionApiKey: string
   userEvolutionInstance: string
   onChangeUserEvolutionUrl: (val: string) => void
   onChangeUserEvolutionApiKey: (val: string) => void
   onChangeUserEvolutionInstance: (val: string) => void
-  // Ações
   onSave: (overrides: {
+    displayName?: string | null
+    phone?: string | null
     aiApiKey?: string | null
     companyInfo?: string | null
     evolutionUrl?: string | null
@@ -26,12 +29,42 @@ type UserSettingsPageProps = {
   }) => Promise<void>
 }
 
+function SectionCard({
+  title,
+  description,
+  accent,
+  children,
+}: {
+  title: string
+  description: string
+  accent: string
+  children: React.ReactNode
+}) {
+  return (
+    <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+      <div className="mb-4 flex items-start gap-3">
+        <div className={`mt-1 h-3 w-3 rounded-full ${accent}`} />
+        <div>
+          <h2 className="text-base font-semibold text-slate-900">{title}</h2>
+          <p className="text-sm text-slate-500">{description}</p>
+        </div>
+      </div>
+      {children}
+    </div>
+  )
+}
+
 export function UserSettingsPage({
+  effectiveUserId,
+  userDisplayName,
+  userPhone,
   useGlobalAi,
   userAiKey,
+  userCompanyInfo,
+  onChangeUserDisplayName,
+  onChangeUserPhone,
   onChangeUseGlobalAi,
   onChangeUserAiKey,
-  userCompanyInfo,
   onChangeUserCompanyInfo,
   userEvolutionUrl,
   userEvolutionApiKey,
@@ -46,202 +79,227 @@ export function UserSettingsPage({
   const copyToken = () => {
     const token = localStorage.getItem('auth_token') || ''
     if (!token) return
+
     navigator.clipboard.writeText(token).then(() => {
       setTokenCopied(true)
-      setTimeout(() => setTokenCopied(false), 2500)
+      window.setTimeout(() => setTokenCopied(false), 2500)
     })
   }
 
   const handleSave = async () => {
     await onSave({
-      aiApiKey: useGlobalAi ? null : userAiKey,
-      companyInfo: userCompanyInfo?.trim() || undefined,
-      evolutionUrl: userEvolutionUrl.trim() || undefined,
-      evolutionApiKey: userEvolutionApiKey.trim() || undefined,
-      evolutionInstance: userEvolutionInstance.trim() || undefined,
+      displayName: userDisplayName.trim() || null,
+      phone: userPhone.trim() || null,
+      aiApiKey: useGlobalAi ? null : userAiKey.trim() || null,
+      companyInfo: userCompanyInfo?.trim() || null,
+      evolutionUrl: userEvolutionUrl.trim() || null,
+      evolutionApiKey: userEvolutionApiKey.trim() || null,
+      evolutionInstance: userEvolutionInstance.trim() || null,
     })
   }
 
   return (
-    <section className="bg-white rounded-2xl border border-slate-200 shadow-xl p-6 md:p-8 flex flex-col gap-8 max-w-2xl mx-auto motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-4">
-      {/* Evolution API - Por Usuário */}
-      <div className="space-y-4">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-emerald-100 flex items-center justify-center text-emerald-600">
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 0 1 -4.255 -.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-            </svg>
-          </div>
+    <section className="mx-auto flex max-w-5xl flex-col gap-6">
+      <div className="rounded-[28px] border border-slate-200 bg-gradient-to-br from-slate-950 via-slate-900 to-emerald-950 p-6 text-white shadow-xl shadow-slate-300/40">
+        <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
           <div>
-            <h2 className="text-lg font-bold text-slate-800 tracking-tight">Evolução WhatsApp (Instância Própria)</h2>
-            <p className="text-xs text-slate-500 font-medium">Use sua própria instância da Evolution API para envios exclusivos.</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-emerald-200/80">Meu perfil</p>
+            <h1 className="mt-2 text-2xl font-semibold tracking-tight">Configurações pessoais e extensão</h1>
+            <p className="mt-2 max-w-2xl text-sm text-slate-300">
+              Gerencie seus dados, sua integração própria com Evolution e IA, e o acesso da extensão do Google Maps.
+            </p>
           </div>
-        </div>
-
-        <div className="grid gap-4 mt-2 p-5 rounded-2xl bg-slate-50 border border-slate-100">
-          <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-bold text-slate-700 ml-1">Evolution API URL</label>
-            <input
-              type="text"
-              value={userEvolutionUrl}
-              onChange={(e) => onChangeUserEvolutionUrl(e.target.value)}
-              placeholder="https://sua-api.evolution.com (vazio para usar global)"
-              className="h-11 w-full px-4 rounded-xl border border-slate-200 bg-white text-sm text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all shadow-sm"
-            />
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-bold text-slate-700 ml-1">Sua API Key</label>
-              <input
-                type="password"
-                value={userEvolutionApiKey}
-                onChange={(e) => onChangeUserEvolutionApiKey(e.target.value)}
-                placeholder="ApiKey da sua instância"
-                className="h-11 w-full px-4 rounded-xl border border-slate-200 bg-white text-sm text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all shadow-sm"
-              />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-bold text-slate-700 ml-1">Sua Instância</label>
-              <input
-                type="text"
-                value={userEvolutionInstance}
-                onChange={(e) => onChangeUserEvolutionInstance(e.target.value)}
-                placeholder="Nome da sua instância"
-                className="h-11 w-full px-4 rounded-xl border border-slate-200 bg-white text-sm text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all shadow-sm"
-              />
-            </div>
+          <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-right">
+            <div className="text-[11px] uppercase tracking-[0.2em] text-emerald-200/75">Usuário ativo</div>
+            <div className="mt-1 text-sm font-medium text-white">{userDisplayName || 'Perfil sem nome exibido'}</div>
+            <div className="text-xs text-slate-300">{effectiveUserId || 'Sem sessão ativa'}</div>
           </div>
         </div>
       </div>
 
-      {/* IA */}
-      <div className="space-y-4 pt-4 border-t border-slate-100">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-amber-100 flex items-center justify-center text-amber-600">
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-            </svg>
-          </div>
-          <div>
-            <h2 className="text-lg font-bold text-slate-800 tracking-tight">Inteligência Artificial</h2>
-            <p className="text-xs text-slate-500 font-medium">Use sua própria chave do Gemini para garantir seus limites individuais.</p>
-          </div>
-        </div>
-
-        <div className="space-y-4 p-5 rounded-2xl bg-slate-50 border border-slate-100">
-          <label className="flex items-center gap-3 cursor-pointer group">
-            <div className="relative">
-              <input
-                type="checkbox"
-                checked={useGlobalAi}
-                onChange={(e) => onChangeUseGlobalAi(e.target.checked)}
-                className="sr-only"
-              />
-              <div className={`w-10 h-6 rounded-full transition-colors ${useGlobalAi ? 'bg-amber-500' : 'bg-slate-300'}`} />
-              <div className={`absolute left-1 top-1 w-4 h-4 rounded-full bg-white shadow transition-transform ${useGlobalAi ? 'translate-x-4' : 'translate-x-0'}`} />
-            </div>
-            <span className="text-sm font-bold text-slate-700 group-hover:text-slate-900 transition-colors">Usar chave de IA global (limite compartilhado)</span>
-          </label>
-
-          {!useGlobalAi && (
-            <div className="flex flex-col gap-1.5 animate-in fade-in slide-in-from-top-2">
-              <label className="text-xs font-bold text-slate-700 ml-1">Minha Gemini API Key</label>
-              <input
-                type="password"
-                value={userAiKey}
-                onChange={(e) => onChangeUserAiKey(e.target.value)}
-                placeholder="AIza..."
-                className="h-11 w-full px-4 rounded-xl border border-slate-200 bg-white text-sm text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-all shadow-sm"
-              />
-            </div>
-          )}
-        </div>
-
-        <div className="space-y-4 p-5 rounded-2xl bg-slate-50 border border-slate-100 mt-4">
-          <div className="flex flex-col gap-1.5 animate-in fade-in slide-in-from-top-2">
-            <label className="text-xs font-bold text-slate-700 ml-1">Sobre o Remetente (Empresa/Negócio)</label>
-            <textarea
-              value={userCompanyInfo || ''}
-              onChange={(e) => onChangeUserCompanyInfo(e.target.value)}
-              placeholder="Descreva sua empresa, diferenciais, público-alvo ou tom de voz. Ex: 'Somos uma padaria familiar focada em produtos artesanais...'"
-              rows={4}
-              className="w-full p-4 rounded-xl border border-slate-200 bg-white text-sm text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-all shadow-sm resize-none"
-            />
-            <p className="text-[10px] text-slate-500 ml-1">
-              Esses dados serão usados pela IA do Gemini para gerar textos mais personalizados e alinhados com o seu perfil.
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {/* Token da Extensão Chrome */}
-      <div className="space-y-3">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-green-100 flex items-center justify-center text-green-600 text-base">🗺️</div>
-          <div>
-            <h2 className="text-lg font-bold text-slate-800 tracking-tight">Extensão Chrome — Maps Extractor</h2>
-            <p className="text-xs text-slate-500 font-medium">Cole este token na extensão para conectá-la ao SendMessage.</p>
-          </div>
-        </div>
-
-        <div className="p-4 rounded-2xl bg-slate-50 border border-slate-100 flex items-center gap-3">
-          <div className="flex-1 min-w-0">
-            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">Seu Token de Acesso</p>
-            <p className="text-xs font-mono text-slate-600 truncate">
-              {localStorage.getItem('auth_token')
-                ? `${(localStorage.getItem('auth_token') || '').substring(0, 40)}...`
-                : 'Faça login novamente para gerar o token'}
-            </p>
-          </div>
-          <button
-            onClick={copyToken}
-            disabled={!localStorage.getItem('auth_token')}
-            className={`flex-shrink-0 h-9 px-4 rounded-xl text-xs font-bold transition-all ${tokenCopied
-              ? 'bg-emerald-500 text-white'
-              : 'bg-slate-900 hover:bg-slate-700 text-white'
-              }`}
+      <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
+        <div className="flex flex-col gap-6">
+          <SectionCard
+            title="Meus dados"
+            description="Esses dados podem ser usados no sistema e pelos administradores para suporte operacional."
+            accent="bg-emerald-500"
           >
-            {tokenCopied ? '✅ Copiado!' : '📋 Copiar Token'}
-          </button>
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-semibold text-slate-600">Nome exibido</label>
+                <input
+                  type="text"
+                  value={userDisplayName}
+                  onChange={(e) => onChangeUserDisplayName(e.target.value)}
+                  placeholder="Como você quer aparecer no sistema"
+                  className="h-11 rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm text-slate-800 outline-none transition focus:border-emerald-500 focus:bg-white"
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-semibold text-slate-600">Telefone</label>
+                <input
+                  type="text"
+                  value={userPhone}
+                  onChange={(e) => onChangeUserPhone(e.target.value.replace(/[^\d()+\s-]/g, ''))}
+                  placeholder="(11) 99999-9999"
+                  className="h-11 rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm text-slate-800 outline-none transition focus:border-emerald-500 focus:bg-white"
+                />
+              </div>
+            </div>
+          </SectionCard>
+
+          <SectionCard
+            title="Evolution por usuário"
+            description="Se quiser isolar seus envios, configure sua própria instância em vez de depender do ambiente global."
+            accent="bg-sky-500"
+          >
+            <div className="grid gap-4">
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-semibold text-slate-600">URL da Evolution</label>
+                <input
+                  type="text"
+                  value={userEvolutionUrl}
+                  onChange={(e) => onChangeUserEvolutionUrl(e.target.value)}
+                  placeholder="https://sua-evolution.exemplo.com"
+                  className="h-11 rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm text-slate-800 outline-none transition focus:border-sky-500 focus:bg-white"
+                />
+              </div>
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-semibold text-slate-600">API Key</label>
+                  <input
+                    type="password"
+                    value={userEvolutionApiKey}
+                    onChange={(e) => onChangeUserEvolutionApiKey(e.target.value)}
+                    placeholder="Chave da sua instância"
+                    className="h-11 rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm text-slate-800 outline-none transition focus:border-sky-500 focus:bg-white"
+                  />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-semibold text-slate-600">Instância</label>
+                  <input
+                    type="text"
+                    value={userEvolutionInstance}
+                    onChange={(e) => onChangeUserEvolutionInstance(e.target.value)}
+                    placeholder="Nome da instância"
+                    className="h-11 rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm text-slate-800 outline-none transition focus:border-sky-500 focus:bg-white"
+                  />
+                </div>
+              </div>
+            </div>
+          </SectionCard>
+
+          <SectionCard
+            title="Inteligência artificial"
+            description="Você pode usar a chave global do sistema ou sua própria Gemini API Key."
+            accent="bg-amber-500"
+          >
+            <div className="flex flex-col gap-4">
+              <label className="inline-flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={useGlobalAi}
+                  onChange={(e) => onChangeUseGlobalAi(e.target.checked)}
+                  className="h-4 w-4 accent-amber-500"
+                />
+                <span>Usar a chave global do sistema</span>
+              </label>
+
+              {!useGlobalAi && (
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-semibold text-slate-600">Minha Gemini API Key</label>
+                  <input
+                    type="password"
+                    value={userAiKey}
+                    onChange={(e) => onChangeUserAiKey(e.target.value)}
+                    placeholder="AIza..."
+                    className="h-11 rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm text-slate-800 outline-none transition focus:border-amber-500 focus:bg-white"
+                  />
+                </div>
+              )}
+
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-semibold text-slate-600">Sobre sua empresa ou perfil</label>
+                <textarea
+                  value={userCompanyInfo || ''}
+                  onChange={(e) => onChangeUserCompanyInfo(e.target.value)}
+                  rows={5}
+                  placeholder="Descreva sua empresa, seus diferenciais, linguagem, público e contexto comercial."
+                  className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-amber-500 focus:bg-white"
+                />
+                <p className="text-xs text-slate-500">
+                  Esse contexto ajuda a IA a gerar campanhas e reescritas mais alinhadas com seu negócio.
+                </p>
+              </div>
+            </div>
+          </SectionCard>
         </div>
 
-        <div className="text-[10px] text-slate-400 px-1 space-y-0.5">
-          <p>1. Instale a extensão no Chrome (pasta <code className="bg-slate-100 px-1 rounded">extension/</code> do projeto)</p>
-          <p>2. Clique no ícone 🗺️ → cole o token → Salvar</p>
-          <p>3. Abra o Google Maps → clique em "Abrir Painel Lateral" → Iniciar Extração</p>
-          <div className="mt-6 pt-4 border-t border-slate-100">
-            <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Recurso Essencial</h4>
-            <a 
-              href="/extension.zip" 
-              download="SM_Extractor.zip"
-              className="group relative inline-flex items-center gap-3 px-6 py-3 bg-gradient-to-br from-emerald-500 to-teal-600 text-white rounded-xl font-bold shadow-lg shadow-emerald-200 hover:shadow-emerald-300 hover:-translate-y-0.5 transition-all duration-200 overflow-hidden"
-            >
-              <div className="absolute inset-0 bg-white/10 group-hover:bg-transparent transition-colors" />
-              <div className="flex items-center justify-center w-8 h-8 bg-white/20 rounded-lg backdrop-blur-sm">
-                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 16v1a3 3 0 0 0 3 3h10a3 3 0 0 0 3-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                </svg>
+        <div className="flex flex-col gap-6">
+          <SectionCard
+            title="Extensão do Google Maps"
+            description="Use o token abaixo para conectar a extensão ao seu login atual."
+            accent="bg-emerald-500"
+          >
+            <div className="space-y-4">
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">Token da extensão</div>
+                <div className="mt-2 truncate font-mono text-xs text-slate-700">
+                  {localStorage.getItem('auth_token')
+                    ? `${(localStorage.getItem('auth_token') || '').slice(0, 42)}...`
+                    : 'Faça login novamente para gerar um token válido.'}
+                </div>
               </div>
-              <div className="flex flex-col items-start leading-tight">
-                <span className="text-sm">Baixar Extensão Atualizada</span>
-                <span className="text-[10px] opacity-80 font-medium">Versão 1.0.8 • Atualizado em 19/03/2026 às 23:41</span>
+
+              <button
+                onClick={copyToken}
+                disabled={!localStorage.getItem('auth_token')}
+                className={`h-11 w-full rounded-2xl text-sm font-semibold transition ${
+                  tokenCopied
+                    ? 'bg-emerald-500 text-white'
+                    : 'bg-slate-900 text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300'
+                }`}
+              >
+                {tokenCopied ? 'Token copiado' : 'Copiar token'}
+              </button>
+
+              <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
+                <div className="font-semibold">Fluxo recomendado</div>
+                <ol className="mt-2 list-decimal space-y-1 pl-5 text-sm text-emerald-900/90">
+                  <li>Instale ou atualize a extensão.</li>
+                  <li>Cole o token e salve.</li>
+                  <li>No Google Maps, clique em “Abrir painel lateral”.</li>
+                  <li>Extraia os contatos e depois clique em “Importar Extraídos”.</li>
+                </ol>
               </div>
-            </a>
-            <p className="mt-3 text-[11px] text-slate-400 italic">
-              * Necessário para extração automática no Google Maps.
+
+              <a
+                href="/extension.zip"
+                download="SM_Extractor.zip"
+                className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-4 text-left shadow-sm transition hover:border-emerald-300 hover:bg-emerald-50"
+              >
+                <div>
+                  <div className="text-sm font-semibold text-slate-900">Baixar extensão atualizada</div>
+                  <div className="text-xs text-slate-500">Versão 1.0.9 • Atualizado em 19/03/2026 às 23:59</div>
+                </div>
+                <span className="rounded-full bg-slate-900 px-3 py-1 text-xs font-semibold text-white">ZIP</span>
+              </a>
+            </div>
+          </SectionCard>
+
+          <div className="rounded-3xl border border-slate-200 bg-slate-50 p-5 shadow-sm">
+            <div className="text-sm font-semibold text-slate-900">Salvar alterações</div>
+            <p className="mt-1 text-sm text-slate-500">
+              Os dados pessoais, a configuração da IA e a integração própria da Evolution são gravados juntos.
             </p>
+            <button
+              onClick={handleSave}
+              className="mt-4 h-12 w-full rounded-2xl bg-emerald-600 text-sm font-semibold text-white transition hover:bg-emerald-700"
+            >
+              Salvar perfil
+            </button>
           </div>
         </div>
-      </div>
-
-      <div className="pt-6 border-t border-slate-100">
-        <button
-          onClick={handleSave}
-          className="w-full h-12 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-sm shadow-lg shadow-slate-200 transition-all active:scale-[0.98]"
-        >
-          Salvar Alterações
-        </button>
       </div>
     </section>
   )

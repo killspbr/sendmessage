@@ -149,13 +149,17 @@ export function CampaignsPage({
   const [aiLengthLevel, setAiLengthLevel] = useState<number>(5) // 0 (curto) a 10 (detalhado)
 
   // Estado para Agendamento Profissional
+  const now = new Date()
   const [showScheduleModal, setShowScheduleModal] = useState<string | null>(null)
+  const [scheduleError, setScheduleError] = useState<string | null>(null)
   const [schedConfig, setSchedConfig] = useState({
+    data_inicio: now.toISOString().slice(0, 10),
+    hora_inicio: now.toTimeString().slice(0, 5),
     intervalo_minimo: 30,
     intervalo_maximo: 90,
     mensagens_por_lote: 40,
     tempo_pausa_lote: 10,
-    limite_diario: 150
+    limite_diario: 150,
   })
 
   const canCreateCampaign = !can || can('campaigns.create')
@@ -173,6 +177,37 @@ export function CampaignsPage({
   const iaTooltip = geminiApiKey
     ? undefined
     : 'Se a IA não funcionar, verifique se há API configurada em "Meu perfil" ou peça ao administrador para definir uma API global.'
+
+  const openScheduleModal = (campaignId: string) => {
+    const nextNow = new Date()
+    setSchedConfig((prev) => ({
+      ...prev,
+      data_inicio: prev.data_inicio || nextNow.toISOString().slice(0, 10),
+      hora_inicio: prev.hora_inicio || nextNow.toTimeString().slice(0, 5),
+    }))
+    setScheduleError(null)
+    setShowScheduleModal(campaignId)
+  }
+
+  const handleConfirmSchedule = async () => {
+    const campId = showScheduleModal
+    if (!campId) return
+    if (schedConfig.intervalo_minimo <= 0 || schedConfig.intervalo_maximo <= 0) {
+      setScheduleError('Os intervalos devem ser maiores que zero.')
+      return
+    }
+    if (schedConfig.intervalo_minimo > schedConfig.intervalo_maximo) {
+      setScheduleError('O intervalo mínimo não pode ser maior que o máximo.')
+      return
+    }
+    if (schedConfig.mensagens_por_lote <= 0 || schedConfig.tempo_pausa_lote < 0 || schedConfig.limite_diario <= 0) {
+      setScheduleError('Revise lote, pausa e limite diário antes de agendar.')
+      return
+    }
+    setScheduleError(null)
+    setShowScheduleModal(null)
+    await onScheduleCampaign(campId, schedConfig)
+  }
 
   if (!canViewCampaigns) {
     return (
@@ -845,7 +880,7 @@ export function CampaignsPage({
                         <button
                           type="button"
                           className="text-[10px] px-2 py-0.5 rounded-md border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 whitespace-nowrap"
-                          onClick={(e) => { e.stopPropagation(); setShowScheduleModal(camp.id) }}
+                          onClick={(e) => { e.stopPropagation(); openScheduleModal(camp.id) }}
                         >
                           ⏰ Agendar Pro
                         </button>
@@ -1111,6 +1146,26 @@ export function CampaignsPage({
             <div className="p-6 space-y-6">
               <div className="grid grid-cols-2 gap-6">
                 <div className="space-y-2">
+                  <label className="text-[11px] font-bold text-slate-500 uppercase">Data de início</label>
+                  <input
+                    type="date"
+                    value={schedConfig.data_inicio}
+                    onChange={(e) => setSchedConfig({ ...schedConfig, data_inicio: e.target.value })}
+                    className="w-full h-10 px-3 rounded-xl border border-slate-200 text-sm focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[11px] font-bold text-slate-500 uppercase">Hora de início</label>
+                  <input
+                    type="time"
+                    value={schedConfig.hora_inicio}
+                    onChange={(e) => setSchedConfig({ ...schedConfig, hora_inicio: e.target.value })}
+                    className="w-full h-10 px-3 rounded-xl border border-slate-200 text-sm focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-6">
+                <div className="space-y-2">
                   <label className="text-[11px] font-bold text-slate-500 uppercase">Intervalo Mínimo (s)</label>
                   <input 
                     type="number"
@@ -1165,9 +1220,15 @@ export function CampaignsPage({
               <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-100 flex gap-3 items-start">
                 <span className="text-lg">🛡️</span>
                 <p className="text-[11px] text-emerald-800 leading-relaxed">
-                  Esta configuração utiliza <b>Mecanismos Operacionais Profissionais</b>. O envio será processado em segundo plano mesmo com o navegador fechado.
+                  Esta configuração utiliza <b>Mecanismos Operacionais Profissionais</b>. O worker do backend precisa estar ativo para consumir a fila.
                 </p>
               </div>
+
+              {scheduleError && (
+                <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-[11px] text-red-700">
+                  {scheduleError}
+                </div>
+              )}
             </div>
 
             <div className="px-6 py-4 bg-slate-50 border-t border-slate-200 flex items-center justify-end gap-3">
@@ -1178,13 +1239,7 @@ export function CampaignsPage({
                 Cancelar
               </button>
               <button 
-                onClick={async () => {
-                  const campId = showScheduleModal;
-                  setShowScheduleModal(null);
-                  if (onScheduleCampaign && campId) {
-                    await onScheduleCampaign(campId, schedConfig);
-                  }
-                }}
+                onClick={() => void handleConfirmSchedule()}
                 className="px-6 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold rounded-xl shadow-lg shadow-emerald-600/20 transition-all hover:scale-[1.02] active:scale-[0.98]"
               >
                 Ativar Agendamento

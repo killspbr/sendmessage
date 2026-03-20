@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { apiFetch } from '../api'
 
 type AdminUsersPageProps = {
@@ -14,6 +14,7 @@ type AdminUserProfile = {
   displayName: string | null
   userName: string | null
   email: string | null
+  phone: string | null
   groupId: string | null
   groupName: string | null
   useGlobalAi: boolean
@@ -31,6 +32,8 @@ type AdminPermission = {
   description: string | null
 }
 
+const ROLE_ORDER = ['Administrador', 'Gerente', 'Operador', 'Visualizador'] as const
+
 export function AdminUsersPage({
   can,
   debugEnabled,
@@ -39,162 +42,81 @@ export function AdminUsersPage({
   onImpersonateUser,
 }: AdminUsersPageProps) {
   const canManageUsers = !can || can('admin.users')
+  const currentRoleIndex = currentUserGroupName ? ROLE_ORDER.indexOf(currentUserGroupName as any) : -1
 
+  const [activeTab, setActiveTab] = useState<'users' | 'groups'>('users')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-
+  const [successMessage, setSuccessMessage] = useState<string | null>(null)
   const [users, setUsers] = useState<AdminUserProfile[]>([])
   const [groups, setGroups] = useState<AdminGroup[]>([])
   const [permissions, setPermissions] = useState<AdminPermission[]>([])
   const [groupPermissions, setGroupPermissions] = useState<Record<string, Set<string>>>({})
+  const [selectedUserId, setSelectedUserId] = useState<string | null>(null)
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null)
-  const [savingPermission, setSavingPermission] = useState<boolean>(false)
+  const [userDraft, setUserDraft] = useState({ displayName: '', email: '', phone: '' })
+  const [notifyMessage, setNotifyMessage] = useState('')
+  const [savingPermission, setSavingPermission] = useState(false)
   const [savingUserGroupId, setSavingUserGroupId] = useState<string | null>(null)
   const [savingUserSettingsId, setSavingUserSettingsId] = useState<string | null>(null)
+  const [savingUserProfileId, setSavingUserProfileId] = useState<string | null>(null)
   const [resetingPasswordId, setResetingPasswordId] = useState<string | null>(null)
   const [invalidatingSessionId, setInvalidatingSessionId] = useState<string | null>(null)
   const [invalidatingAll, setInvalidatingAll] = useState(false)
+  const [sendingNotificationId, setSendingNotificationId] = useState<string | null>(null)
 
-  const handleResetPassword = async (userId: string, userName: string) => {
-    if (!window.confirm(`Tem certeza que deseja resetar a senha de "${userName}" para "123456"?`)) return
-    
-    setResetingPasswordId(userId)
+  const selectedUser = useMemo(() => users.find((u) => u.id === selectedUserId) ?? null, [users, selectedUserId])
+  const selectedGroup = useMemo(() => groups.find((g) => g.id === selectedGroupId) ?? null, [groups, selectedGroupId])
+  const selectedGroupPerms = selectedGroupId ? groupPermissions[selectedGroupId] ?? new Set<string>() : new Set<string>()
+
+  const resetFeedback = () => {
     setError(null)
-
-    try {
-      await apiFetch(`/api/admin/users/${userId}/reset-password`, {
-        method: 'POST'
-      })
-      alert(`Senha de "${userName}" resetada para "123456" e sessões invalidadas!`)
-    } catch (e) {
-      console.error('Erro ao resetar senha do usuário:', e)
-      setError('Erro ao resetar senha do usuário.')
-    } finally {
-      setResetingPasswordId(null)
-    }
-  }
-
-  const handleInvalidateUserSessions = async (userId: string, userName: string) => {
-    if (!window.confirm(`Deslogar "${userName}" de todos os dispositivos? O usuário precisará fazer login novamente.`)) return
-
-    setInvalidatingSessionId(userId)
-    setError(null)
-    try {
-      await apiFetch(`/api/admin/users/${userId}/invalidate-sessions`, { method: 'POST' })
-      alert(`Sessões de "${userName}" invalidadas com sucesso!`)
-    } catch (e) {
-      console.error('Erro ao invalidar sessões:', e)
-      setError('Erro ao invalidar sessões do usuário.')
-    } finally {
-      setInvalidatingSessionId(null)
-    }
-  }
-
-  const handleInvalidateAllSessions = async () => {
-    if (!window.confirm('Deslogar TODOS os usuários do sistema? Todos precisarão fazer login novamente.')) return
-
-    setInvalidatingAll(true)
-    setError(null)
-    try {
-      await apiFetch('/api/admin/invalidate-all-sessions', { method: 'POST' })
-      alert('Todas as sessões foram invalidadas com sucesso!')
-    } catch (e) {
-      console.error('Erro ao invalidar todas as sessões:', e)
-      setError('Erro ao invalidar todas as sessões.')
-    } finally {
-      setInvalidatingAll(false)
-    }
-  }
-
-
-  const handleToggleUserSetting = async (
-    userId: string,
-    field: 'use_global_ai',
-    nextValue: boolean,
-  ) => {
-    if (savingUserSettingsId) return
-
-    setSavingUserSettingsId(userId)
-    setError(null)
-
-    try {
-      await apiFetch(`/api/admin/users/${userId}/settings`, {
-        method: 'PUT',
-        body: JSON.stringify({ [field]: nextValue })
-      })
-
-      setUsers((prev) =>
-        prev.map((u) =>
-          u.id === userId
-            ? {
-              ...u,
-              useGlobalAi: field === 'use_global_ai' ? nextValue : u.useGlobalAi,
-            }
-            : u,
-        ),
-      )
-    } catch (e) {
-      console.error('Erro ao atualizar configurações do usuário:', e)
-      setError('Erro ao atualizar configurações do usuário.')
-    } finally {
-      setSavingUserSettingsId(null)
-    }
+    setSuccessMessage(null)
   }
 
   const loadAdminData = async () => {
     setLoading(true)
-    setError(null)
-
+    resetFeedback()
     try {
-      // 1) Carrega grupos
-      const groupsData = await apiFetch('/api/admin/groups')
-      const mappedGroups: AdminGroup[] = (groupsData ?? []).map((g: any) => ({
-        id: g.id,
-        name: g.name ?? '(sem nome)',
-      }))
-      setGroups(mappedGroups)
+      const [groupsData, permsData, groupPermsData, profilesData] = await Promise.all([
+        apiFetch('/api/admin/groups'),
+        apiFetch('/api/admin/permissions'),
+        apiFetch('/api/admin/group-permissions'),
+        apiFetch('/api/admin/users'),
+      ])
 
-      if (!selectedGroupId && mappedGroups.length > 0) {
-        setSelectedGroupId(mappedGroups[0].id)
-      }
-
-      // 2) Carrega permissões
-      const permsData = await apiFetch('/api/admin/permissions')
+      const mappedGroups: AdminGroup[] = (groupsData ?? []).map((g: any) => ({ id: g.id, name: g.name ?? '(sem nome)' }))
       const mappedPerms: AdminPermission[] = (permsData ?? []).map((p: any) => ({
         id: p.id,
         code: p.code,
         name: p.name ?? null,
-        description: null,
+        description: p.description ?? null,
       }))
-      setPermissions(mappedPerms)
-
-      // 3) Carrega relação grupo-permissão
-      const groupPermsData = await apiFetch('/api/admin/group-permissions')
-      const gpMap: Record<string, Set<string>> = {}
-      for (const row of groupPermsData ?? []) {
-        const gid = row.group_id as string
-        const pid = row.permission_id as string
-        if (!gid || !pid) continue
-        if (!gpMap[gid]) gpMap[gid] = new Set<string>()
-        gpMap[gid].add(pid)
-      }
-      setGroupPermissions(gpMap)
-
-      // 4) Carrega perfis de usuário
-      const profilesData = await apiFetch('/api/admin/users')
       const mappedUsers: AdminUserProfile[] = (profilesData ?? []).map((u: any) => ({
         id: u.id,
         displayName: u.display_name ?? null,
         userName: u.user_name ?? null,
         email: u.email ?? null,
+        phone: u.phone ?? null,
         groupId: u.group_id ?? null,
         groupName: u.group_name ?? null,
         useGlobalAi: u.use_global_ai ?? true,
       }))
+      const gpMap: Record<string, Set<string>> = {}
+      for (const row of groupPermsData ?? []) {
+        if (!gpMap[row.group_id]) gpMap[row.group_id] = new Set<string>()
+        gpMap[row.group_id].add(row.permission_id)
+      }
+
+      setGroups(mappedGroups)
+      setPermissions(mappedPerms)
       setUsers(mappedUsers)
+      setGroupPermissions(gpMap)
+      if (!selectedUserId && mappedUsers.length > 0) setSelectedUserId(mappedUsers[0].id)
+      if (!selectedGroupId && mappedGroups.length > 0) setSelectedGroupId(mappedGroups[0].id)
     } catch (e) {
-      console.error('Erro ao carregar dados de administração:', e)
-      setError('Erro ao carregar dados de administração.')
+      console.error('Erro ao carregar dados administrativos:', e)
+      setError('Não foi possível carregar os dados de usuários e grupos.')
     } finally {
       setLoading(false)
     }
@@ -205,372 +127,445 @@ export function AdminUsersPage({
     void loadAdminData()
   }, [canManageUsers])
 
-  if (!canManageUsers) {
-    return (
-      <section className="bg-white rounded-2xl border border-slate-200 shadow-md p-4 md:p-5 max-w-xl">
-        <p className="text-[12px] md:text-[13px] text-slate-500">
-          Você não tem permissão para acessar a gestão de usuários e grupos.
-        </p>
-      </section>
-    )
-  }
-
-  const selectedGroup = groups.find((g) => g.id === selectedGroupId) ?? null
-  const selectedGroupPerms = selectedGroupId ? groupPermissions[selectedGroupId] ?? new Set<string>() : new Set<string>()
-
-  // Hierarquia simples baseada no nome dos grupos
-  const ROLE_ORDER = ['Administrador', 'Gerente', 'Operador', 'Visualizador'] as const
-  const currentRoleIndex = currentUserGroupName ? ROLE_ORDER.indexOf(currentUserGroupName as any) : -1
+  useEffect(() => {
+    if (!selectedUser) return
+    setUserDraft({
+      displayName: selectedUser.displayName || selectedUser.userName || '',
+      email: selectedUser.email || '',
+      phone: selectedUser.phone || '',
+    })
+    setNotifyMessage('')
+  }, [selectedUser])
 
   const handleTogglePermission = async (groupId: string | null, permissionId: string, nextEnabled: boolean) => {
     if (!groupId || savingPermission) return
-
     setSavingPermission(true)
-    setError(null)
-
+    resetFeedback()
     try {
-      if (nextEnabled) {
-        await apiFetch('/api/admin/group-permissions', {
-          method: 'POST',
-          body: JSON.stringify({ group_id: groupId, permission_id: permissionId })
-        })
-
-        setGroupPermissions((prev) => {
-          const next: Record<string, Set<string>> = { ...prev }
-          const current = new Set(next[groupId] ?? [])
-          current.add(permissionId)
-          next[groupId] = current
-          return next
-        })
-      } else {
-        await apiFetch('/api/admin/group-permissions', {
-          method: 'DELETE',
-          body: JSON.stringify({ group_id: groupId, permission_id: permissionId })
-        })
-
-        setGroupPermissions((prev) => {
-          const next: Record<string, Set<string>> = { ...prev }
-          const current = new Set(next[groupId] ?? [])
-          current.delete(permissionId)
-          next[groupId] = current
-          return next
-        })
-      }
+      await apiFetch('/api/admin/group-permissions', {
+        method: nextEnabled ? 'POST' : 'DELETE',
+        body: JSON.stringify({ group_id: groupId, permission_id: permissionId }),
+      })
+      setGroupPermissions((prev) => {
+        const next = { ...prev }
+        const current = new Set(next[groupId] ?? [])
+        if (nextEnabled) current.add(permissionId)
+        else current.delete(permissionId)
+        next[groupId] = current
+        return next
+      })
+      setSuccessMessage('Permissões do grupo atualizadas com sucesso.')
     } catch (e) {
-      console.error('Erro ao atualizar permissão do grupo:', e)
-      setError('Erro ao atualizar permissão do grupo.')
+      console.error('Erro ao atualizar permissão:', e)
+      setError('Falha ao atualizar as permissões do grupo.')
     } finally {
       setSavingPermission(false)
     }
   }
 
   const handleToggleAllPermissionsForSelectedGroup = async (nextEnabled: boolean) => {
-    if (!selectedGroupId || savingPermission || permissions.length === 0) return
-    setError(null)
-    for (const perm of permissions) {
-      const isCurrentlyEnabled = selectedGroupPerms.has(perm.id)
-      if (nextEnabled === isCurrentlyEnabled) continue
-      await handleTogglePermission(selectedGroupId, perm.id, nextEnabled)
+    if (!selectedGroupId || permissions.length === 0 || savingPermission) return
+    for (const permission of permissions) {
+      const enabled = selectedGroupPerms.has(permission.id)
+      if (enabled === nextEnabled) continue
+      await handleTogglePermission(selectedGroupId, permission.id, nextEnabled)
     }
   }
 
   const handleChangeUserGroup = async (userId: string, newGroupId: string | '') => {
-    const groupIdOrNull = newGroupId === '' ? null : newGroupId
-
+    const groupIdOrNull = newGroupId || null
     setSavingUserGroupId(userId)
-    setError(null)
-
+    resetFeedback()
     try {
       await apiFetch(`/api/admin/users/${userId}/group`, {
         method: 'PUT',
-        body: JSON.stringify({ group_id: groupIdOrNull })
+        body: JSON.stringify({ group_id: groupIdOrNull }),
       })
-
-      const group = groupIdOrNull ? groups.find((g) => g.id === groupIdOrNull) ?? null : null
-
+      const group = groupIdOrNull ? groups.find((item) => item.id === groupIdOrNull) ?? null : null
       setUsers((prev) =>
-        prev.map((u) =>
-          u.id === userId
-            ? {
-              ...u,
-              groupId: groupIdOrNull,
-              groupName: group?.name ?? null,
-            }
-            : u,
+        prev.map((user) =>
+          user.id === userId ? { ...user, groupId: groupIdOrNull, groupName: group?.name ?? null } : user,
         ),
       )
+      setSuccessMessage('Grupo do usuário atualizado com sucesso.')
     } catch (e) {
-      console.error('Erro ao atualizar grupo do usuário:', e)
-      setError('Erro ao atualizar grupo do usuário.')
+      console.error('Erro ao alterar grupo do usuário:', e)
+      setError('Falha ao alterar o grupo do usuário.')
     } finally {
       setSavingUserGroupId(null)
     }
   }
 
+  const handleToggleUserSetting = async (userId: string, nextValue: boolean) => {
+    if (savingUserSettingsId) return
+    setSavingUserSettingsId(userId)
+    resetFeedback()
+    try {
+      await apiFetch(`/api/admin/users/${userId}/settings`, {
+        method: 'PUT',
+        body: JSON.stringify({ use_global_ai: nextValue }),
+      })
+      setUsers((prev) => prev.map((user) => (user.id === userId ? { ...user, useGlobalAi: nextValue } : user)))
+      setSuccessMessage('Preferência de IA do usuário atualizada.')
+    } catch (e) {
+      console.error('Erro ao atualizar configuração do usuário:', e)
+      setError('Falha ao atualizar a configuração de IA do usuário.')
+    } finally {
+      setSavingUserSettingsId(null)
+    }
+  }
+
+  const handleSaveUserProfile = async () => {
+    if (!selectedUser) return
+    setSavingUserProfileId(selectedUser.id)
+    resetFeedback()
+    try {
+      const updated = await apiFetch(`/api/admin/users/${selectedUser.id}/profile`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          display_name: userDraft.displayName.trim() || null,
+          email: userDraft.email.trim() || null,
+          phone: userDraft.phone.trim() || null,
+        }),
+      })
+      setUsers((prev) =>
+        prev.map((user) =>
+          user.id === selectedUser.id
+            ? {
+              ...user,
+              displayName: updated.display_name ?? null,
+              userName: updated.user_name ?? null,
+              email: updated.email ?? null,
+              phone: updated.phone ?? null,
+            }
+            : user,
+        ),
+      )
+      setSuccessMessage('Cadastro do usuário salvo com sucesso.')
+    } catch (e) {
+      console.error('Erro ao salvar cadastro do usuário:', e)
+      setError('Falha ao salvar os dados do usuário.')
+    } finally {
+      setSavingUserProfileId(null)
+    }
+  }
+
+  const handleSendNotification = async () => {
+    if (!selectedUser || !notifyMessage.trim()) return
+    setSendingNotificationId(selectedUser.id)
+    resetFeedback()
+    try {
+      await apiFetch(`/api/admin/users/${selectedUser.id}/notify`, {
+        method: 'POST',
+        body: JSON.stringify({ message: notifyMessage.trim() }),
+      })
+      setNotifyMessage('')
+      setSuccessMessage('Notificação enviada com sucesso.')
+    } catch (e) {
+      console.error('Erro ao enviar notificação ao usuário:', e)
+      setError('Falha ao enviar a notificação ao usuário.')
+    } finally {
+      setSendingNotificationId(null)
+    }
+  }
+
+  const handleResetPassword = async (userId: string, label: string) => {
+    if (!window.confirm(`Resetar a senha de "${label}" para "123456" e invalidar as sessões?`)) return
+    setResetingPasswordId(userId)
+    resetFeedback()
+    try {
+      await apiFetch(`/api/admin/users/${userId}/reset-password`, { method: 'POST' })
+      setSuccessMessage(`Senha de "${label}" resetada com sucesso.`)
+    } catch (e) {
+      console.error('Erro ao resetar senha:', e)
+      setError('Falha ao resetar a senha do usuário.')
+    } finally {
+      setResetingPasswordId(null)
+    }
+  }
+
+  const handleInvalidateUserSessions = async (userId: string, label: string) => {
+    if (!window.confirm(`Deslogar "${label}" de todos os dispositivos?`)) return
+    setInvalidatingSessionId(userId)
+    resetFeedback()
+    try {
+      await apiFetch(`/api/admin/users/${userId}/invalidate-sessions`, { method: 'POST' })
+      setSuccessMessage(`Sessões de "${label}" invalidadas.`)
+    } catch (e) {
+      console.error('Erro ao invalidar sessões do usuário:', e)
+      setError('Falha ao invalidar as sessões do usuário.')
+    } finally {
+      setInvalidatingSessionId(null)
+    }
+  }
+
+  const handleInvalidateAllSessions = async () => {
+    if (!window.confirm('Deslogar todos os usuários do sistema?')) return
+    setInvalidatingAll(true)
+    resetFeedback()
+    try {
+      await apiFetch('/api/admin/invalidate-all-sessions', { method: 'POST' })
+      setSuccessMessage('Todas as sessões foram invalidadas com sucesso.')
+    } catch (e) {
+      console.error('Erro ao invalidar todas as sessões:', e)
+      setError('Falha ao invalidar todas as sessões.')
+    } finally {
+      setInvalidatingAll(false)
+    }
+  }
+
+  if (!canManageUsers) {
+    return <section className="max-w-xl rounded-3xl border border-slate-200 bg-white p-5 shadow-sm"><p className="text-sm text-slate-500">Você não tem permissão para acessar esta área.</p></section>
+  }
 
   return (
-    <section className="bg-white rounded-2xl border border-slate-200 shadow-md p-4 md:p-5 flex flex-col gap-4">
-      <header className="flex items-start justify-between gap-3">
-        <div>
-          <h2 className="text-sm font-semibold text-slate-900">Usuários e grupos</h2>
-          <p className="text-[11px] text-slate-500 mt-0.5">
-            Visualize quais usuários estão associados a cada grupo e quais permissões cada grupo possui.
-          </p>
-        </div>
-        {(loading || savingPermission) && (
-          <span className="text-[10px] text-slate-500">
-            {loading ? 'Carregando…' : 'Salvando alterações…'}
-          </span>
-        )}
-      </header>
-
-      {error && (
-        <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-[11px] text-red-700">
-          {error}
-        </div>
-      )}
-
-      <div className="flex flex-col gap-6">
-        {/* Usuários */}
-        <div className="flex flex-col gap-2">
-          <h3 className="text-xs font-semibold text-slate-800">Usuários</h3>
-          <p className="text-[11px] text-slate-500">
-            Lista de perfis cadastrados e seus grupos atuais.
-          </p>
-          <div className="mt-1 rounded-lg border border-slate-200 bg-slate-50/80 max-h-80 overflow-auto overflow-x-auto">
-            {users.length === 0 ? (
-              <div className="px-3 py-2 text-[11px] text-slate-500">Nenhum usuário encontrado.</div>
-            ) : (
-              <table className="w-full text-[11px] border-collapse min-w-[500px]">
-                <thead className="bg-slate-100 border-b border-slate-200 sticky top-0 z-10">
-                  <tr>
-                    <th className="px-2 py-1 text-left font-medium text-slate-600">Nome</th>
-                    {debugEnabled && (
-                      <th className="px-2 py-1 text-left font-medium text-slate-600">UID interno</th>
-                    )}
-                    <th className="px-2 py-1 text-left font-medium text-slate-600">Grupo</th>
-                    <th className="px-2 py-1 text-left font-medium text-slate-600">IA global</th>
-                    <th className="px-2 py-1 text-left font-medium text-slate-600">Ver como</th>
-                    <th className="px-2 py-1 text-left font-medium text-slate-600">Ações</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {users.map((u) => (
-                    <tr key={u.id} className="border-b border-slate-100 last:border-b-0 hover:bg-slate-100/60">
-                      <td className="px-2 py-1 align-top text-slate-700">
-                        <div className="flex flex-col">
-                          <span className="font-medium">{u.displayName || u.userName || <span className="text-slate-400 font-normal italic">(sem nome)</span>}</span>
-                          <span className="text-[9px] text-slate-400 lowercase">{u.email}</span>
-                        </div>
-                      </td>
-                      {debugEnabled && (
-                        <td className="px-2 py-1 align-top font-mono text-[10px] text-slate-500 break-all">
-                          {u.id}
-                        </td>
-                      )}
-                      <td className="px-2 py-1 align-top text-slate-700">
-                        <select
-                          className="w-full h-7 px-1.5 rounded-md border border-slate-200 bg-white text-[11px] text-slate-700 focus:outline-none focus:ring-1 focus:ring-emerald-400/80 disabled:opacity-50 disabled:cursor-not-allowed"
-                          value={u.groupId ?? ''}
-                          onChange={(e) => handleChangeUserGroup(u.id, e.target.value)}
-                          disabled={savingUserGroupId === u.id}
-                        >
-                          <option value="">(sem grupo)</option>
-                          {groups
-                            .filter((g) => {
-                              if (currentRoleIndex < 0) return true
-                              const targetIndex = ROLE_ORDER.indexOf(g.name as any)
-                              if (targetIndex < 0) return true
-                              return targetIndex >= currentRoleIndex
-                            })
-                            .map((g) => (
-                              <option key={g.id} value={g.id}>
-                                {g.name}
-                              </option>
-                            ))}
-                        </select>
-                      </td>
-                      <td className="px-2 py-1 align-top text-slate-700">
-                        <label className="inline-flex items-center gap-1 text-[10px] text-slate-600">
-                          <input
-                            type="checkbox"
-                            className="h-3 w-3 accent-emerald-500 disabled:opacity-40 disabled:cursor-not-allowed"
-                            checked={u.useGlobalAi}
-                            disabled={savingUserSettingsId === u.id}
-                            onChange={(e) =>
-                              void handleToggleUserSetting(u.id, 'use_global_ai', e.target.checked)
-                            }
-                          />
-                          <span>Usar global</span>
-                        </label>
-                      </td>
-
-                      <td className="px-2 py-1 align-top text-slate-700">
-                        {onImpersonateUser && (
-                          <button
-                            type="button"
-                            className={`px-2 py-0.5 rounded-md text-[10px] border ${impersonatedUserId === u.id
-                              ? 'bg-emerald-600 text-white border-emerald-700'
-                              : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
-                              }`}
-                            onClick={() =>
-                              onImpersonateUser(impersonatedUserId === u.id ? null : u.id)
-                            }
-                          >
-                            {impersonatedUserId === u.id ? 'Sair do modo ver como' : 'Ver como'}
-                          </button>
-                        )}
-                      </td>
-                      <td className="px-2 py-1 align-top text-slate-700">
-                        <div className="flex flex-col gap-0.5">
-                          <button
-                            type="button"
-                            className="px-2 py-0.5 rounded-md text-[10px] bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 disabled:opacity-50"
-                            title="Resetar senha para 123456 (invalida sessões)"
-                            disabled={resetingPasswordId === u.id}
-                            onClick={() => handleResetPassword(u.id, u.displayName || u.userName || u.email || '')}
-                          >
-                            {resetingPasswordId === u.id ? '...' : 'Reset Senha'}
-                          </button>
-                          <button
-                            type="button"
-                            className="px-2 py-0.5 rounded-md text-[10px] bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 disabled:opacity-50"
-                            title="Deslogar usuário de todos os dispositivos"
-                            disabled={invalidatingSessionId === u.id}
-                            onClick={() => handleInvalidateUserSessions(u.id, u.displayName || u.userName || u.email || '')}
-                          >
-                            {invalidatingSessionId === u.id ? '...' : 'Deslogar'}
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
+    <section className="flex flex-col gap-6">
+      <div className="rounded-[28px] border border-slate-200 bg-gradient-to-br from-slate-950 via-slate-900 to-emerald-950 p-6 text-white shadow-xl shadow-slate-300/40">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-emerald-200/80">Administração</p>
+            <h1 className="mt-2 text-2xl font-semibold tracking-tight">Gestão de usuários e grupos</h1>
+            <p className="mt-2 max-w-3xl text-sm text-slate-300">
+              Separei cadastro operacional de usuários e gestão de permissões em áreas diferentes para reduzir ruído.
+            </p>
           </div>
-        </div>
-
-        {/* Grupos */}
-        <div className="flex flex-col gap-2">
-          <h3 className="text-xs font-semibold text-slate-800">Grupos</h3>
-          <p className="text-[11px] text-slate-500">
-            Cada grupo representa um perfil de acesso (ex: Admin, Operador, Somente leitura).
-          </p>
-          <div className="mt-1 rounded-lg border border-slate-200 bg-slate-50/80 max-h-80 overflow-auto px-2 py-2 flex flex-col gap-1.5">
-            {groups.length === 0 ? (
-              <div className="px-1 py-0.5 text-[11px] text-slate-500">Nenhum grupo encontrado.</div>
-            ) : (
-              groups.map((g) => {
-                const isSelected = g.id === selectedGroupId
-                const userCount = users.filter((u) => u.groupId === g.id).length
-                return (
-                  <button
-                    key={g.id}
-                    type="button"
-                    className={`w-full flex items-center justify-between gap-2 px-2 py-1.5 rounded-md text-[11px] border transition ${isSelected
-                      ? 'bg-emerald-50 border-emerald-300 text-emerald-900'
-                      : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
-                      }`}
-                    onClick={() => setSelectedGroupId(g.id)}
-                  >
-                    <span className="truncate">{g.name}</span>
-                    <span className="text-[10px] text-slate-500 whitespace-nowrap">{userCount} usuário(s)</span>
-                  </button>
-                )
-              })
-            )}
-          </div>
-        </div>
-
-        {/* Permissões do grupo selecionado */}
-        <div className="flex flex-col gap-2">
-          <div className="flex items-center justify-between gap-2">
-            <div>
-              <h3 className="text-xs font-semibold text-slate-800">Permissões do grupo selecionado</h3>
-              <p className="text-[11px] text-slate-500">
-                Marque ou desmarque as permissões que este grupo deve possuir.
-              </p>
-            </div>
-            {selectedGroup && permissions.length > 0 && (
-              <div className="flex items-center gap-1.5 text-slate-500">
-                <button
-                  type="button"
-                  className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-emerald-300 bg-emerald-50 text-[11px] hover:bg-emerald-100 disabled:opacity-40 disabled:cursor-not-allowed"
-                  title="Marcar todas"
-                  disabled={savingPermission}
-                  onClick={() => void handleToggleAllPermissionsForSelectedGroup(true)}
-                >
-                  ✓
-                </button>
-                <button
-                  type="button"
-                  className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-red-300 bg-red-50 text-[11px] text-red-600 hover:bg-red-100 disabled:opacity-40 disabled:cursor-not-allowed"
-                  title="Desmarcar todas"
-                  disabled={savingPermission}
-                  onClick={() => void handleToggleAllPermissionsForSelectedGroup(false)}
-                >
-                  ✕
-                </button>
-              </div>
-            )}
-          </div>
-          <div className="mt-1 rounded-lg border border-slate-200 bg-slate-50/80 max-h-80 overflow-auto">
-            {!selectedGroup ? (
-              <div className="px-3 py-2 text-[11px] text-slate-500">Selecione um grupo para ver suas permissões.</div>
-            ) : permissions.length === 0 ? (
-              <div className="px-3 py-2 text-[11px] text-slate-500">Nenhuma permissão cadastrada.</div>
-            ) : (
-              <table className="w-full text-[11px] border-collapse">
-                <thead className="bg-slate-100 border-b border-slate-200 sticky top-0 z-10">
-                  <tr>
-                    <th className="px-2 py-1 text-left font-medium text-slate-600 w-7">&nbsp;</th>
-                    <th className="px-2 py-1 text-left font-medium text-slate-600">Código</th>
-                    <th className="px-2 py-1 text-left font-medium text-slate-600">Descrição</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {permissions.map((p) => {
-                    const enabled = selectedGroupPerms.has(p.id)
-                    return (
-                      <tr key={p.id} className="border-b border-slate-100 last:border-b-0 hover:bg-slate-100/60">
-                        <td className="px-2 py-1 align-top">
-                          <input
-                            type="checkbox"
-                            className="h-3 w-3 accent-emerald-500 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
-                            checked={enabled}
-                            disabled={savingPermission}
-                            onChange={() => handleTogglePermission(selectedGroupId, p.id, !enabled)}
-                          />
-                        </td>
-                        <td className="px-2 py-1 align-top font-mono text-[10px] text-slate-800">{p.code}</td>
-                        <td className="px-2 py-1 align-top text-slate-700">
-                          {p.name || <span className="text-slate-400">(sem descrição)</span>}
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            )}
+          <div className="inline-flex rounded-full border border-white/10 bg-white/5 p-1">
+            <button
+              type="button"
+              onClick={() => setActiveTab('users')}
+              className={`rounded-full px-4 py-2 text-xs font-semibold transition ${activeTab === 'users' ? 'bg-white text-slate-900' : 'text-slate-300'}`}
+            >
+              Usuários
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('groups')}
+              className={`rounded-full px-4 py-2 text-xs font-semibold transition ${activeTab === 'groups' ? 'bg-white text-slate-900' : 'text-slate-300'}`}
+            >
+              Grupos e permissões
+            </button>
           </div>
         </div>
       </div>
 
-      {/* Ações Globais de Segurança */}
-      <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 flex flex-col gap-2">
-        <h3 className="text-xs font-semibold text-amber-800">⚠️ Ações de Segurança Globais</h3>
-        <p className="text-[11px] text-amber-700">
-          As ações abaixo afetam <strong>todos os usuários</strong> do sistema e exigem que façam login novamente.
-        </p>
-        <button
-          type="button"
-          className="self-start px-3 py-1.5 rounded-md text-[11px] font-medium bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 transition-colors"
-          disabled={invalidatingAll}
-          onClick={handleInvalidateAllSessions}
-        >
-          {invalidatingAll ? 'Invalidando...' : '🔒 Invalidar Sessões de Todos os Usuários'}
-        </button>
+      {(loading || error || successMessage) && (
+        <div className="space-y-3">
+          {loading && <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-500 shadow-sm">Carregando dados administrativos...</div>}
+          {error && <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 shadow-sm">{error}</div>}
+          {successMessage && <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700 shadow-sm">{successMessage}</div>}
+        </div>
+      )}
+
+      {activeTab === 'users' ? (
+        <div className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
+          <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h2 className="text-lg font-semibold text-slate-900">Base de usuários</h2>
+                <p className="text-sm text-slate-500">Selecione um usuário para editar cadastro, acesso e ações administrativas.</p>
+              </div>
+              <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">{users.length} usuário(s)</span>
+            </div>
+            <div className="mt-5 flex max-h-[640px] flex-col gap-2 overflow-y-auto pr-1">
+              {users.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">Nenhum usuário encontrado.</div>
+              ) : (
+                users.map((user) => {
+                  const label = user.displayName || user.userName || user.email || 'Sem nome'
+                  return (
+                    <button
+                      key={user.id}
+                      type="button"
+                      onClick={() => setSelectedUserId(user.id)}
+                      className={`rounded-2xl border px-4 py-4 text-left transition ${selectedUserId === user.id ? 'border-emerald-300 bg-emerald-50 shadow-sm' : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'}`}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="truncate text-sm font-semibold text-slate-900">{label}</div>
+                          <div className="truncate text-xs text-slate-500">{user.email || 'Sem e-mail cadastrado'}</div>
+                          <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-slate-500">
+                            <span className="rounded-full bg-white px-2.5 py-1 ring-1 ring-slate-200">{user.groupName || 'Sem grupo'}</span>
+                            <span className="rounded-full bg-white px-2.5 py-1 ring-1 ring-slate-200">{user.phone || 'Sem telefone'}</span>
+                          </div>
+                        </div>
+                        {debugEnabled && <span className="max-w-[120px] truncate font-mono text-[10px] text-slate-400">{user.id}</span>}
+                      </div>
+                    </button>
+                  )
+                })
+              )}
+            </div>
+          </div>
+
+          <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+            {!selectedUser ? (
+              <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">Selecione um usuário para editar os dados.</div>
+            ) : (
+              <div className="flex flex-col gap-6">
+                <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                  <div>
+                    <h2 className="text-lg font-semibold text-slate-900">Cadastro do usuário</h2>
+                    <p className="text-sm text-slate-500">Atualize dados do perfil, grupo, preferência de IA e ações operacionais.</p>
+                  </div>
+                  {onImpersonateUser && (
+                    <button
+                      type="button"
+                      onClick={() => onImpersonateUser(impersonatedUserId === selectedUser.id ? null : selectedUser.id)}
+                      className={`rounded-2xl px-4 py-2 text-xs font-semibold transition ${impersonatedUserId === selectedUser.id ? 'bg-emerald-600 text-white' : 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-50'}`}
+                    >
+                      {impersonatedUserId === selectedUser.id ? 'Sair do modo ver como' : 'Entrar no modo ver como'}
+                    </button>
+                  )}
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-xs font-semibold text-slate-600">Nome exibido</label>
+                    <input type="text" value={userDraft.displayName} onChange={(e) => setUserDraft((prev) => ({ ...prev, displayName: e.target.value }))} className="h-11 rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm text-slate-800 outline-none transition focus:border-emerald-500 focus:bg-white" />
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-xs font-semibold text-slate-600">E-mail</label>
+                    <input type="email" value={userDraft.email} onChange={(e) => setUserDraft((prev) => ({ ...prev, email: e.target.value }))} className="h-11 rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm text-slate-800 outline-none transition focus:border-emerald-500 focus:bg-white" />
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-xs font-semibold text-slate-600">Telefone</label>
+                    <input type="text" value={userDraft.phone} onChange={(e) => setUserDraft((prev) => ({ ...prev, phone: e.target.value.replace(/[^\d()+\s-]/g, '') }))} className="h-11 rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm text-slate-800 outline-none transition focus:border-emerald-500 focus:bg-white" />
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-xs font-semibold text-slate-600">Grupo</label>
+                    <select value={selectedUser.groupId ?? ''} onChange={(e) => void handleChangeUserGroup(selectedUser.id, e.target.value)} disabled={savingUserGroupId === selectedUser.id} className="h-11 rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm text-slate-800 outline-none transition focus:border-emerald-500 focus:bg-white disabled:cursor-not-allowed disabled:opacity-70">
+                      <option value="">Sem grupo</option>
+                      {groups.filter((group) => {
+                        if (currentRoleIndex < 0) return true
+                        const targetIndex = ROLE_ORDER.indexOf(group.name as any)
+                        if (targetIndex < 0) return true
+                        return targetIndex >= currentRoleIndex
+                      }).map((group) => <option key={group.id} value={group.id}>{group.name}</option>)}
+                    </select>
+                  </div>
+                </div>
+
+                <div className="grid gap-4 lg:grid-cols-[1fr_240px]">
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <div className="text-sm font-semibold text-slate-900">Preferência de IA</div>
+                        <div className="text-xs text-slate-500">Defina se esse usuário usa a chave global do sistema.</div>
+                      </div>
+                      <label className="inline-flex items-center gap-2 text-sm text-slate-700">
+                        <input type="checkbox" checked={selectedUser.useGlobalAi} disabled={savingUserSettingsId === selectedUser.id} onChange={(e) => void handleToggleUserSetting(selectedUser.id, e.target.checked)} className="h-4 w-4 accent-emerald-500" />
+                        <span>Usar IA global</span>
+                      </label>
+                    </div>
+                  </div>
+                  <button type="button" onClick={() => void handleSaveUserProfile()} disabled={savingUserProfileId === selectedUser.id} className="h-full min-h-[88px] rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-70">
+                    {savingUserProfileId === selectedUser.id ? 'Salvando...' : 'Salvar cadastro'}
+                  </button>
+                </div>
+
+                <div className="grid gap-4 xl:grid-cols-[1fr_260px]">
+                  <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                    <div className="mb-2 text-sm font-semibold text-slate-900">Notificação específica</div>
+                    <p className="mb-3 text-xs text-slate-500">Disponível apenas para administradores. O envio usa a configuração Evolution do sistema.</p>
+                    <textarea rows={5} value={notifyMessage} onChange={(e) => setNotifyMessage(e.target.value)} placeholder="Escreva a mensagem que deve ser enviada a esse usuário." className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-emerald-500 focus:bg-white" />
+                  </div>
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                    <div className="text-sm font-semibold text-slate-900">{selectedUser.displayName || selectedUser.userName || selectedUser.email}</div>
+                    <div className="mt-1 text-xs text-slate-500">{selectedUser.phone || 'Sem telefone cadastrado'}</div>
+                    <div className="mt-1 text-xs text-slate-500">{selectedUser.groupName || 'Sem grupo'}</div>
+                    <button type="button" onClick={() => void handleSendNotification()} disabled={sendingNotificationId === selectedUser.id || !notifyMessage.trim() || !selectedUser.phone} className="mt-4 h-11 w-full rounded-2xl bg-slate-900 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300">
+                      {sendingNotificationId === selectedUser.id ? 'Enviando...' : 'Enviar notificação'}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="grid gap-3 md:grid-cols-2">
+                  <button type="button" onClick={() => void handleResetPassword(selectedUser.id, selectedUser.displayName || selectedUser.userName || selectedUser.email || 'usuário')} disabled={resetingPasswordId === selectedUser.id} className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-70">
+                    {resetingPasswordId === selectedUser.id ? 'Resetando senha...' : 'Resetar senha para 123456'}
+                  </button>
+                  <button type="button" onClick={() => void handleInvalidateUserSessions(selectedUser.id, selectedUser.displayName || selectedUser.userName || selectedUser.email || 'usuário')} disabled={invalidatingSessionId === selectedUser.id} className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-700 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-70">
+                    {invalidatingSessionId === selectedUser.id ? 'Invalidando sessões...' : 'Deslogar usuário de todos os dispositivos'}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      ) : (
+        <div className="grid gap-6 xl:grid-cols-[0.85fr_1.15fr]">
+          <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h2 className="text-lg font-semibold text-slate-900">Grupos</h2>
+                <p className="text-sm text-slate-500">Selecione um grupo para revisar e ajustar permissões.</p>
+              </div>
+              <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">{groups.length} grupo(s)</span>
+            </div>
+            <div className="mt-5 flex flex-col gap-2">
+              {groups.map((group) => {
+                const count = users.filter((user) => user.groupId === group.id).length
+                return (
+                  <button key={group.id} type="button" onClick={() => setSelectedGroupId(group.id)} className={`rounded-2xl border px-4 py-4 text-left transition ${selectedGroupId === group.id ? 'border-emerald-300 bg-emerald-50 shadow-sm' : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'}`}>
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="text-sm font-semibold text-slate-900">{group.name}</div>
+                      <div className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-600 ring-1 ring-slate-200">{count} usuário(s)</div>
+                    </div>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+
+          <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+              <div>
+                <h2 className="text-lg font-semibold text-slate-900">{selectedGroup ? `Permissões de ${selectedGroup.name}` : 'Permissões do grupo'}</h2>
+                <p className="text-sm text-slate-500">Marque apenas o que esse grupo realmente precisa acessar.</p>
+              </div>
+              {selectedGroup && (
+                <div className="flex gap-2">
+                  <button type="button" onClick={() => void handleToggleAllPermissionsForSelectedGroup(true)} disabled={savingPermission} className="rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-70">Marcar todas</button>
+                  <button type="button" onClick={() => void handleToggleAllPermissionsForSelectedGroup(false)} disabled={savingPermission} className="rounded-2xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-70">Limpar todas</button>
+                </div>
+              )}
+            </div>
+            {!selectedGroup ? (
+              <div className="mt-5 rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">Selecione um grupo para ver as permissões.</div>
+            ) : (
+              <div className="mt-5 grid gap-3">
+                {permissions.length === 0 ? (
+                  <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">Nenhuma permissão cadastrada.</div>
+                ) : (
+                  permissions.map((permission) => {
+                    const enabled = selectedGroupPerms.has(permission.id)
+                    return (
+                      <label key={permission.id} className={`flex cursor-pointer items-start gap-3 rounded-2xl border px-4 py-4 transition ${enabled ? 'border-emerald-300 bg-emerald-50' : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'}`}>
+                        <input type="checkbox" className="mt-1 h-4 w-4 accent-emerald-500" checked={enabled} disabled={savingPermission} onChange={() => void handleTogglePermission(selectedGroupId, permission.id, !enabled)} />
+                        <div className="min-w-0">
+                          <div className="font-mono text-xs font-semibold text-slate-800">{permission.code}</div>
+                          <div className="mt-1 text-sm text-slate-700">{permission.name || 'Permissão sem nome amigável'}</div>
+                          {permission.description && <div className="mt-1 text-xs text-slate-500">{permission.description}</div>}
+                        </div>
+                      </label>
+                    )
+                  })
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      <div className="rounded-3xl border border-amber-200 bg-amber-50 p-5 shadow-sm">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div>
+            <h2 className="text-lg font-semibold text-amber-900">Ações globais de segurança</h2>
+            <p className="text-sm text-amber-800/80">Esta ação força todos os usuários a fazer login novamente.</p>
+          </div>
+          <button type="button" onClick={() => void handleInvalidateAllSessions()} disabled={invalidatingAll} className="rounded-2xl bg-red-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-70">
+            {invalidatingAll ? 'Invalidando...' : 'Invalidar sessões de todos'}
+          </button>
+        </div>
       </div>
     </section>
   )

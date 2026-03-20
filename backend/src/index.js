@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import { query } from './db.js';
 import { login, signup, forgotPassword, resetPassword, authenticateToken, checkAdmin, resetUserPasswordToDefault, invalidateUserSessions, invalidateAllSessions } from './auth.js';
+import { toEvolutionNumber } from './utils/messageUtils.js';
 
 const app = express();
 const port = process.env.PORT || 4000;
@@ -131,6 +132,8 @@ app.post('/api/profile', authenticateToken, async (req, res) => {
 app.put('/api/profile', authenticateToken, async (req, res) => {
   try {
     const {
+      display_name,
+      phone,
       use_global_ai,
       ai_api_key,
       evolution_url,
@@ -157,12 +160,18 @@ app.put('/api/profile', authenticateToken, async (req, res) => {
       }
     };
 
+    if (display_name !== undefined) {
+      await query('UPDATE users SET name = $1 WHERE id = $2', [display_name, req.user.id]);
+    }
+
     addField('use_global_ai', use_global_ai);
     addField('ai_api_key', ai_api_key);
     addField('evolution_url', evolution_url);
     addField('evolution_apikey', evolution_apikey);
     addField('evolution_instance', evolution_instance);
     addField('company_info', company_info);
+    addField('display_name', display_name);
+    addField('phone', phone);
     addField('gemini_model', gemini_model);
     addField('gemini_api_version', gemini_api_version);
     addField('gemini_temperature', gemini_temperature);
@@ -174,6 +183,8 @@ app.put('/api/profile', authenticateToken, async (req, res) => {
 
     setClause = setClause.slice(0, -2);
     values.push(req.user.id);
+
+    await query('INSERT INTO user_profiles (id) VALUES ($1) ON CONFLICT (id) DO NOTHING', [req.user.id]);
 
     await query(
       `UPDATE user_profiles SET ${setClause} WHERE id = $${count}`,
@@ -1175,11 +1186,49 @@ app.get('/api/admin/users', authenticateToken, checkAdmin, async (req, res) => {
        FROM user_profiles up
        LEFT JOIN user_groups ug ON up.group_id = ug.id
        LEFT JOIN users u ON up.id = u.id
-       ORDER BY up.id ASC`
+       ORDER BY COALESCE(up.display_name, u.name, u.email, up.id::text) ASC`
     );
     res.json(result.rows);
   } catch (error) {
     res.status(500).json({ error: 'Erro ao buscar usuários' });
+  }
+});
+
+app.put('/api/admin/users/:id/profile', authenticateToken, checkAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { display_name, phone, email } = req.body;
+
+    await query(
+      `INSERT INTO user_profiles (id, display_name, phone)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (id) DO UPDATE SET
+         display_name = EXCLUDED.display_name,
+         phone = EXCLUDED.phone`,
+      [id, display_name ?? null, phone ?? null]
+    );
+
+    if (display_name !== undefined) {
+      await query('UPDATE users SET name = $1 WHERE id = $2', [display_name || null, id]);
+    }
+
+    if (email !== undefined) {
+      await query('UPDATE users SET email = $1 WHERE id = $2', [email || null, id]);
+    }
+
+    const result = await query(
+      `SELECT up.*, ug.name as group_name, u.name as user_name, u.email
+       FROM user_profiles up
+       LEFT JOIN user_groups ug ON up.group_id = ug.id
+       LEFT JOIN users u ON up.id = u.id
+       WHERE up.id = $1`,
+      [id]
+    );
+
+    res.json(result.rows[0] || { ok: true });
+  } catch (error) {
+    console.error('Erro ao atualizar perfil do usuário:', error);
+    res.status(500).json({ error: 'Erro ao atualizar perfil do usuário' });
   }
 });
 
@@ -1258,6 +1307,78 @@ app.put('/api/admin/users/:id/settings', authenticateToken, checkAdmin, async (r
 });
 
 app.post('/api/admin/users/:id/reset-password', authenticateToken, checkAdmin, resetUserPasswordToDefault);
+
+app.post('/api/admin/users/:id/notify', authenticateToken, checkAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { message } = req.body;
+
+    if (!message || !String(message).trim()) {
+      return res.status(400).json({ error: 'Mensagem é obrigatória' });
+    }
+
+    const [targetUserResult, adminProfileResult, globalSettingsResult] = await Promise.all([
+      query(
+        `SELECT up.phone, COALESCE(up.display_name, u.name, u.email) AS user_label
+         FROM user_profiles up
+         LEFT JOIN users u ON up.id = u.id
+         WHERE up.id = $1`,
+        [id]
+      ),
+      query(
+        'SELECT evolution_url, evolution_apikey, evolution_instance FROM user_profiles WHERE id = $1',
+        [req.user.id]
+      ),
+      query(
+        'SELECT evolution_api_url, evolution_api_key, evolution_shared_instance FROM app_settings ORDER BY id DESC LIMIT 1'
+      ),
+    ]);
+
+    const targetUser = targetUserResult.rows[0];
+    if (!targetUser?.phone) {
+      return res.status(400).json({ error: 'Usuário alvo não possui telefone cadastrado' });
+    }
+
+    const adminProfile = adminProfileResult.rows[0] || {};
+    const globalSettings = globalSettingsResult.rows[0] || {};
+
+    const evolutionUrl = (adminProfile.evolution_url || globalSettings.evolution_api_url || '').trim();
+    const evolutionApiKey = (adminProfile.evolution_apikey || globalSettings.evolution_api_key || '').trim();
+    const evolutionInstance = (adminProfile.evolution_instance || globalSettings.evolution_shared_instance || '').trim();
+
+    if (!evolutionUrl || !evolutionApiKey || !evolutionInstance) {
+      return res.status(400).json({ error: 'Evolution API não configurada para notificações administrativas' });
+    }
+
+    const evolutionNumber = toEvolutionNumber(targetUser.phone);
+    if (!evolutionNumber) {
+      return res.status(400).json({ error: 'Telefone do usuário está em formato inválido' });
+    }
+
+    const response = await fetch(`${evolutionUrl}/message/sendText/${evolutionInstance}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        apikey: evolutionApiKey,
+      },
+      body: JSON.stringify({
+        number: evolutionNumber,
+        text: String(message).trim(),
+        linkPreview: false,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      return res.status(502).json({ error: `Falha ao enviar pela Evolution API: ${errorText}` });
+    }
+
+    res.json({ ok: true, target: targetUser.user_label || id });
+  } catch (error) {
+    console.error('Erro ao enviar notificação administrativa:', error);
+    res.status(500).json({ error: 'Erro ao enviar notificação ao usuário' });
+  }
+});
 
 // --- GESTÃO DE CHAVES GEMINI ---
 
@@ -1457,6 +1578,8 @@ async function runMigrations() {
     `ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS evolution_apikey TEXT`,
     `ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS evolution_instance TEXT`,
     `ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS company_info TEXT`,
+    `ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS display_name TEXT`,
+    `ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS phone TEXT`,
     `ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS gemini_model TEXT DEFAULT 'gemini-1.5-flash-latest'`,
     `ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS gemini_api_version TEXT DEFAULT 'v1'`,
     `ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS gemini_temperature NUMERIC(3,2) DEFAULT 0.7`,
@@ -1586,4 +1709,8 @@ app.use(errorHandler);
 app.listen(port, '0.0.0.0', async () => {
   console.log(`Backend listening on port ${port} (all interfaces)`);
   await runMigrations();
+  if (process.env.EMBED_QUEUE_WORKER !== 'false') {
+    await import('./queueWorker.js');
+    console.log('[Worker] queueWorker.js incorporado ao processo principal.');
+  }
 });

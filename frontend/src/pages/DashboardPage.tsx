@@ -1,4 +1,4 @@
-import type { Campaign, Contact, ContactList, SendHistoryItem, CampaignSendLog } from '../types'
+﻿import type { Campaign, Contact, ContactList, SendHistoryItem, CampaignSendLog } from '../types'
 
 type DashboardPageProps = {
   // Dados
@@ -23,7 +23,7 @@ type DashboardPageProps = {
   onNavigate: (page: 'dashboard' | 'contacts' | 'campaigns' | 'settings') => void
   onCreateCampaign: () => void
   onEditCampaign: (campaign: Campaign) => void
-  // Permissões (opcional)
+  // PermissÃµes (opcional)
   can?: (code: string) => boolean
 }
 
@@ -66,29 +66,29 @@ export function DashboardPage({
       : recentSuccessRate >= 90
         ? 'Bom'
         : recentSuccessRate >= 70
-          ? 'Atenção'
-          : 'Crítico'
+          ? 'AtenÃ§Ã£o'
+          : 'CrÃ­tico'
 
   if (!canViewDashboard) {
     return (
       <div className="text-[12px] md:text-[13px] text-slate-500 bg-white rounded-2xl border border-slate-200 shadow-sm p-4">
-        Você não tem permissão para visualizar o dashboard.
+        VocÃª nÃ£o tem permissÃ£o para visualizar o dashboard.
       </div>
     )
   }
   return (
     <>
-      {/* Seção de Onboarding / Primeiros Passos */}
+      {/* SeÃ§Ã£o de Onboarding / Primeiros Passos */}
       {(!hasEvolutionConfigured || contacts.length === 0 || campaigns.length === 0) && (
         <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden mb-6">
           <div className="px-6 py-4 border-b border-slate-50 flex items-center justify-between bg-slate-50/50">
             <div>
               <h3 className="text-sm font-bold text-slate-800">Primeiros Passos</h3>
-              <p className="text-[11px] text-slate-500">Complete estas tarefas para começar a enviar suas mensagens</p>
+              <p className="text-[11px] text-slate-500">Complete estas tarefas para comeÃ§ar a enviar suas mensagens</p>
             </div>
             <div className="flex items-center gap-2">
               <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">
-                {Math.round(((hasEvolutionConfigured ? 1 : 0) + (contacts.length > 0 ? 1 : 0) + (campaigns.length > 0 ? 1 : 0)) / 3 * 100)}% concluído
+                {Math.round(((hasEvolutionConfigured ? 1 : 0) + (contacts.length > 0 ? 1 : 0) + (campaigns.length > 0 ? 1 : 0)) / 3 * 100)}% concluÃ­do
               </span>
             </div>
           </div>
@@ -96,7 +96,7 @@ export function DashboardPage({
             <div className={`p-5 flex flex-col gap-3 transition-colors ${!hasEvolutionConfigured ? 'bg-amber-50/30' : 'bg-white'}`}>
               <div className="flex items-center justify-between">
                 <div className={`w-8 h-8 rounded-xl flex items-center justify-center text-sm ${hasEvolutionConfigured ? 'bg-emerald-100 text-emerald-600' : 'bg-amber-100 text-amber-600'}`}>
-                  {hasEvolutionConfigured ? '✓' : '1'}
+                  {hasEvolutionConfigured ? 'âœ“' : '1'}
                 </div>
                 {!hasEvolutionConfigured && <span className="text-[9px] font-bold text-amber-600 animate-pulse">PENDENTE</span>}
               </div>
@@ -108,16 +108,16 @@ export function DashboardPage({
                 onClick={() => onNavigate('settings')}
                 className={`mt-auto text-[10px] font-bold text-left hover:underline ${hasEvolutionConfigured ? 'text-emerald-600' : 'text-amber-600'}`}
               >
-                {hasEvolutionConfigured ? 'Configurações concluídas' : 'Ir para Configurações →'}
+                {hasEvolutionConfigured ? 'ConfiguraÃ§Ãµes concluÃ­das' : 'Ir para ConfiguraÃ§Ãµes â†’'}
               </button>
             </div>
 
             <div className={`p-5 flex flex-col gap-3 transition-colors ${hasEvolutionConfigured && contacts.length === 0 ? 'bg-amber-50/30' : 'bg-white'}`}>
               <div className="flex items-center justify-between">
                 <div className={`w-8 h-8 rounded-xl flex items-center justify-center text-sm ${contacts.length > 0 ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-100 text-slate-600'}`}>
-                  {contacts.length > 0 ? '✓' : '2'}
+                  {contacts.length > 0 ? 'âœ“' : '2'}
                 </div>
-                {hasEvolutionConfigured && contacts.length === 0 && <span className="text-[9px] font-bold text-amber-600 animate-pulse">PRÓXIMO PASSO</span>}
+                {hasEvolutionConfigured && contacts.length === 0 && <span className="text-[9px] font-bold text-amber-600 animate-pulse">PRÃ“XIMO PASSO</span>}
               </div>
               <div>
                 <h4 className="text-xs font-bold text-slate-800">Adicionar Contatos</h4>
@@ -127,33 +127,33 @@ export function DashboardPage({
                 onClick={() => onNavigate('contacts')}
                 className={`mt-auto text-[10px] font-bold text-left hover:underline ${contacts.length > 0 ? 'text-emerald-600' : 'text-slate-600'}`}
               >
-                {contacts.length > 0 ? 'Contatos cadastrados' : 'Gerenciar Contatos →'}
+                {contacts.length > 0 ? 'Contatos cadastrados' : 'Gerenciar Contatos â†’'}
               </button>
             </div>
 
             <div className={`p-5 flex flex-col gap-3 transition-colors ${contacts.length > 0 && campaigns.length === 0 ? 'bg-amber-50/30' : 'bg-white'}`}>
               <div className="flex items-center justify-between">
                 <div className={`w-8 h-8 rounded-xl flex items-center justify-center text-sm ${campaigns.length > 0 ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-100 text-slate-600'}`}>
-                  {campaigns.length > 0 ? '✓' : '3'}
+                  {campaigns.length > 0 ? 'âœ“' : '3'}
                 </div>
-                {contacts.length > 0 && campaigns.length === 0 && <span className="text-[9px] font-bold text-amber-600 animate-pulse">QUASE LÁ</span>}
+                {contacts.length > 0 && campaigns.length === 0 && <span className="text-[9px] font-bold text-amber-600 animate-pulse">QUASE LÃ</span>}
               </div>
               <div>
                 <h4 className="text-xs font-bold text-slate-800">Criar Campanha</h4>
-                <p className="text-[10px] text-slate-500 mt-1 leading-relaxed">Crie sua primeira campanha de mensagens e escolha o público alvo.</p>
+                <p className="text-[10px] text-slate-500 mt-1 leading-relaxed">Crie sua primeira campanha de mensagens e escolha o pÃºblico alvo.</p>
               </div>
               <button 
                 onClick={() => onNavigate('campaigns')}
                 className={`mt-auto text-[10px] font-bold text-left hover:underline ${campaigns.length > 0 ? 'text-emerald-600' : 'text-slate-600'}`}
               >
-                {campaigns.length > 0 ? 'Campanha criada' : 'Criar Campanha →'}
+                {campaigns.length > 0 ? 'Campanha criada' : 'Criar Campanha â†’'}
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Banner da Extensão do Navegador */}
+      {/* Banner da ExtensÃ£o do Navegador */}
       <div className="relative overflow-hidden mb-4 p-4 rounded-3xl bg-gradient-to-r from-emerald-600 to-emerald-800 text-white shadow-xl shadow-emerald-950/20 group">
         {/* Decorative elements */}
         <div className="absolute top-0 right-0 -mr-10 -mt-10 h-40 w-40 rounded-full bg-white/10 blur-3xl pointer-events-none group-hover:bg-white/20 transition-all duration-700" />
@@ -162,12 +162,12 @@ export function DashboardPage({
         <div className="relative flex flex-col md:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-4">
             <div className="h-12 w-12 rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center text-2xl shadow-inner border border-white/30">
-              🚀
+              ðŸš€
             </div>
             <div>
-              <h3 className="text-sm font-bold tracking-tight">Potencialize sua extração com nossa extensão</h3>
+              <h3 className="text-sm font-bold tracking-tight">Potencialize sua extraÃ§Ã£o com nossa extensÃ£o</h3>
               <p className="text-[11px] text-emerald-50/80 leading-relaxed max-w-md">
-                Extraia contatos diretamente do seu navegador com 1 clique. Mais rápido, seguro e integrado ao seu WhatsApp.
+                Extraia contatos diretamente do seu navegador com 1 clique. Mais rÃ¡pido, seguro e integrado ao seu WhatsApp.
               </p>
             </div>
           </div>
@@ -182,7 +182,7 @@ export function DashboardPage({
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 16v1a3 3 0 0 0 3 3h10a3 3 0 0 0 3-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
               </svg>
             </a>
-            <span className="text-[10px] text-emerald-100/90 font-medium px-2">v1.0.8 • 19/03/2026 às 23:41</span>
+            <span className="text-[10px] text-emerald-100/90 font-medium px-2">v1.0.9 • 19/03/2026 às 23:59</span>
           </div>
         </div>
       </div>
@@ -193,7 +193,7 @@ export function DashboardPage({
           <div className="flex items-center justify-between">
             <span className="text-[11px] text-slate-500">Total de contatos</span>
             <span className="h-6 w-6 rounded-lg bg-emerald-500/10 text-emerald-600 flex items-center justify-center text-[12px]" aria-hidden="true">
-              👥
+              ðŸ‘¥
             </span>
           </div>
           <span className="text-2xl font-semibold text-slate-900">
@@ -205,7 +205,7 @@ export function DashboardPage({
           <div className="flex items-center justify-between">
             <span className="text-[11px] text-slate-500">Lista atual</span>
             <span className="h-6 w-6 rounded-lg bg-emerald-500/10 text-emerald-600 flex items-center justify-center text-[12px]" aria-hidden="true">
-              📌
+              ðŸ“Œ
             </span>
           </div>
           <span className="text-2xl font-semibold text-slate-900">{contacts.length}</span>
@@ -217,22 +217,22 @@ export function DashboardPage({
           <div className="flex items-center justify-between">
             <span className="text-[11px] text-slate-500">Listas de contatos</span>
             <span className="h-6 w-6 rounded-lg bg-sky-500/10 text-sky-600 flex items-center justify-center text-[12px]" aria-hidden="true">
-              📂
+              ðŸ“‚
             </span>
           </div>
           <span className="text-2xl font-semibold text-slate-900">{lists.length}</span>
-          <span className="text-[10px] text-slate-400">Inclui lista padrão e personalizadas</span>
+          <span className="text-[10px] text-slate-400">Inclui lista padrÃ£o e personalizadas</span>
         </div>
         <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-3 flex flex-col gap-1">
           <div className="flex items-center justify-between">
             <span className="text-[11px] text-slate-500">Campanhas cadastradas</span>
             <span className="h-6 w-6 rounded-lg bg-amber-500/10 text-amber-600 flex items-center justify-center text-[12px]" aria-hidden="true">
-              📣
+              ðŸ“£
             </span>
           </div>
           <span className="text-2xl font-semibold text-slate-900">{campaigns.length}</span>
           <span className="text-[10px] text-slate-400">
-            {campaigns.filter((c) => c.status === 'agendada').length} agendadas ·{' '}
+            {campaigns.filter((c) => c.status === 'agendada').length} agendadas Â·{' '}
             {campaigns.filter((c) => c.status === 'enviada').length} enviadas
           </span>
         </div>
@@ -249,7 +249,7 @@ export function DashboardPage({
           <div className="flex items-center justify-between">
             <span
               className="text-[11px] text-slate-500"
-              title="Calculado com base nos últimos 10 registros de envio: percentual de envios com status OK em relação ao total (OK ÷ total)."
+              title="Calculado com base nos Ãºltimos 10 registros de envio: percentual de envios com status OK em relaÃ§Ã£o ao total (OK Ã· total)."
             >
               Qualidade dos envios recentes
             </span>
@@ -265,27 +265,27 @@ export function DashboardPage({
             >
               {recentSuccessRate == null
                 ? 'Sem dados'
-                : `${recentQualityLabel} · ${Math.round(recentSuccessRate)}% OK`}
+                : `${recentQualityLabel} Â· ${Math.round(recentSuccessRate)}% OK`}
             </span>
           </div>
           {recentSuccessRate == null ? (
             <span className="text-[10px] text-slate-400">Nenhum disparo registrado ainda.</span>
           ) : (
             <span className="text-[10px] text-slate-400">
-              Considerando até os últimos {recentHistory.length} disparos: {recentTotals.total} contato(s),{' '}
+              Considerando atÃ© os Ãºltimos {recentHistory.length} disparos: {recentTotals.total} contato(s),{' '}
               {recentTotals.errors} com erro.
             </span>
           )}
         </div>
       </div>
 
-      {/* Histórico global de disparos */}
+      {/* HistÃ³rico global de disparos */}
       <section className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 flex flex-col gap-2">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-xs font-semibold text-slate-800">Histórico de disparos</h2>
+            <h2 className="text-xs font-semibold text-slate-800">HistÃ³rico de disparos</h2>
             <p className="text-[11px] text-slate-500">
-              Últimos envios de campanhas via webhooks.
+              Ãšltimos envios de campanhas via webhooks.
             </p>
           </div>
         </div>
@@ -319,7 +319,7 @@ export function DashboardPage({
                     {item.ok
                       ? `HTTP ${item.status || 200}`
                       : `HTTP ${item.status || (item.errorCount > 0 ? 500 : 0)}`}
-                    · {item.errorCount}/{item.total} contatos com erro · {item.runAt}
+                    Â· {item.errorCount}/{item.total} contatos com erro Â· {item.runAt}
                   </span>
                 </div>
               </li>
@@ -335,7 +335,7 @@ export function DashboardPage({
           <div className="flex items-center justify-between mb-1">
             <div>
               <h2 className="text-xs font-semibold text-slate-700">Campanhas</h2>
-              <p className="text-[11px] text-slate-400">Resumo rápido das últimas campanhas.</p>
+              <p className="text-[11px] text-slate-400">Resumo rÃ¡pido das Ãºltimas campanhas.</p>
             </div>
             <button
               type="button"
@@ -348,7 +348,7 @@ export function DashboardPage({
 
           {campaigns.length === 0 ? (
             <p className="text-[11px] text-slate-400">
-              Nenhuma campanha cadastrada ainda. Crie a primeira para começar a enviar mensagens.
+              Nenhuma campanha cadastrada ainda. Crie a primeira para comeÃ§ar a enviar mensagens.
             </p>
           ) : (
             <div className="space-y-1.5">
@@ -365,8 +365,8 @@ export function DashboardPage({
                       {(() => {
                         const log = campaignSendLog[camp.id]
                         if (log) {
-                          return `Último envio: ${log.lastOk ? 'OK' : `Erro ${log.lastErrorCount > 0 ? 500 : 0}`
-                            } · ${log.lastRunAt}`
+                          return `Ãšltimo envio: ${log.lastOk ? 'OK' : `Erro ${log.lastErrorCount > 0 ? 500 : 0}`
+                            } Â· ${log.lastRunAt}`
                         }
 
                         const historyForCamp = sendHistory.filter(
@@ -379,7 +379,7 @@ export function DashboardPage({
                             0,
                           )
                           const successes = total - errors
-                          return `Histórico: ${successes} sucesso(s), ${errors} erro(s), total ${total}`
+                          return `HistÃ³rico: ${successes} sucesso(s), ${errors} erro(s), total ${total}`
                         }
 
                         return 'Nenhum disparo registrado para esta campanha.'
@@ -398,7 +398,7 @@ export function DashboardPage({
                           </span>
                         )}
                       </span>
-                      <span className="text-slate-400">·</span>
+                      <span className="text-slate-400">Â·</span>
                       <span>{camp.listName}</span>
                     </span>
                   </div>
@@ -483,9 +483,9 @@ export function DashboardPage({
             </div>
           </div>
 
-          {/* Status de envio / integrações */}
+          {/* Status de envio / integraÃ§Ãµes */}
           <div className="bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 rounded-2xl p-3 flex flex-col gap-2 text-slate-100 shadow-lg shadow-slate-950/60">
-            <h2 className="text-xs font-semibold">Envio e integrações</h2>
+            <h2 className="text-xs font-semibold">Envio e integraÃ§Ãµes</h2>
             {sendingCampaignId ? (
               <div className="text-[11px] space-y-1">
                 <div className="flex items-center justify-between">
@@ -535,11 +535,11 @@ export function DashboardPage({
                       : 'bg-amber-500/10 text-amber-200 border-amber-400/40'
                       }`}
                   >
-                    {hasEvolutionConfigured ? 'Ativo' : 'Não configurado'}
+                    {hasEvolutionConfigured ? 'Ativo' : 'NÃ£o configurado'}
                   </span>
                 </div>
                 <span className="max-w-[150px] truncate text-slate-200 text-[9px] text-right">
-                  {hasEvolutionConfigured ? 'Configurado' : '—'}
+                  {hasEvolutionConfigured ? 'Configurado' : 'â€”'}
                 </span>
               </div>
               <button
@@ -547,7 +547,7 @@ export function DashboardPage({
                 className="mt-1 px-2.5 py-1 rounded-md border border-slate-700 text-[10px] text-slate-100 hover:bg-slate-800/80"
                 onClick={() => onNavigate('settings')}
               >
-                Abrir configurações
+                Abrir configuraÃ§Ãµes
               </button>
             </div>
           </div>
@@ -560,7 +560,7 @@ export function DashboardPage({
           <div>
             <h2 className="text-xs font-semibold text-slate-800">Atividades recentes</h2>
             <p className="text-[11px] text-slate-500">
-              Últimas campanhas criadas ou atualizadas no sistema.
+              Ãšltimas campanhas criadas ou atualizadas no sistema.
             </p>
           </div>
         </div>
@@ -589,15 +589,15 @@ export function DashboardPage({
                             ? 'Campanha agendada'
                             : 'Rascunho de campanha'}
                     </span>
-                    <span className="text-slate-400">·</span>
+                    <span className="text-slate-400">Â·</span>
                     <span>
                       {camp.channels.includes('whatsapp') && 'WhatsApp'}
-                      {camp.channels.includes('whatsapp') && camp.channels.includes('email') && ' · '}
+                      {camp.channels.includes('whatsapp') && camp.channels.includes('email') && ' Â· '}
                       {camp.channels.includes('email') && 'Email'}
                     </span>
                     {camp.createdAt && (
                       <>
-                        <span className="text-slate-400">·</span>
+                        <span className="text-slate-400">Â·</span>
                         <span>{camp.createdAt}</span>
                       </>
                     )}
@@ -618,3 +618,4 @@ export function DashboardPage({
     </>
   )
 }
+
