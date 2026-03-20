@@ -154,8 +154,9 @@
     // ==========================================
     const MapsInteraction = {
         async safeClick(card, name) {
-            const anchor = card.querySelector('a.hfpxzc');
-            const clickableTarget = anchor || card.querySelector('[role="link"]') || card;
+            const anchor = card.querySelector('a.hfpxzc, a[href*="/maps/place/"]');
+            const roleLink = card.querySelector('[role="link"]');
+            const clickableTarget = roleLink || card;
 
             if (!clickableTarget) {
                 MapsLogger.add(`⚠️ Nenhum alvo clicável encontrado para: ${name}`, 'warn');
@@ -179,9 +180,25 @@
             MapsLogger.add(`🖱️ Abrindo detalhe: ${name}`, 'info');
 
             const options = { bubbles: true, cancelable: true, view: window, clientX: x, clientY: y };
-            clickableTarget.dispatchEvent(new MouseEvent('mousedown', options));
-            clickableTarget.dispatchEvent(new MouseEvent('mouseup', options));
-            clickableTarget.dispatchEvent(new MouseEvent('click', options));
+            const clickChain = [
+                ['pointerdown', PointerEvent],
+                ['mousedown', MouseEvent],
+                ['pointerup', PointerEvent],
+                ['mouseup', MouseEvent],
+                ['click', MouseEvent],
+            ];
+
+            clickableTarget.focus?.();
+            for (const target of [clickableTarget, roleLink, card, anchor].filter(Boolean)) {
+                for (const [eventName, EventCtor] of clickChain) {
+                    target.dispatchEvent(new EventCtor(eventName, options));
+                }
+            }
+
+            clickableTarget.click?.();
+            if (clickableTarget !== card) {
+                card.click?.();
+            }
 
             if (restoreHref) {
                 setTimeout(restoreHref, 1000);
@@ -241,26 +258,40 @@
             return null;
         },
 
-        getActiveDetailPanel() {
-            const titleElement = this.getVisibleElement([
-                'h1.DUwDvf',
-                'h1.fontHeadlineLarge',
-                '.DUwDvf',
-                'h1',
-            ]);
+        getCandidateDetailPanels() {
+            const panels = [];
+            const seen = new Set();
 
-            if (titleElement) {
-                return titleElement.closest('div[role="main"]')
+            const addPanel = (element) => {
+                if (!element || seen.has(element) || !this.isVisible(element)) return;
+                seen.add(element);
+                panels.push(element);
+            };
+
+            const titleElements = Array.from(document.querySelectorAll(
+                'h1.DUwDvf, h1.fontHeadlineLarge, .DUwDvf, [role="main"] h1'
+            )).filter((element) => this.isVisible(element));
+
+            for (const titleElement of titleElements) {
+                addPanel(
+                    titleElement.closest('div[role="main"]')
                     || titleElement.closest('.m6QErb')
-                    || titleElement.parentElement;
+                    || titleElement.closest('.DUwDbc')
+                    || titleElement.parentElement
+                );
             }
 
-            return this.getVisibleElement([
-                'div[role="main"]',
-                '.m6QErb[aria-label]',
-                '.bJz9P',
-                '.DUwDbc',
-            ]);
+            const directPanels = Array.from(document.querySelectorAll(
+                'div[role="main"], .m6QErb[aria-label], .bJz9P, .DUwDbc'
+            ));
+            for (const panel of directPanels) addPanel(panel);
+
+            return panels;
+        },
+
+        getActiveDetailPanel() {
+            const candidates = this.getCandidateDetailPanels();
+            return candidates.find((panel) => !!this.getDetailTitle(panel)) || candidates[0] || null;
         },
 
         getDetailTitle(panel = null) {
@@ -291,6 +322,22 @@
             ].join('|');
         },
 
+        getWordTokens(value) {
+            return this.normalizeText(value)
+                .split(/[^a-z0-9]+/)
+                .filter((token) => token.length >= 3);
+        },
+
+        hasRelevantTokenOverlap(source, expected, minimumRatio = 0.6) {
+            const expectedTokens = this.getWordTokens(expected);
+            if (expectedTokens.length === 0) return false;
+
+            const sourceTokens = new Set(this.getWordTokens(source));
+            const matchedCount = expectedTokens.filter((token) => sourceTokens.has(token)).length;
+
+            return (matchedCount / expectedTokens.length) >= minimumRatio;
+        },
+
         panelMatchesExpected(panel, expectedContact) {
             if (!panel || !expectedContact) return false;
 
@@ -299,13 +346,21 @@
             const expectedAddress = this.normalizeText(expectedContact.address_short);
             const panelText = this.normalizeText(panel.innerText || '');
 
-            const titleMatches = !!panelTitle && (
+            const strongTitleMatch = !!panelTitle && (
                 panelTitle.includes(expectedName) || expectedName.includes(panelTitle)
             );
+            const fuzzyTitleMatch = !!panelTitle && this.hasRelevantTokenOverlap(panelTitle, expectedName, 0.6);
+            const titleMatches = strongTitleMatch || fuzzyTitleMatch;
 
-            const addressMatches = !expectedAddress || panelText.includes(expectedAddress);
+            if (!titleMatches) return false;
 
-            return titleMatches && addressMatches;
+            const addressMatches = !expectedAddress
+                || panelText.includes(expectedAddress)
+                || this.hasRelevantTokenOverlap(panelText, expectedAddress, 0.5);
+
+            if (strongTitleMatch) return true;
+
+            return addressMatches;
         },
 
         async waitForDetailPanel(expectedContact, previousPanelSignature = '', timeoutMs = 7000) {
@@ -313,8 +368,8 @@
             let lastVisiblePanel = null;
 
             while (Date.now() - startTime < timeoutMs) {
-                const panel = this.getActiveDetailPanel();
-                if (panel) {
+                const panels = this.getCandidateDetailPanels();
+                for (const panel of panels) {
                     lastVisiblePanel = panel;
                     const panelSignature = this.getPanelSignature(panel);
 
