@@ -120,6 +120,16 @@ function modelSupportsThinkingBudget(model) {
   return /^gemini-2\.5-/i.test(String(model || '').trim());
 }
 
+function resolveGeminiApiVersion(model, requestedVersion) {
+  const normalizedRequested = requestedVersion === 'v1beta' ? 'v1beta' : 'v1';
+
+  if (modelSupportsThinkingBudget(model)) {
+    return 'v1beta';
+  }
+
+  return normalizedRequested;
+}
+
 // A partir daqui, as rotas podem ser protegidas se necessário
 // app.use(authenticateToken); 
 
@@ -1199,7 +1209,7 @@ app.post('/api/ai/proxy', authenticateToken, async (req, res) => {
     }
 
     const actualModel = normalizeGeminiModel(model);
-    const actualApiVersion = apiVersion === 'v1beta' ? 'v1beta' : 'v1';
+    const actualApiVersion = resolveGeminiApiVersion(actualModel, apiVersion);
     const url = `https://generativelanguage.googleapis.com/${actualApiVersion}/models/${actualModel}:generateContent?key=${access.apiKey}`;
 
     const body = {
@@ -1210,7 +1220,7 @@ app.post('/api/ai/proxy', authenticateToken, async (req, res) => {
       }
     };
 
-    if (modelSupportsThinkingBudget(actualModel)) {
+    if (modelSupportsThinkingBudget(actualModel) && actualApiVersion === 'v1beta') {
       body.generationConfig.thinkingConfig = { thinkingBudget: 0 };
     }
 
