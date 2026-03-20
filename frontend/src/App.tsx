@@ -407,7 +407,7 @@ function App() {
   const { lists, currentListId, setCurrentListId, reloadLists, setLists } = useLists({ effectiveUserId })
 
   const [geminiApiKey, setGeminiApiKey] = useState<string>('')
-  const [geminiModel, setGeminiModel] = useState<string>('gemini-1.5-flash-latest')
+  const [geminiModel, setGeminiModel] = useState<string>('gemini-2.5-flash')
   const [geminiApiVersion, setGeminiApiVersion] = useState<string>('v1')
   const [geminiTemperature, setGeminiTemperature] = useState<number>(0.7)
   const [geminiMaxTokens, setGeminiMaxTokens] = useState<number>(4096)

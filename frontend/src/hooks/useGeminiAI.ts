@@ -37,7 +37,7 @@ export function useGeminiAI({
     userCompanyInfo,
     geminiTemperature,
     geminiMaxTokens,
-    geminiModel = 'gemini-1.5-flash-latest',
+    geminiModel = 'gemini-2.5-flash',
     geminiApiVersion = 'v1',
 }: UseGeminiAIProps) {
     const callGeminiForCampaign = async (params: GeminiAIParams): Promise<string | null> => {
@@ -158,6 +158,7 @@ FORMATO DE SAÍDA:
                 body: JSON.stringify({
                     prompt: prompt,
                     model: geminiModel,
+                    apiVersion: geminiApiVersion,
                     temperature: finalTemp,
                     maxTokens: geminiMaxTokens
                 }),
@@ -170,7 +171,12 @@ FORMATO DE SAÍDA:
                     localStorage.removeItem('auth_user')
                     throw new Error('Token inválido ou expirado. Faça login novamente.')
                 }
-                throw new Error(data.error || `Erro ${response.status}`)
+                const errorMessage =
+                    data?.error?.message ||
+                    data?.error ||
+                    data?.message ||
+                    `Erro ${response.status}`
+                throw new Error(String(errorMessage))
             }
 
             const data = await response.json()

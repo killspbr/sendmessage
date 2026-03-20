@@ -97,6 +97,25 @@ async function resolveGeminiAccessForUser(userId) {
   return { apiKey: null, source: 'none', keyData: null };
 }
 
+function normalizeGeminiModel(model) {
+  const requestedModel = String(model || '').trim();
+
+  if (!requestedModel) {
+    return 'gemini-2.5-flash';
+  }
+
+  const legacyMap = {
+    'gemini-1.5-flash-latest': 'gemini-2.5-flash',
+    'gemini-1.5-pro-latest': 'gemini-2.5-pro',
+    'gemini-1.0-pro': 'gemini-2.5-flash',
+    'gemini-2.0-flash': 'gemini-2.5-flash',
+    'gemini-2.0-flash-001': 'gemini-2.5-flash',
+    'gemini-2.0-flash-lite': 'gemini-2.5-flash-lite',
+  };
+
+  return legacyMap[requestedModel] || requestedModel;
+}
+
 // A partir daqui, as rotas podem ser protegidas se necessário
 // app.use(authenticateToken); 
 
@@ -1124,7 +1143,7 @@ Retorne APENAS um JSON válido, sem texto extra, exatamente no formato:
   "state": string | null
 }`;
 
-    const url = 'https://generativelanguage.googleapis.com/v1/models/gemini-2.0-flash:generateContent';
+    const url = 'https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent';
 
     const aiRes = await fetch(`${url}?key=${encodeURIComponent(apiKey)}`, {
       method: 'POST',
@@ -1166,7 +1185,7 @@ Retorne APENAS um JSON válido, sem texto extra, exatamente no formato:
 // Proxy Geral de IA com Rotação de Chaves
 app.post('/api/ai/proxy', authenticateToken, async (req, res) => {
   try {
-    const { prompt, model, systemInstruction, temperature, maxTokens } = req.body;
+    const { prompt, model, apiVersion, systemInstruction, temperature, maxTokens } = req.body;
 
     const access = await resolveGeminiAccessForUser(req.user.id);
     if (!access.apiKey) {
@@ -1175,8 +1194,9 @@ app.post('/api/ai/proxy', authenticateToken, async (req, res) => {
       });
     }
 
-    const actualModel = model || 'gemini-1.5-flash-latest';
-    const url = `https://generativelanguage.googleapis.com/v1/models/${actualModel}:generateContent?key=${access.apiKey}`;
+    const actualModel = normalizeGeminiModel(model);
+    const actualApiVersion = apiVersion === 'v1beta' ? 'v1beta' : 'v1';
+    const url = `https://generativelanguage.googleapis.com/${actualApiVersion}/models/${actualModel}:generateContent?key=${access.apiKey}`;
 
     const body = {
       contents: [{ parts: [{ text: prompt }] }],
@@ -1614,7 +1634,7 @@ app.delete('/api/admin/group-permissions', authenticateToken, checkAdmin, async 
 async function runMigrations() {
   const migrations = [
     // app_settings: colunas de IA e intervalos
-    `ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS gemini_model TEXT DEFAULT 'gemini-1.5-flash-latest'`,
+    `ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS gemini_model TEXT DEFAULT 'gemini-2.5-flash'`,
     `ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS gemini_api_version TEXT DEFAULT 'v1'`,
     `ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS gemini_temperature NUMERIC(3,2) DEFAULT 0.7`,
     `ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS gemini_max_tokens INTEGER DEFAULT 1024`,
@@ -1634,7 +1654,7 @@ async function runMigrations() {
     `ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS company_info TEXT`,
     `ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS display_name TEXT`,
     `ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS phone TEXT`,
-    `ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS gemini_model TEXT DEFAULT 'gemini-1.5-flash-latest'`,
+    `ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS gemini_model TEXT DEFAULT 'gemini-2.5-flash'`,
     `ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS gemini_api_version TEXT DEFAULT 'v1'`,
     `ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS gemini_temperature NUMERIC(3,2) DEFAULT 0.7`,
     `ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS gemini_max_tokens INTEGER DEFAULT 1024`,
@@ -1647,7 +1667,7 @@ async function runMigrations() {
       evolution_api_url TEXT,
       evolution_api_key TEXT,
       evolution_shared_instance TEXT,
-      gemini_model TEXT DEFAULT 'gemini-1.5-flash-latest',
+      gemini_model TEXT DEFAULT 'gemini-2.5-flash',
       gemini_api_version TEXT DEFAULT 'v1',
       gemini_temperature NUMERIC(3,2) DEFAULT 0.7,
       gemini_max_tokens INTEGER DEFAULT 1024,
