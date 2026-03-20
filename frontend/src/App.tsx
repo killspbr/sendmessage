@@ -724,6 +724,12 @@ function App() {
     campaignName: string
     listName: string
     channels: CampaignChannel[]
+    tone?: 'neutral' | 'friendly' | 'sales' | 'educational'
+    goal?: 'leads' | 'direct_sale' | 'engagement' | 'reactivation'
+    campaignType?: 'first_contact' | 'follow_up' | 'recovery'
+    segment?: string
+    useEmojis?: boolean
+    messageSize?: 'short' | 'medium' | 'long'
   }): Promise<string | null> => {
     const result = await callGeminiForCampaign(options)
     if (!result) return null

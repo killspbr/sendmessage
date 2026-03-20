@@ -6,6 +6,12 @@ export type GeminiAIParams = {
     campaignName: string
     listName: string
     channels: CampaignChannel[]
+    tone?: 'neutral' | 'friendly' | 'sales' | 'educational'
+    goal?: 'leads' | 'direct_sale' | 'engagement' | 'reactivation'
+    campaignType?: 'first_contact' | 'follow_up' | 'recovery'
+    segment?: string
+    useEmojis?: boolean
+    messageSize?: 'short' | 'medium' | 'long'
 }
 
 export type UseGeminiAIProps = {
@@ -32,6 +38,110 @@ const cleanHtmlOutput = (html: string) => {
     return text.trim()
 }
 
+const toneInstructions = {
+    neutral: 'Tom profissional, objetivo e claro.',
+    friendly: 'Tom amigável, acolhedor e próximo, sem perder profissionalismo.',
+    sales: 'Tom comercial, persuasivo e orientado à conversão, sem parecer agressivo.',
+    educational: 'Tom consultivo, didático e confiável.',
+} as const
+
+const goalInstructions = {
+    leads: 'Objetivo principal: gerar resposta inicial, interesse ou pedido de orçamento.',
+    direct_sale: 'Objetivo principal: converter para venda ou avanço comercial imediato.',
+    engagement: 'Objetivo principal: incentivar interação, clique ou resposta do contato.',
+    reactivation: 'Objetivo principal: reativar contatos frios ou sem resposta recente.',
+} as const
+
+const campaignTypeInstructions = {
+    first_contact: 'Contexto: primeiro contato com a base.',
+    follow_up: 'Contexto: follow-up de uma abordagem anterior.',
+    recovery: 'Contexto: recuperação de interesse ou retomada de conversa.',
+} as const
+
+const sizeLabelMap = {
+    short: 'curta',
+    medium: 'média',
+    long: 'longa',
+} as const
+
+function getChannelStrategy(channels: CampaignChannel[], messageSize: 'short' | 'medium' | 'long') {
+    const hasWhatsapp = channels.includes('whatsapp')
+    const hasEmail = channels.includes('email')
+
+    if (hasWhatsapp && !hasEmail) {
+        if (messageSize === 'short') {
+            return {
+                label: 'WhatsApp',
+                sizeInstruction: 'Escreva uma mensagem curta de WhatsApp com 1 bloco principal e CTA claro. Meta: 40 a 70 palavras.',
+                structureInstruction: 'Use frases curtas, leitura rápida em mobile e no máximo 2 parágrafos curtos.',
+                tokenFloor: 320,
+            }
+        }
+        if (messageSize === 'medium') {
+            return {
+                label: 'WhatsApp',
+                sizeInstruction: 'Escreva uma mensagem média de WhatsApp. Meta: 80 a 140 palavras.',
+                structureInstruction: 'Organize em 2 a 4 parágrafos curtos, com benefício claro e CTA objetivo.',
+                tokenFloor: 520,
+            }
+        }
+        return {
+            label: 'WhatsApp',
+            sizeInstruction: 'Escreva uma mensagem longa de WhatsApp sem virar parede de texto. Meta: 140 a 240 palavras.',
+            structureInstruction: 'Use 4 a 6 blocos curtos, listas curtas quando fizer sentido e CTA final explícito.',
+            tokenFloor: 800,
+        }
+    }
+
+    if (!hasWhatsapp && hasEmail) {
+        if (messageSize === 'short') {
+            return {
+                label: 'Email',
+                sizeInstruction: 'Escreva um corpo de email curto. Meta: 80 a 140 palavras.',
+                structureInstruction: 'Use 2 a 3 parágrafos e fechamento com CTA simples.',
+                tokenFloor: 420,
+            }
+        }
+        if (messageSize === 'medium') {
+            return {
+                label: 'Email',
+                sizeInstruction: 'Escreva um corpo de email médio. Meta: 160 a 260 palavras.',
+                structureInstruction: 'Use 3 a 5 parágrafos, podendo incluir uma lista curta de benefícios.',
+                tokenFloor: 720,
+            }
+        }
+        return {
+            label: 'Email',
+            sizeInstruction: 'Escreva um corpo de email longo, denso e bem desenvolvido. Meta: 260 a 420 palavras.',
+            structureInstruction: 'Use 5 a 7 parágrafos curtos ou blocos com bullets para manter boa leitura.',
+            tokenFloor: 1100,
+        }
+    }
+
+    if (messageSize === 'short') {
+        return {
+            label: 'WhatsApp e Email',
+            sizeInstruction: 'Escreva um texto híbrido curto que funcione bem em WhatsApp e ainda se sustente em email. Meta: 70 a 110 palavras.',
+            structureInstruction: 'Use 2 ou 3 blocos curtos, linguagem direta e CTA simples.',
+            tokenFloor: 420,
+        }
+    }
+    if (messageSize === 'medium') {
+        return {
+            label: 'WhatsApp e Email',
+            sizeInstruction: 'Escreva um texto híbrido médio. Meta: 120 a 220 palavras.',
+            structureInstruction: 'Use 3 a 4 blocos curtos, equilíbrio entre objetividade e contexto.',
+            tokenFloor: 760,
+        }
+    }
+    return {
+        label: 'WhatsApp e Email',
+        sizeInstruction: 'Escreva um texto híbrido longo, mantendo legibilidade em WhatsApp e profundidade suficiente para email. Meta: 220 a 340 palavras.',
+        structureInstruction: 'Use blocos curtos, boa progressão de argumento e CTA bem destacado no fechamento.',
+        tokenFloor: 1100,
+    }
+}
+
 export function useGeminiAI({
     effectiveAiKey,
     userCompanyInfo,
@@ -48,7 +158,19 @@ export function useGeminiAI({
             return null
         }
 
-        const { mode, currentContent, campaignName, listName, channels } = params
+        const {
+            mode,
+            currentContent,
+            campaignName,
+            listName,
+            channels,
+            tone = 'friendly',
+            goal = 'leads',
+            campaignType = 'first_contact',
+            segment = 'Genérico',
+            useEmojis = true,
+            messageSize = 'medium',
+        } = params
 
         const channelsLabel =
             channels.includes('whatsapp') && channels.includes('email')
@@ -59,23 +181,11 @@ export function useGeminiAI({
                         ? 'Email'
                         : 'mensagens'
 
-        const wantsEmojis = campaignName.toLowerCase().includes('emojis=sim')
-        const emojiRule = wantsEmojis
-            ? '- Use emojis relevantes ao contexto (sem exagero, 1 a 3 por parágrafo no máximo).'
+        const emojiRule = useEmojis
+            ? '- Use emojis relevantes ao contexto, sem exagero.'
             : '- Não use emojis.'
 
-        // Tentar extrair o nível de comprimento do nome da campanha
-        const lengthMatch = campaignName.match(/comprimento=(\d+)\/10/)
-        const level = lengthMatch ? parseInt(lengthMatch[1], 10) : 5
-
-        // Diretivas de comprimento mais agressivas e explícitas
-        const lengthDirectives = level <= 2
-            ? 'Crie uma mensagem CURTA e DIRETA. Máximo de 50 palavras.'
-            : level <= 4
-                ? 'Crie uma mensagem de TAMANHO MÉDIO. Mínimo de 100 palavras e 3 parágrafos.'
-                : level <= 7
-                    ? 'Crie uma mensagem LONGA, DETALHADA e EXPLICATIVA. Mínimo de 300 palavras e pelo menos 5 parágrafos robustos. Desenvolva profundamente os argumentos e use gatilhos de benefício.'
-                    : 'Crie uma CARTA DE VENDAS COMPLETA e EXTENSA. Texto muito longo, mínimo de 600 palavras e pelo menos 8 parágrafos, explorando cada dor e solução detalhadamente.'
+        const channelStrategy = getChannelStrategy(channels, messageSize)
 
         const companyContext = userCompanyInfo
             ? `\nContexto sobre a empresa remetente:\n${userCompanyInfo}\n(Use essas informações para alinhar o conteúdo ao perfil do negócio.)\n`
@@ -85,55 +195,73 @@ export function useGeminiAI({
 
         if (mode === 'suggest') {
             prompt = `
-Você é um copywriter sênior especialista em marketing digital e redação publicitária de ALTO IMPACTO.
+Você é um copywriter sênior especialista em marketing digital e redação publicitária de alto impacto.
 
-Sua missão é criar o conteúdo COMPLETO de uma campanha persuasiva para ${channelsLabel}.
+Sua missão é criar o conteúdo completo de uma campanha persuasiva para ${channelsLabel}.
 
 DADOS DA CAMPANHA:
 - Nome: "${campaignName || 'Campanha sem nome'}"
-- Público/Segmento: "${listName}"
+- Público/Segmento da lista: "${listName}"
+- Segmento informado: "${segment}"
 - Idioma: Português (Brasil)${companyContext}
 
-DIRETRIZ DE COMPRIMENTO (OBRIGATÓRIO):
-Escala de Comprimento Solicitada: ${level}/10.
-INSTRUÇÃO ESPECÍFICA: ${lengthDirectives}
-AVISO CRÍTICO: Se o nível for 5 ou superior, você NÃO pode ser breve. O texto deve ser RICO, informativo e ter muita substância. NÃO resuma. Escreva textos longos e envolventes.
+CONTEXTO ESTRATÉGICO:
+- Canal principal de escrita: ${channelStrategy.label}
+- Tamanho solicitado: ${sizeLabelMap[messageSize]}
+- ${toneInstructions[tone]}
+- ${goalInstructions[goal]}
+- ${campaignTypeInstructions[campaignType]}
+
+DIRETRIZ DE TAMANHO:
+- ${channelStrategy.sizeInstruction}
+- ${channelStrategy.structureInstruction}
+- Não corte a mensagem antes de concluir a linha de raciocínio.
+- Entregue a peça completa com abertura, desenvolvimento e CTA final.
 
 REGRAS DE CONTEÚDO:
-- Estrutura: Gancho forte -> Problema -> Solução/Benefícios -> Prova Social implícita -> Chamada Para Ação (CTA) clara.
-- Formatação: Use parágrafos claros, listas com marcadores (bullets) e destaque termos importantes em negrito (<strong>).
+- Estrutura: gancho forte -> problema -> solução/benefícios -> prova social implícita -> CTA claro.
+- Use parágrafos claros e, quando fizer sentido, listas curtas com marcadores.
+- Destaque termos importantes em <strong>.
 ${emojiRule}
 
 FORMATO DE SAÍDA:
-- Retorne APENAS o HTML semântico direto (tags <p>, <ul>, <li>, <strong>, <em>, <br>).
-- NÃO use blocos de código (\`\`\`html).
-- NÃO inclua o Assunto da mensagem.
-- NÃO apresente saudações fixas como "[Nome]" ou placeholders genéricos.
-      `
+- Retorne apenas HTML semântico direto com tags como <p>, <ul>, <li>, <strong>, <em> e <br>.
+- Não use blocos de código.
+- Não inclua assunto de email.
+- Não use placeholders genéricos como "[Nome]".
+`
         } else {
             prompt = `
-Você é um revisor e copywriter sênior de elite. Sua tarefa é REESCREVER e EXPANDIR substancialmente o texto HTML abaixo para torná-lo muito mais persuasivo, profissional e atraente.
+Você é um revisor e copywriter sênior. Sua tarefa é reescrever e expandir o texto HTML abaixo para deixá-lo mais persuasivo, mais claro e melhor adaptado ao canal.
 
 TEXTO ORIGINAL (HTML):
 ${currentContent}
 
-DIRETRIZ DE COMPRIMENTO (OBRIGATÓRIO):
-Escala de Comprimento Solicitada: ${level}/10.
-INSTRUÇÃO ESPECÍFICA: ${lengthDirectives}
-AVISO CRÍTICO: Se o nível for 5 ou superior, você deve ENRIQUECER o texto com novos parágrafos, detalhes adicionais e argumentos de venda que não estavam no original. NÃO encurte o texto se o nível for alto. Se o conteúdo original for curto, seu dever é dobrar ou triplicar o tamanho com copy de qualidade.
+DIRETRIZ DE TAMANHO:
+- Canal principal de escrita: ${channelStrategy.label}
+- Tamanho solicitado: ${sizeLabelMap[messageSize]}
+- ${channelStrategy.sizeInstruction}
+- ${channelStrategy.structureInstruction}
+- Se o texto original estiver menor do que o tamanho pedido, expanda com substância real.
+- Não devolva texto pela metade. Sempre finalize o raciocínio e o CTA.
 
-CONTEÚDO DA CAMPANHA:
-"${campaignName || 'Campanha sem nome'}"
-${companyContext}
+CONTEXTO DA CAMPANHA:
+- Nome: "${campaignName || 'Campanha sem nome'}"
+- Público/Segmento da lista: "${listName}"
+- Segmento informado: "${segment}"${companyContext}
+
 REGRAS:
-- Melhore a fluidez e a persuasão.
-- Adicione gatilhos mentais fortes.
+- ${toneInstructions[tone]}
+- ${goalInstructions[goal]}
+- ${campaignTypeInstructions[campaignType]}
+- Melhore fluidez, clareza e persuasão.
+- Adicione argumentos de valor quando necessário.
 ${emojiRule}
 
 FORMATO DE SAÍDA:
-- Retorne APENAS o HTML reescrito (tags <p>, <ul>, <li>, <strong>, <em>, <br>).
-- NÃO use blocos de código markdown nem explicações.
-      `
+- Retorne apenas o HTML reescrito com tags como <p>, <ul>, <li>, <strong>, <em> e <br>.
+- Não use markdown nem explicações fora do HTML.
+`
         }
 
         try {
@@ -148,19 +276,20 @@ FORMATO DE SAÍDA:
 
             const tempAdjust = mode === 'suggest' ? 0.1 : -0.1
             const finalTemp = Math.max(0, Math.min(1, geminiTemperature + tempAdjust))
+            const requestedMaxTokens = Math.max(geminiMaxTokens, channelStrategy.tokenFloor)
 
             const response = await fetch(apiUrl, {
                 method: 'POST',
-                headers: { 
+                headers: {
                     'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
+                    Authorization: `Bearer ${token}`,
                 },
                 body: JSON.stringify({
-                    prompt: prompt,
+                    prompt,
                     model: geminiModel,
                     apiVersion: geminiApiVersion,
                     temperature: finalTemp,
-                    maxTokens: geminiMaxTokens
+                    maxTokens: requestedMaxTokens,
                 }),
             })
 

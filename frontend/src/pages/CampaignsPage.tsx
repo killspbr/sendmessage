@@ -80,6 +80,12 @@ type CampaignsPageProps = {
     campaignName: string
     listName: string
     channels: CampaignChannel[]
+    tone?: 'neutral' | 'friendly' | 'sales' | 'educational'
+    goal?: 'leads' | 'direct_sale' | 'engagement' | 'reactivation'
+    campaignType?: 'first_contact' | 'follow_up' | 'recovery'
+    segment?: string
+    useEmojis?: boolean
+    messageSize?: 'short' | 'medium' | 'long'
   }) => Promise<string | null>
 }
 
@@ -146,7 +152,7 @@ export function CampaignsPage({
   const [aiSegment, setAiSegment] = useState<string>('Genérico')
   const [aiSegmentOther, setAiSegmentOther] = useState<string>('')
   const [aiUseEmojis, setAiUseEmojis] = useState<boolean>(true)
-  const [aiLengthLevel, setAiLengthLevel] = useState<number>(5) // 0 (curto) a 10 (detalhado)
+  const [aiMessageSize, setAiMessageSize] = useState<'short' | 'medium' | 'long'>('medium')
 
   // Estado para Agendamento Profissional
   const now = new Date()
@@ -502,20 +508,31 @@ export function CampaignsPage({
                     </div>
 
                     <div className="flex items-center gap-3">
-                      <div className="flex items-center gap-2">
-                        <label className="text-[9px] text-slate-500" title="Controla o quanto a IA pode alongar ou encurtar o texto sugerido.">
-                          Tamanho: {aiLengthLevel}/10
-                        </label>
-                        <input
-                          type="range"
-                          min={0}
-                          max={10}
-                          step={1}
-                          value={aiLengthLevel}
-                          onChange={(e) => setAiLengthLevel(Number(e.target.value))}
-                          title="0 = bem curto, 10 = mais detalhado."
-                          className="w-28 h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-emerald-500"
-                        />
+                      <div className="flex items-center gap-1 rounded-full bg-slate-100 p-1">
+                        <button
+                          type="button"
+                          className={`px-2 py-1 rounded-full text-[9px] font-medium ${aiMessageSize === 'short' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500'}`}
+                          title="Mensagem curta, ideal para abordagens rápidas."
+                          onClick={() => setAiMessageSize('short')}
+                        >
+                          Curta
+                        </button>
+                        <button
+                          type="button"
+                          className={`px-2 py-1 rounded-full text-[9px] font-medium ${aiMessageSize === 'medium' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500'}`}
+                          title="Mensagem equilibrada para contexto e conversão."
+                          onClick={() => setAiMessageSize('medium')}
+                        >
+                          Média
+                        </button>
+                        <button
+                          type="button"
+                          className={`px-2 py-1 rounded-full text-[9px] font-medium ${aiMessageSize === 'long' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500'}`}
+                          title="Mensagem mais desenvolvida, útil para email ou propostas consultivas."
+                          onClick={() => setAiMessageSize('long')}
+                        >
+                          Longa
+                        </button>
                       </div>
 
                       <label className="flex items-center gap-1 text-[9px] text-slate-600 select-none" title="Quando marcado, a IA pode incluir emojis nas mensagens geradas.">
@@ -544,14 +561,19 @@ export function CampaignsPage({
                         const list = lists.find((l) => l.id === newCampaignListId) ?? lists[0]
                         const listName = list?.name ?? newCampaignListId
                         const segmentLabel = aiSegment === 'Outro' && aiSegmentOther.trim() ? aiSegmentOther.trim() : aiSegment
-                        const aiDescriptor = ` [IA: tom=${aiTone}, objetivo=${aiGoal}, tipo=${aiCampaignType}, segmento=${segmentLabel}, comprimento=${aiLengthLevel}/10, emojis=${aiUseEmojis ? 'sim' : 'nao'}]`
                         setAiLoading(mode)
                         await onGenerateCampaignContentWithAI({
                           mode,
                           currentContent: newCampaignMessage,
-                          campaignName: `${newCampaignName || 'Campanha sem nome'}${aiDescriptor}`,
+                          campaignName: newCampaignName || 'Campanha sem nome',
                           listName,
                           channels: newCampaignChannels,
+                          tone: aiTone,
+                          goal: aiGoal,
+                          campaignType: aiCampaignType,
+                          segment: segmentLabel,
+                          useEmojis: aiUseEmojis,
+                          messageSize: aiMessageSize,
                         })
                         setAiLoading(null)
                       }
