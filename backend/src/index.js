@@ -15,7 +15,12 @@ const allowedOrigins = [
 
 const corsOptions = {
   origin: (origin, callback) => {
-    if (!origin || allowedOrigins.includes(origin) || origin.includes('localhost')) {
+    const isExtensionOrigin = typeof origin === 'string' && (
+      origin.startsWith('chrome-extension://') ||
+      origin.startsWith('moz-extension://')
+    );
+
+    if (!origin || allowedOrigins.includes(origin) || origin.includes('localhost') || isExtensionOrigin) {
       callback(null, true);
     } else {
       console.warn(`[CORS] Bloqueado: ${origin}`);

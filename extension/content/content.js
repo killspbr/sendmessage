@@ -23,7 +23,6 @@
             backendUrl: '', 
             authToken: '' 
         },
-        autoImport: true,
         status: 'IDLE',
 
         applyRuntimeConfig(overrides = {}) {
@@ -508,9 +507,12 @@
                         element.closest('button')?.innerText,
                     ].filter(Boolean).join(' ');
 
-                    const normalizedPhone = rawText.replace(/[^\d+]/g, '');
-                    if (normalizedPhone.length >= 8) {
-                        return normalizedPhone;
+                    const match = rawText.match(/(?:\+?\d[\d\s().-]{7,}\d)/);
+                    if (match) {
+                        const normalizedPhone = match[0].replace(/[^\d+]/g, '');
+                        if (normalizedPhone.length >= 8) {
+                            return normalizedPhone;
+                        }
                     }
                 }
             }
@@ -556,10 +558,8 @@
     const ExtractionEngine = {
         async run() {
             if (MapsState.isRunning) return;
-            
-            const listId = this.validateList();
-            if (!listId) return;
 
+            MapsState.isStopRequested = false;
             MapsState.isRunning = true;
             this.updateUI(true);
             MapsLogger.add("🚀 Iniciando Motor de Extração v1.1", "ok");
@@ -634,11 +634,6 @@
                                 MapsLogger.add(`⚪ Sem telefone: ${finalContact.name}`, 'warn');
                             }
 
-                            // 4. Importar se necessário
-                            if (MapsState.autoImport) {
-                                await this.importContact(finalContact, listId);
-                            }
-
                             this.syncStats();
                             await MapsInteraction.closeDetail(activePanel);
                         }
@@ -678,6 +673,35 @@
             return match[0];
         },
 
+        async importAllExtracted() {
+            const listId = this.validateList();
+            if (!listId) return;
+
+            const pendingContacts = MapsState.extractedContacts.filter((contact) => !contact._imported);
+            if (pendingContacts.length === 0) {
+                MapsLogger.add("ℹ️ Nenhum contato pendente para importar.", "warn");
+                return;
+            }
+
+            this.setState('IMPORTING');
+            this.toggleImportButton(true);
+            MapsLogger.add(`📤 Importando ${pendingContacts.length} contato(s)...`, 'info');
+
+            try {
+                for (const contact of pendingContacts) {
+                    const imported = await this.importContact(contact, listId);
+                    if (imported) {
+                        contact._imported = true;
+                    }
+                    this.syncStats();
+                    await new Promise(r => setTimeout(r, 150));
+                }
+            } finally {
+                this.toggleImportButton(false);
+                this.setState('FINISHED');
+            }
+        },
+
         async importContact(contact, listId) {
             const payload = {
                 list_id: listId,
@@ -713,34 +737,48 @@
             if ($('statExtracted')) $('statExtracted').innerText = MapsState.extractedContacts.length;
             if ($('statImported')) $('statImported').innerText = MapsState.importedCount;
             if ($('contactsCount')) $('contactsCount').innerText = `${MapsState.extractedContacts.length} contatos`;
-            
-            // Renderizar na lista visual
-            this.appendToList(MapsState.extractedContacts[MapsState.extractedContacts.length - 1]);
+            if ($('btnImport')) $('btnImport').disabled = MapsState.isRunning || MapsState.extractedContacts.filter((contact) => !contact._imported).length === 0;
+
+            this.renderContactsList();
         },
 
-        appendToList(c) {
+        renderContactsList() {
             const list = MapsState.shadow.getElementById('contactsList');
-            const item = document.createElement('div');
-            item.className = 'contact-card';
-            item.innerHTML = `
-                <div class="avatar">${c.name[0]}</div>
-                <div class="contact-info">
-                    <div class="cname">${c.name}</div>
-                    <div class="cphone">${c.phone || 'Sem Telefone'}</div>
-                    <div class="cmeta">${c.category} • ${c.rating || 'N/A'}⭐</div>
-                </div>
-            `;
-            list.prepend(item);
+            if (!list) return;
+
+            list.innerHTML = '';
+            for (const c of [...MapsState.extractedContacts].reverse()) {
+                const item = document.createElement('div');
+                item.className = 'contact-card';
+                item.innerHTML = `
+                    <div class="avatar">${c.name[0]}</div>
+                    <div class="contact-info">
+                        <div class="cname">${c.name}</div>
+                        <div class="cphone">${c.phone || 'Sem Telefone'}</div>
+                        <div class="cmeta">${c.category} • ${c.rating || 'N/A'}⭐ ${c._imported ? '• Importado' : '• Extraído'}</div>
+                    </div>
+                `;
+                list.appendChild(item);
+            }
         },
 
         updateUI(running) {
             const $ = id => MapsState.shadow.getElementById(id);
             $('btnStart').style.display = running ? 'none' : 'flex';
             $('btnStop').style.display = running ? 'flex' : 'none';
+            if ($('btnImport')) $('btnImport').disabled = running || MapsState.extractedContacts.filter((contact) => !contact._imported).length === 0;
+        },
+
+        toggleImportButton(importing) {
+            const button = MapsState.shadow.getElementById('btnImport');
+            if (!button) return;
+            button.disabled = importing;
+            button.innerText = importing ? 'Importando...' : 'Importar Extraídos';
         },
 
         finish() {
             MapsState.isRunning = false;
+            MapsState.isStopRequested = false;
             this.setState('FINISHED');
             this.updateUI(false);
             MapsLogger.add(`🏁 Ciclo encerrado. Total: ${MapsState.extractedContacts.length}`, 'ok');
@@ -781,13 +819,15 @@
             MapsLogger.add("🛑 Parada solicitada...", "warn");
         };
         shadow.getElementById('btnClear').onclick = () => {
-             shadow.getElementById('contactsList').innerHTML = '';
-             MapsState.reset();
-             ExtractionEngine.syncStats();
+            shadow.getElementById('contactsList').innerHTML = '';
+            MapsState.reset();
+            ExtractionEngine.syncStats();
         };
+        shadow.getElementById('btnImport').onclick = () => ExtractionEngine.importAllExtracted();
 
         await MapsState.initConfig(configOverrides || {});
         await loadLists();
+        ExtractionEngine.syncStats();
     }
 
     // Funções de apoio (Backend Fetch e HTML)
@@ -838,8 +878,10 @@
             .avatar { width: 30px; height: 30px; background: #059669; color:#fff; border-radius:50%; display:flex; align-items:center; justify-content:center; }
             .cname { font-weight: bold; font-size: 12px; }
             .cphone { color: #059669; font-size: 11px; }
-            .footer { padding: 15px; border-top: 1px solid #e2e8f0; }
+            .footer { padding: 15px; border-top: 1px solid #e2e8f0; display:flex; flex-direction:column; gap:10px; }
             select { width: 100%; padding: 8px; border-radius: 5px; border: 1px solid #e2e8f0; }
+            .btn-import { background: #0f766e; color: #fff; border:none; padding: 10px; width:100%; cursor:pointer; border-radius: 5px; }
+            .btn-import:disabled { background: #94a3b8; cursor: not-allowed; }
         </style>
         <div class="sidebar">
             <div class="header">
@@ -865,6 +907,7 @@
             </div>
             <div class="footer">
                 <select id="listSelect"><option>Carregando listas...</option></select>
+                <button id="btnImport" class="btn-import" disabled>Importar Extraídos</button>
             </div>
         </div>
         `;
