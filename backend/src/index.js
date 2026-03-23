@@ -97,6 +97,88 @@ async function resolveGeminiAccessForUser(userId) {
   return { apiKey: null, source: 'none', keyData: null };
 }
 
+async function isAdminUser(userId) {
+  const result = await query(
+    `SELECT 1
+     FROM user_profiles up
+     JOIN user_groups ug ON ug.id = up.group_id
+     WHERE up.id = $1 AND ug.name = 'Administrador'
+     LIMIT 1`,
+    [userId]
+  );
+
+  return result.rows.length > 0;
+}
+
+function parseCampaignChannels(channels) {
+  if (Array.isArray(channels)) return channels;
+  if (typeof channels === 'string') {
+    try {
+      const parsed = JSON.parse(channels);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+}
+
+async function resolveEvolutionConfigForUser(userId) {
+  const [profileResult, globalSettingsResult] = await Promise.all([
+    query(
+      'SELECT evolution_url, evolution_apikey, evolution_instance FROM user_profiles WHERE id = $1 LIMIT 1',
+      [userId]
+    ),
+    query(
+      'SELECT evolution_api_url, evolution_api_key, evolution_shared_instance FROM app_settings ORDER BY id DESC LIMIT 1'
+    ),
+  ]);
+
+  const profile = profileResult.rows[0] || {};
+  const globalSettings = globalSettingsResult.rows[0] || {};
+
+  return {
+    evolutionUrl: String(profile.evolution_url || globalSettings.evolution_api_url || '').trim(),
+    evolutionApiKey: String(profile.evolution_apikey || globalSettings.evolution_api_key || '').trim(),
+    evolutionInstance: String(profile.evolution_instance || globalSettings.evolution_shared_instance || '').trim(),
+  };
+}
+
+async function summarizeCampaignQueue(campaignId) {
+  const result = await query(
+    `SELECT
+       COUNT(*) FILTER (WHERE status = 'pendente')::int AS pendente,
+       COUNT(*) FILTER (WHERE status = 'processando')::int AS processando,
+       COUNT(*) FILTER (WHERE status = 'enviado')::int AS enviado,
+       COUNT(*) FILTER (WHERE status = 'falhou')::int AS falhou
+     FROM message_queue
+     WHERE campaign_id = $1`,
+    [campaignId]
+  );
+
+  return result.rows[0] || { pendente: 0, processando: 0, enviado: 0, falhou: 0 };
+}
+
+async function syncCampaignStatusFromQueue(campaignId) {
+  const summary = await summarizeCampaignQueue(campaignId);
+  const pending = Number(summary.pendente || 0);
+  const processing = Number(summary.processando || 0);
+  const sent = Number(summary.enviado || 0);
+  const failed = Number(summary.falhou || 0);
+
+  let nextStatus = 'rascunho';
+  if (pending > 0 || processing > 0) {
+    nextStatus = 'agendada';
+  } else if (failed > 0) {
+    nextStatus = 'enviada_com_erros';
+  } else if (sent > 0) {
+    nextStatus = 'enviada';
+  }
+
+  await query('UPDATE campaigns SET status = $1 WHERE id = $2', [nextStatus, campaignId]);
+  return nextStatus;
+}
+
 function normalizeGeminiModel(model) {
   const requestedModel = String(model || '').trim();
 
@@ -1547,9 +1629,67 @@ app.post('/api/campaigns/:id/schedule', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     const { data_inicio, hora_inicio, limite_diario, intervalo_minimo, intervalo_maximo, mensagens_por_lote, tempo_pausa_lote } = req.body;
-    
-    // Cancela agendamentos anteriores da mesma campanha
+
+    const campaignResult = await query(
+      'SELECT id, user_id, name, list_name, channels FROM campaigns WHERE id = $1 LIMIT 1',
+      [id]
+    );
+    const campaign = campaignResult.rows[0];
+
+    if (!campaign || campaign.user_id !== req.user.id) {
+      return res.status(404).json({ error: 'Campanha não encontrada para este usuário.' });
+    }
+
+    const channels = parseCampaignChannels(campaign.channels);
+    if (!channels.includes('whatsapp')) {
+      return res.status(400).json({
+        error: 'O agendamento profissional exige o canal WhatsApp ativo nesta campanha.'
+      });
+    }
+
+    const evolutionConfig = await resolveEvolutionConfigForUser(req.user.id);
+    if (!evolutionConfig.evolutionUrl || !evolutionConfig.evolutionApiKey || !evolutionConfig.evolutionInstance) {
+      return res.status(400).json({
+        error: 'A Evolution API não está configurada para este usuário. Ajuste em Meu perfil ou em Configurações globais antes de agendar.'
+      });
+    }
+
+    const contactsCheck = await query(
+      `SELECT COUNT(*)::int AS total
+       FROM contacts
+       WHERE user_id = $1
+         AND list_name = $2
+         AND status = 'ativo'
+         AND COALESCE(TRIM(phone), '') <> ''`,
+      [req.user.id, campaign.list_name]
+    );
+
+    if (!Number(contactsCheck.rows[0]?.total || 0)) {
+      return res.status(400).json({
+        error: 'Não há contatos ativos com telefone válido na lista desta campanha para agendar o envio.'
+      });
+    }
+
+    const parsedDateTime = new Date(`${data_inicio || new Date().toISOString().slice(0, 10)}T${hora_inicio || new Date().toTimeString().slice(0, 5)}:00`);
+    if (Number.isNaN(parsedDateTime.getTime())) {
+      return res.status(400).json({ error: 'Data ou hora de início inválida.' });
+    }
+
+    if (Number(intervalo_minimo) <= 0 || Number(intervalo_maximo) <= 0) {
+      return res.status(400).json({ error: 'Os intervalos mínimo e máximo devem ser maiores que zero.' });
+    }
+
+    if (Number(intervalo_minimo) > Number(intervalo_maximo)) {
+      return res.status(400).json({ error: 'O intervalo mínimo não pode ser maior que o máximo.' });
+    }
+
+    if (Number(mensagens_por_lote) <= 0 || Number(tempo_pausa_lote) < 0 || Number(limite_diario) <= 0) {
+      return res.status(400).json({ error: 'Revise lote, pausa e limite diário antes de agendar.' });
+    }
+
+    // Cancela agendamentos anteriores da mesma campanha e limpa pendências antigas para evitar reenvio indevido
     await query('UPDATE campaign_schedule SET status = \'cancelado\' WHERE campaign_id = $1 AND status = ANY($2)', [id, ['agendado', 'em_execucao', 'pausado']]);
+    await query('DELETE FROM message_queue WHERE campaign_id = $1 AND status = $2', [id, 'pendente']);
 
     const result = await query(
       'INSERT INTO campaign_schedule (campaign_id, user_id, data_inicio, hora_inicio, limite_diario, intervalo_minimo, intervalo_maximo, mensagens_por_lote, tempo_pausa_lote) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *',
@@ -1557,7 +1697,7 @@ app.post('/api/campaigns/:id/schedule', authenticateToken, async (req, res) => {
     );
     
     // Atualiza status da campanha
-    await query('UPDATE campaigns SET status = \'agendado\', last_scheduled_at = CURRENT_TIMESTAMP WHERE id = $1', [id]);
+    await query('UPDATE campaigns SET status = \'agendada\', last_scheduled_at = CURRENT_TIMESTAMP WHERE id = $1', [id]);
 
     res.status(201).json(result.rows[0]);
   } catch (error) {
@@ -1632,11 +1772,83 @@ app.get('/api/admin/operational-stats', authenticateToken, checkAdmin, async (re
 app.delete('/api/campaigns/:id/schedule', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
+    const campaignResult = await query(
+      'SELECT id, user_id FROM campaigns WHERE id = $1 LIMIT 1',
+      [id]
+    );
+    const campaign = campaignResult.rows[0];
+
+    if (!campaign || campaign.user_id !== req.user.id) {
+      return res.status(404).json({ success: false, error: 'Campanha não encontrada para este usuário.' });
+    }
+
     await query('DELETE FROM message_queue WHERE campaign_id = $1 AND status = $2', [id, 'pendente']);
-    await query("UPDATE campaign_schedule SET status = 'cancelado' WHERE campaign_id = $1", [id]);
+    await query("UPDATE campaign_schedule SET status = 'cancelado' WHERE campaign_id = $1 AND status = ANY($2)", [id, ['agendado', 'em_execucao', 'pausado']]);
+    await syncCampaignStatusFromQueue(id);
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ success: false, error: 'Erro ao cancelar agendamento' });
+  }
+});
+
+app.get('/api/schedules/professional', authenticateToken, async (req, res) => {
+  try {
+    const admin = await isAdminUser(req.user.id);
+    const params = [];
+    let whereClause = '';
+
+    if (!admin) {
+      params.push(req.user.id);
+      whereClause = 'WHERE s.user_id = $1';
+    }
+
+    const resSched = await query(
+      `SELECT s.*, c.name as campaign_name
+       FROM campaign_schedule s
+       LEFT JOIN campaigns c ON s.campaign_id = c.id
+       ${whereClause}
+       ORDER BY s.data_criacao DESC`,
+      params
+    );
+
+    res.json({ success: true, data: resSched.rows });
+  } catch (error) {
+    console.error('[Schedules] Erro:', error);
+    res.status(500).json({ success: false, error: 'Erro ao buscar agendamentos profissionais' });
+  }
+});
+
+app.get('/api/queue/professional', authenticateToken, async (req, res) => {
+  try {
+    const admin = await isAdminUser(req.user.id);
+    const params = [];
+    let whereClause = '';
+
+    if (!admin) {
+      params.push(req.user.id);
+      whereClause = 'WHERE q.user_id = $1';
+    }
+
+    const resQueue = await query(
+      `SELECT q.*, c.name as campaign_name,
+              (SELECT json_agg(l.*) FROM scheduler_logs l
+               WHERE CASE
+                 WHEN l.details ~ '^\\s*\\{' THEN (l.details::jsonb->>'message_id')::integer
+                 ELSE NULL
+               END = q.id
+               AND l.event IN ('zombie_recovered', 'zombie_failed')) as recovery_logs
+       FROM message_queue q
+       LEFT JOIN campaigns c ON q.campaign_id = c.id
+       ${whereClause}
+       ORDER BY q.data_criacao DESC
+       LIMIT 100`,
+      params
+    );
+
+    res.json({ success: true, data: resQueue.rows });
+  } catch (error) {
+    console.error('[Queue] Erro:', error);
+    res.status(500).json({ success: false, error: 'Erro ao buscar fila de mensagens' });
   }
 });
 
@@ -1659,9 +1871,12 @@ app.get('/api/admin/queue', authenticateToken, checkAdmin, async (req, res) => {
   try {
     const resQueue = await query(`
       SELECT q.*, c.name as campaign_name,
-             (SELECT json_agg(l.*) FROM scheduler_logs l 
-              WHERE (l.details::jsonb->>'message_id')::integer = q.id 
-              AND l.event IN ('zombie_recovered', 'zombie_failed')) as recovery_logs
+              (SELECT json_agg(l.*) FROM scheduler_logs l 
+               WHERE CASE
+                 WHEN l.details ~ '^\\s*\\{' THEN (l.details::jsonb->>'message_id')::integer
+                 ELSE NULL
+               END = q.id
+               AND l.event IN ('zombie_recovered', 'zombie_failed')) as recovery_logs
       FROM message_queue q
       LEFT JOIN campaigns c ON q.campaign_id = c.id
       ORDER BY q.data_criacao DESC
@@ -1819,6 +2034,7 @@ async function runMigrations() {
     )`,
     `ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS variations JSONB DEFAULT '[]'::jsonb`,
     `ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS last_scheduled_at TIMESTAMP WITH TIME ZONE`,
+    `UPDATE campaigns SET status = 'agendada' WHERE status = 'agendado'`,
     `ALTER TABLE message_queue ADD COLUMN IF NOT EXISTS processing_started_at TIMESTAMP WITH TIME ZONE`,
     `ALTER TABLE message_queue ADD COLUMN IF NOT EXISTS recovered_at TIMESTAMP WITH TIME ZONE`,
   ];

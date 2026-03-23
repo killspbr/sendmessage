@@ -55,8 +55,8 @@ export function SchedulesPage({ effectiveUserId }: SchedulesPageProps) {
         setLoading(true)
         try {
             const [sData, qData] = await Promise.all([
-                apiFetch('/api/admin/schedules'),
-                apiFetch('/api/admin/queue')
+                apiFetch('/api/schedules/professional'),
+                apiFetch('/api/queue/professional')
             ])
             setSchedules(Array.isArray(sData.data) ? sData.data : [])
             setQueue(Array.isArray(qData.data) ? qData.data : [])

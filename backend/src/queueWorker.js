@@ -2,339 +2,520 @@ import 'dotenv/config'
 import { query } from './db.js'
 import { toEvolutionNumber, resolveTemplate, htmlToWhatsapp, extractImages } from './utils/messageUtils.js'
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+function getEffectiveDailyLimit(reputationLevel, configuredLimit) {
+  let effectiveLimit = Number(configuredLimit || 300)
+  if (reputationLevel === 'NOVO') effectiveLimit = Math.min(effectiveLimit, 40)
+  if (reputationLevel === 'AQUECENDO') effectiveLimit = Math.min(effectiveLimit, 100)
+  if (reputationLevel === 'ALERTA') effectiveLimit = Math.min(effectiveLimit, 20)
+  return effectiveLimit
+}
+
+function parseCampaignChannels(channels) {
+  if (Array.isArray(channels)) return channels
+  if (typeof channels === 'string') {
+    try {
+      const parsed = JSON.parse(channels)
+      return Array.isArray(parsed) ? parsed : []
+    } catch {
+      return []
+    }
+  }
+  return []
+}
+
+function parseVariations(variations) {
+  if (Array.isArray(variations)) return variations
+  if (typeof variations === 'string') {
+    try {
+      const parsed = JSON.parse(variations)
+      return Array.isArray(parsed) ? parsed : []
+    } catch {
+      return []
+    }
+  }
+  return []
+}
+
+async function resolveEvolutionConfigForUser(userId) {
+  const [profileResult, globalSettingsResult] = await Promise.all([
+    query(
+      'SELECT evolution_url, evolution_apikey, evolution_instance FROM user_profiles WHERE id = $1 LIMIT 1',
+      [userId]
+    ),
+    query(
+      'SELECT evolution_api_url, evolution_api_key, evolution_shared_instance FROM app_settings ORDER BY id DESC LIMIT 1'
+    ),
+  ])
+
+  const profile = profileResult.rows[0] || {}
+  const globalSettings = globalSettingsResult.rows[0] || {}
+
+  return {
+    evolutionUrl: String(profile.evolution_url || globalSettings.evolution_api_url || '').trim(),
+    evolutionApiKey: String(profile.evolution_apikey || globalSettings.evolution_api_key || '').trim(),
+    evolutionInstance: String(profile.evolution_instance || globalSettings.evolution_shared_instance || '').trim(),
+  }
+}
+
+async function setCampaignStatusFromQueue(campaignId) {
+  const summaryResult = await query(
+    `SELECT
+       COUNT(*) FILTER (WHERE status = 'pendente')::int AS pendente,
+       COUNT(*) FILTER (WHERE status = 'processando')::int AS processando,
+       COUNT(*) FILTER (WHERE status = 'enviado')::int AS enviado,
+       COUNT(*) FILTER (WHERE status = 'falhou')::int AS falhou
+     FROM message_queue
+     WHERE campaign_id = $1`,
+    [campaignId]
+  )
+
+  const summary = summaryResult.rows[0] || {}
+  const pending = Number(summary.pendente || 0)
+  const processing = Number(summary.processando || 0)
+  const sent = Number(summary.enviado || 0)
+  const failed = Number(summary.falhou || 0)
+
+  let nextStatus = 'rascunho'
+  if (pending > 0 || processing > 0) {
+    nextStatus = 'agendada'
+  } else if (failed > 0) {
+    nextStatus = 'enviada_com_erros'
+  } else if (sent > 0) {
+    nextStatus = 'enviada'
+  }
+
+  await query('UPDATE campaigns SET status = $1 WHERE id = $2', [nextStatus, campaignId])
+}
+
+async function finalizeCompletedSchedules() {
+  const completedResult = await query(
+    `SELECT cs.id, cs.campaign_id
+     FROM campaign_schedule cs
+     WHERE cs.status = 'em_execucao'
+       AND NOT EXISTS (
+         SELECT 1
+         FROM message_queue mq
+         WHERE mq.schedule_id = cs.id
+           AND mq.status IN ('pendente', 'processando')
+       )`
+  )
+
+  for (const schedule of completedResult.rows) {
+    await query('UPDATE campaign_schedule SET status = $1 WHERE id = $2', ['concluido', schedule.id])
+    await setCampaignStatusFromQueue(schedule.campaign_id)
+  }
+}
+
+async function resumePausedSchedules() {
+  const pausedResult = await query(
+    `SELECT cs.id, cs.campaign_id, cs.user_id, cs.limite_diario,
+            COALESCE(wr.level, 'NOVO') AS reputation_level
+     FROM campaign_schedule cs
+     LEFT JOIN whatsapp_reputation wr ON wr.user_id = cs.user_id
+     WHERE cs.status = 'pausado'
+       AND (cs.data_inicio < CURRENT_DATE OR (cs.data_inicio = CURRENT_DATE AND cs.hora_inicio <= CURRENT_TIME))
+       AND EXISTS (
+         SELECT 1
+         FROM message_queue mq
+         WHERE mq.schedule_id = cs.id
+           AND mq.status = 'pendente'
+       )`
+  )
+
+  for (const item of pausedResult.rows) {
+    if (item.reputation_level === 'CRÍTICO') {
+      continue
+    }
+
+    const sentCountResult = await query(
+      "SELECT COUNT(*)::int AS total FROM message_queue WHERE user_id = $1 AND status = 'enviado' AND data_envio >= CURRENT_DATE",
+      [item.user_id]
+    )
+    const sentToday = Number(sentCountResult.rows[0]?.total || 0)
+    const effectiveLimit = getEffectiveDailyLimit(item.reputation_level, item.limite_diario)
+
+    if (sentToday >= effectiveLimit) {
+      continue
+    }
+
+    await query('UPDATE campaign_schedule SET status = $1 WHERE id = $2', ['em_execucao', item.id])
+    console.log(`[Scheduler] Retomando agendamento pausado ${item.id} da campanha ${item.campaign_id}`)
+  }
+}
+
+async function enqueueScheduleMessages(schedule, campaign) {
+  const channels = parseCampaignChannels(campaign.channels)
+  if (!channels.includes('whatsapp')) {
+    await query('UPDATE campaign_schedule SET status = $1 WHERE id = $2', ['erro', schedule.id])
+    await query('UPDATE campaigns SET status = $1 WHERE id = $2', ['rascunho', campaign.id])
+    await query('INSERT INTO scheduler_logs (event, details) VALUES ($1, $2)', [
+      'schedule_error',
+      JSON.stringify({
+        schedule_id: schedule.id,
+        campaign_id: campaign.id,
+        motivo: 'Campanha sem canal WhatsApp para agendamento profissional',
+      }),
+    ])
+    return
+  }
+
+  const queueExists = await query(
+    'SELECT 1 FROM message_queue WHERE schedule_id = $1 LIMIT 1',
+    [schedule.id]
+  )
+
+  if (queueExists.rows.length > 0) {
+    await query('UPDATE campaign_schedule SET status = $1 WHERE id = $2', ['em_execucao', schedule.id])
+    return
+  }
+
+  const variations = parseVariations(campaign.variations)
+  const variationsList = [campaign.message, ...variations].filter((t) => t && String(t).trim().length > 5)
+
+  const contactsResult = await query(
+    `SELECT *
+     FROM contacts
+     WHERE status = 'ativo'
+       AND list_name = $1
+       AND user_id = $2
+       AND COALESCE(TRIM(phone), '') <> ''`,
+    [campaign.list_name, schedule.user_id]
+  )
+  const contacts = contactsResult.rows
+
+  if (contacts.length === 0) {
+    console.log(`[Scheduler] Nenhum contato elegível encontrado para a lista ${campaign.list_name}.`)
+    await query('UPDATE campaign_schedule SET status = $1 WHERE id = $2', ['erro', schedule.id])
+    await query('UPDATE campaigns SET status = $1 WHERE id = $2', ['rascunho', campaign.id])
+    await query('INSERT INTO scheduler_logs (event, details) VALUES ($1, $2)', [
+      'schedule_error',
+      JSON.stringify({
+        schedule_id: schedule.id,
+        campaign_id: campaign.id,
+        motivo: 'Nenhum contato ativo com telefone válido',
+      }),
+    ])
+    return
+  }
+
+  await query('UPDATE campaign_schedule SET status = $1 WHERE id = $2', ['em_execucao', schedule.id])
+
+  console.log(`[Scheduler] Gerando fila para ${contacts.length} contatos na campanha ${campaign.id}.`)
+
+  for (const contact of contacts) {
+    const baseMessage = variationsList[Math.floor(Math.random() * variationsList.length)] || campaign.message || ''
+    await query(
+      `INSERT INTO message_queue (schedule_id, campaign_id, user_id, contact_id, telefone, nome, mensagem)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [schedule.id, schedule.campaign_id, schedule.user_id, contact.id, contact.phone, contact.name, baseMessage]
+    )
+  }
+
+  await query('INSERT INTO scheduler_logs (event, details) VALUES ($1, $2)', [
+    'queue_created',
+    JSON.stringify({
+      schedule_id: schedule.id,
+      campaign_id: schedule.campaign_id,
+      total_contatos: contacts.length,
+    }),
+  ])
+}
+
 /**
  * SCHEDULER: Transforma agendamentos em fila de mensagens.
  * Roda periodicamente para verificar o que precisa entrar na fila.
  */
 async function runScheduler() {
   try {
-    // Busca agendamentos pendentes (status 'agendado' e data/hora <= agora)
+    await resumePausedSchedules()
+
     const result = await query(
-      `SELECT * FROM campaign_schedule 
-       WHERE status = 'agendado' 
-       AND (data_inicio < CURRENT_DATE OR (data_inicio = CURRENT_DATE AND hora_inicio <= CURRENT_TIME))`
-    );
+      `SELECT *
+       FROM campaign_schedule
+       WHERE status = 'agendado'
+         AND (data_inicio < CURRENT_DATE OR (data_inicio = CURRENT_DATE AND hora_inicio <= CURRENT_TIME))`
+    )
 
     for (const schedule of result.rows) {
-      console.log(`[Scheduler] Processando agendamento ${schedule.id} para campanha ${schedule.campaign_id}`);
-      
-      // Marca como 'em_execucao' para evitar processamento duplicado
-      await query('UPDATE campaign_schedule SET status = $1 WHERE id = $2', ['em_execucao', schedule.id]);
+      console.log(`[Scheduler] Processando agendamento ${schedule.id} para campanha ${schedule.campaign_id}`)
 
-      // Busca dados da campanha
-      const campResult = await query('SELECT * FROM campaigns WHERE id = $1', [schedule.campaign_id]);
-      const campaign = campResult.rows[0];
+      const campResult = await query('SELECT * FROM campaigns WHERE id = $1', [schedule.campaign_id])
+      const campaign = campResult.rows[0]
+
       if (!campaign) {
-        await query('UPDATE campaign_schedule SET status = $1 WHERE id = $2', ['erro', schedule.id]);
-        continue;
+        await query('UPDATE campaign_schedule SET status = $1 WHERE id = $2', ['erro', schedule.id])
+        continue
       }
 
-      // Prepara variações de mensagens
-      const variations = Array.isArray(campaign.variations) ? campaign.variations : [];
-      let variationsList = [campaign.message, ...variations].filter(t => t && t.length > 5);
-
-      // Busca contatos da lista da campanha
-      const contactsResult = await query(
-        'SELECT * FROM contacts WHERE status = $1 AND list_name = $2 AND user_id = $3',
-        ['ativo', campaign.list_name, schedule.user_id]
-      );
-      const contacts = contactsResult.rows;
-
-      if (contacts.length === 0) {
-        console.log(`[Scheduler] Nenhum contato ativo encontrado para a lista ${campaign.list_name}.`);
-        await query('UPDATE campaign_schedule SET status = $1 WHERE id = $2', ['concluido', schedule.id]);
-        continue;
-      }
-
-      console.log(`[Scheduler] Gerando fila para ${contacts.length} contatos.`);
-
-      for (const contact of contacts) {
-        // Seleciona uma variação aleatória para cada contato
-        const baseMessage = variationsList[Math.floor(Math.random() * variationsList.length)];
-        
-        // Verifica se já existe na fila (prevenção básica)
-        const exists = await query(
-          'SELECT 1 FROM message_queue WHERE campaign_id = $1 AND contact_id = $2 AND status = $3',
-          [schedule.campaign_id, contact.id, 'pendente']
-        );
-
-        if (exists.rows.length === 0) {
-          await query(
-            'INSERT INTO message_queue (schedule_id, campaign_id, user_id, contact_id, telefone, nome, mensagem) VALUES ($1, $2, $3, $4, $5, $6, $7)',
-            [schedule.id, schedule.campaign_id, schedule.user_id, contact.id, contact.phone, contact.name, baseMessage]
-          );
-        }
-      }
+      await enqueueScheduleMessages(schedule, campaign)
     }
+
+    await finalizeCompletedSchedules()
   } catch (error) {
-    console.error('[Scheduler] Erro no processamento:', error);
+    console.error('[Scheduler] Erro no processamento:', error)
   }
 }
 
-/**
- * WORKER: Processa a fila de mensagens enviando-as uma a uma.
- * Implementa delays, pausas por lote e limites operacionais.
- */
-let isWorkerRunning = false;
+let isWorkerRunning = false
 
 async function runWorker() {
-  if (isWorkerRunning) return;
-  isWorkerRunning = true;
+  if (isWorkerRunning) return
+  isWorkerRunning = true
 
   try {
-    // Busca e marca ATOMICAMENTE a próxima mensagem pendente usando SKIP LOCKED
-    // Isso garante que múltiplos workers não peguem a mesma mensagem
     const msgResult = await query(
-      `UPDATE message_queue 
+      `UPDATE message_queue mq
        SET status = 'processando', processing_started_at = NOW()
-       WHERE id = (
-         SELECT id FROM message_queue 
-         WHERE status = 'pendente'
-         ORDER BY data_criacao ASC
+       WHERE mq.id = (
+         SELECT mq2.id
+         FROM message_queue mq2
+         JOIN campaign_schedule cs ON cs.id = mq2.schedule_id
+         WHERE mq2.status = 'pendente'
+           AND cs.status = 'em_execucao'
+         ORDER BY mq2.data_criacao ASC
          LIMIT 1
          FOR UPDATE SKIP LOCKED
        )
-       RETURNING *`
-    );
+       RETURNING mq.*`
+    )
 
     if (msgResult.rows.length === 0) {
-       // Se não há mensagens pendentes, verifica se há campanhas que terminaram
-       const finishedSchedules = await query(
-         `UPDATE campaign_schedule 
-          SET status = 'concluido'
-          WHERE status = 'em_execucao'
-          AND NOT EXISTS (SELECT 1 FROM message_queue WHERE schedule_id = campaign_schedule.id AND status = 'pendente')
-          RETURNING campaign_id`
-       );
-       for (const sch of finishedSchedules.rows) {
-         await query('UPDATE campaigns SET status = $1 WHERE id = $2', ['concluido', sch.campaign_id]);
-       }
-       isWorkerRunning = false;
-       return;
+      await finalizeCompletedSchedules()
+      isWorkerRunning = false
+      return
     }
 
-    const msg = msgResult.rows[0];
+    const msg = msgResult.rows[0]
 
-    // Busca configurações do agendamento vinculado à mensagem
     const configResult = await query(
-      `SELECT cs.*, up.evolution_url, up.evolution_apikey, up.evolution_instance
-       FROM campaign_schedule cs
-       JOIN user_profiles up ON up.id = cs.user_id
-       WHERE cs.id = $1`,
+      'SELECT * FROM campaign_schedule WHERE id = $1 LIMIT 1',
       [msg.schedule_id]
-    );
-    const config = configResult.rows[0];
+    )
+    const config = configResult.rows[0]
 
-    if (!config) {
-        await query('UPDATE message_queue SET status = $1, erro = $2 WHERE id = $3', ['falhou', 'Agendamento não encontrado.', msg.id]);
-        isWorkerRunning = false;
-        return;
+    if (!config || config.status !== 'em_execucao') {
+      await query(
+        'UPDATE message_queue SET status = $1, erro = $2, processing_started_at = NULL WHERE id = $3',
+        ['pendente', 'Agendamento não está em execução no momento.', msg.id]
+      )
+      isWorkerRunning = false
+      return
     }
 
-    // 0. Verifica Reputação do Número
-    const repRes = await query('SELECT * FROM whatsapp_reputation WHERE user_id = $1', [msg.user_id]);
-    let reputation = repRes.rows[0];
+    const reputationResult = await query('SELECT * FROM whatsapp_reputation WHERE user_id = $1', [msg.user_id])
+    let reputation = reputationResult.rows[0]
 
-    // Se não existir, cria um perfil 'NOVO'
     if (!reputation) {
       const newRep = await query(
         'INSERT INTO whatsapp_reputation (user_id) VALUES ($1) RETURNING *',
         [msg.user_id]
-      );
-      reputation = newRep.rows[0];
+      )
+      reputation = newRep.rows[0]
     }
 
-    // Bloqueia se estiver CRÍTICO
     if (reputation.level === 'CRÍTICO') {
-      console.log(`[Worker] Reputação CRÍTICA para usuário ${msg.user_id}. Bloqueando envios por segurança.`);
-      await query('UPDATE campaign_schedule SET status = $1 WHERE user_id = $2 AND status = $3', ['pausado', msg.user_id, 'em_execucao']);
-      isWorkerRunning = false;
-      return;
+      console.log(`[Worker] Reputação crítica para usuário ${msg.user_id}. Pausando envios.`)
+      await query('UPDATE campaign_schedule SET status = $1 WHERE user_id = $2 AND status = $3', ['pausado', msg.user_id, 'em_execucao'])
+      await query(
+        'UPDATE message_queue SET status = $1, erro = $2, processing_started_at = NULL WHERE id = $3',
+        ['pendente', 'Envio pausado por reputação crítica do número.', msg.id]
+      )
+      isWorkerRunning = false
+      return
     }
 
-    // 1. Verifica Limite Diário (Combinado com Reputação)
-    const sentCountRes = await query(
+    const sentCountResult = await query(
       "SELECT count(*) FROM message_queue WHERE user_id = $1 AND status = 'enviado' AND data_envio >= CURRENT_DATE",
       [msg.user_id]
-    );
-    const sentTodayOverall = parseInt(sentCountRes.rows[0].count);
+    )
+    const sentTodayOverall = parseInt(sentCountResult.rows[0].count)
 
-    let effectiveLimit = config.limite_diario;
-    if (reputation.level === 'NOVO') effectiveLimit = Math.min(effectiveLimit, 40);
-    if (reputation.level === 'AQUECENDO') effectiveLimit = Math.min(effectiveLimit, 100);
-    if (reputation.level === 'ALERTA') effectiveLimit = Math.min(effectiveLimit, 20);
+    const effectiveLimit = getEffectiveDailyLimit(reputation.level, config.limite_diario)
 
     if (sentTodayOverall >= effectiveLimit) {
-      console.log(`[Worker] Limite operacional (${effectiveLimit}) atingido (Reputação: ${reputation.level}). Pausando.`);
-      await query('UPDATE campaign_schedule SET status = $1 WHERE user_id = $2 AND status = $3', ['pausado', msg.user_id, 'em_execucao']);
-      // Retorna mensagem para pendente pois não foi processada por causa do limite
-      await query('UPDATE message_queue SET status = $1 WHERE id = $2', ['pendente', msg.id]);
-      isWorkerRunning = false;
-      return;
+      console.log(`[Worker] Limite operacional (${effectiveLimit}) atingido para ${msg.user_id}. Pausando.`)
+      await query('UPDATE campaign_schedule SET status = $1 WHERE user_id = $2 AND status = $3', ['pausado', msg.user_id, 'em_execucao'])
+      await query(
+        'UPDATE message_queue SET status = $1, erro = $2, processing_started_at = NULL WHERE id = $3',
+        ['pendente', `Limite diário operacional atingido (${effectiveLimit}/dia).`, msg.id]
+      )
+      isWorkerRunning = false
+      return
     }
 
-    // 2. Lógica de Pausa por Lote
-    if (sentTodayOverall > 0 && sentTodayOverall % config.mensagens_por_lote === 0) {
-       console.log(`[Worker] Lote de ${config.mensagens_por_lote} atingido. Pausando por ${config.tempo_pausa_lote} minutos.`);
-       await query('INSERT INTO scheduler_logs (event, details) VALUES ($1, $2)', ['pausa_lote', `Usuário ${msg.user_id} pausado por lote.`]);
-       await new Promise(r => setTimeout(r, config.tempo_pausa_lote * 60 * 1000));
+    if (sentTodayOverall > 0 && sentTodayOverall % Number(config.mensagens_por_lote || 45) === 0) {
+      console.log(`[Worker] Lote de ${config.mensagens_por_lote} atingido. Pausando por ${config.tempo_pausa_lote} minutos.`)
+      await query('INSERT INTO scheduler_logs (event, details) VALUES ($1, $2)', [
+        'pausa_lote',
+        JSON.stringify({ user_id: msg.user_id, schedule_id: msg.schedule_id, campaign_id: msg.campaign_id }),
+      ])
+      await sleep(Number(config.tempo_pausa_lote || 15) * 60 * 1000)
     }
 
-    // 3. Processamento do Envio
-    const { evolution_url, evolution_apikey, evolution_instance } = config;
+    const evolutionConfig = await resolveEvolutionConfigForUser(msg.user_id)
+    const { evolutionUrl, evolutionApiKey, evolutionInstance } = evolutionConfig
 
-    if (evolution_url && evolution_instance && evolution_apikey) {
+    if (evolutionUrl && evolutionInstance && evolutionApiKey) {
       try {
-        const evolutionNumber = toEvolutionNumber(msg.telefone);
-        if (!evolutionNumber) throw new Error('Número de telefone inválido no formato Evolution.');
+        const evolutionNumber = toEvolutionNumber(msg.telefone)
+        if (!evolutionNumber) throw new Error('Número de telefone inválido no formato Evolution.')
 
-        const resolvedHtml = resolveTemplate(msg.mensagem, { name: msg.nome, phone: msg.telefone });
-        const messageTextProcessed = htmlToWhatsapp(resolvedHtml);
-        const imageUrls = extractImages(resolvedHtml);
+        const resolvedHtml = resolveTemplate(msg.mensagem, { name: msg.nome, phone: msg.telefone })
+        const messageTextProcessed = htmlToWhatsapp(resolvedHtml)
+        const imageUrls = extractImages(resolvedHtml)
 
-        console.log(`[Worker] Enviando para ${evolutionNumber}...`);
-
-        // Envio de Texto
         if (messageTextProcessed) {
-          const textResp = await fetch(`${evolution_url}/message/sendText/${evolution_instance}`, {
+          const textResp = await fetch(`${evolutionUrl}/message/sendText/${evolutionInstance}`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'apikey': evolution_apikey },
+            headers: { 'Content-Type': 'application/json', apikey: evolutionApiKey },
             body: JSON.stringify({ number: evolutionNumber, text: messageTextProcessed, linkPreview: true }),
-          });
+          })
+
           if (!textResp.ok) {
-            const errBody = await textResp.text();
-            throw new Error(`Evolution Erro (Texto): ${errBody}`);
+            const errBody = await textResp.text()
+            throw new Error(`Evolution Erro (Texto): ${errBody}`)
           }
         }
 
-        // Envio de Mídias
         for (const imageUrl of imageUrls) {
-          const mediaResp = await fetch(`${evolution_url}/message/sendMedia/${evolution_instance}`, {
+          const mediaResp = await fetch(`${evolutionUrl}/message/sendMedia/${evolutionInstance}`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'apikey': evolution_apikey },
+            headers: { 'Content-Type': 'application/json', apikey: evolutionApiKey },
             body: JSON.stringify({ number: evolutionNumber, media: imageUrl, mediatype: 'image', caption: '' }),
-          });
-          if (!mediaResp.ok) console.error('[Worker] Falha ao enviar imagem do lote:', await mediaResp.text());
+          })
+
+          if (!mediaResp.ok) {
+            console.error('[Worker] Falha ao enviar imagem do lote:', await mediaResp.text())
+          }
         }
 
-        // Sucesso
-        await query('UPDATE message_queue SET status = $1, data_envio = NOW() WHERE id = $2', ['enviado', msg.id]);
-        
-      } catch (err) {
-        console.error(`[Worker] Erro no envio (${msg.telefone}):`, err.message);
         await query(
-          'UPDATE message_queue SET status = $1, erro = $2, tentativas = tentativas + 1 WHERE id = $3', 
+          'UPDATE message_queue SET status = $1, data_envio = NOW(), processing_started_at = NULL WHERE id = $2',
+          ['enviado', msg.id]
+        )
+      } catch (err) {
+        console.error(`[Worker] Erro no envio (${msg.telefone}):`, err.message)
+        await query(
+          'UPDATE message_queue SET status = $1, erro = $2, tentativas = tentativas + 1, processing_started_at = NULL WHERE id = $3',
           ['falhou', err.message, msg.id]
-        );
+        )
       }
     } else {
-      await query('UPDATE message_queue SET status = $1, erro = $2 WHERE id = $3', ['falhou', 'Evolution API não configurada para este perfil.', msg.id]);
+      await query(
+        'UPDATE message_queue SET status = $1, erro = $2, processing_started_at = NULL WHERE id = $3',
+        ['falhou', 'Evolution API não configurada para este perfil.', msg.id]
+      )
     }
 
-    // 4. Delay Aleatório Pós-Envio (Proteção Anti-Bloqueio)
-    let minDelay = config.intervalo_minimo;
-    let maxDelay = config.intervalo_maximo;
+    let minDelay = Number(config.intervalo_minimo || 30)
+    let maxDelay = Number(config.intervalo_maximo || 90)
 
-    // Adaptação por Reputação
-    if (reputation.level === 'NOVO') { minDelay *= 1.5; maxDelay *= 1.5; }
-    if (reputation.level === 'ALERTA') { minDelay *= 3; maxDelay *= 3; }
+    if (reputation.level === 'NOVO') {
+      minDelay = Math.ceil(minDelay * 1.5)
+      maxDelay = Math.ceil(maxDelay * 1.5)
+    }
+    if (reputation.level === 'ALERTA') {
+      minDelay = minDelay * 3
+      maxDelay = maxDelay * 3
+    }
 
-    const delay = Math.floor(Math.random() * (maxDelay - minDelay + 1)) + minDelay;
-    console.log(`[Worker] Sucesso. Aguardando ${delay} segundos para a próxima (Nível: ${reputation.level})...`);
-    
-    // Pequeno registro de log operacional
-    await query('INSERT INTO scheduler_logs (event, details) VALUES ($1, $2)', ['envio_sucesso', `Mensagem enviada para ${msg.telefone} com delay de ${delay}s (Rep: ${reputation.level})`]);
+    const delay = Math.floor(Math.random() * (maxDelay - minDelay + 1)) + minDelay
+    await query('INSERT INTO scheduler_logs (event, details) VALUES ($1, $2)', [
+      'envio_sucesso',
+      JSON.stringify({ telefone: msg.telefone, delay, reputacao: reputation.level, message_id: msg.id }),
+    ])
 
     setTimeout(() => {
-      isWorkerRunning = false;
-    }, delay * 1000);
-
+      isWorkerRunning = false
+    }, delay * 1000)
   } catch (error) {
-    console.error('[Worker] Erro crítico no worker:', error);
-    isWorkerRunning = false;
+    console.error('[Worker] Erro crítico no worker:', error)
+    isWorkerRunning = false
   }
 }
 
-/**
- * CLEANUP: Recupera mensagens travadas em status 'processando' por mais de 10 minutos.
- */
 async function runCleanup() {
   try {
-    const TIMEOUT_MINUTES = 10;
-    const MAX_TRIES = 3;
+    const MAX_TRIES = 3
 
-    // 1. RECUPERAÇÃO: Volta para pendente se ainda houver saldo de tentativas
     const recoveryRes = await query(
       `UPDATE message_queue
-       SET status = 'pendente', 
-           tentativas = tentativas + 1, 
+       SET status = 'pendente',
+           tentativas = tentativas + 1,
            erro = 'Recuperado automaticamente: timeout de processamento',
            recovered_at = NOW(),
-           processing_started_at = NULL -- LIMPA para permitir novo ciclo
-       WHERE status = 'processando' 
-       AND processing_started_at < NOW() - INTERVAL '10 minutes'
-       AND tentativas < $1
+           processing_started_at = NULL
+       WHERE status = 'processando'
+         AND processing_started_at < NOW() - INTERVAL '10 minutes'
+         AND tentativas < $1
        RETURNING id, schedule_id, user_id, tentativas`,
       [MAX_TRIES]
-    );
+    )
 
     for (const msg of recoveryRes.rows) {
-      console.log(`[Cleanup] Mensagem ${msg.id} recuperada para pendente.`);
-      await query('INSERT INTO scheduler_logs (event, details) VALUES ($1, $2)', 
-        ['zombie_recovered', JSON.stringify({
+      console.log(`[Cleanup] Mensagem ${msg.id} recuperada para pendente.`)
+      await query('INSERT INTO scheduler_logs (event, details) VALUES ($1, $2)', [
+        'zombie_recovered',
+        JSON.stringify({
           message_id: msg.id,
           schedule_id: msg.schedule_id,
           user_id: msg.user_id,
           motivo: 'Timeout de processamento (>10 min)',
           tentativa_final: msg.tentativas,
-          timestamp: new Date().toISOString()
-        })]);
+          timestamp: new Date().toISOString(),
+        }),
+      ])
     }
 
-    // 2. FALHA DEFINITIVA: Se travou 3 vezes seguidas no timeout, descarta
     const failRes = await query(
       `UPDATE message_queue
-       SET status = 'falhou', 
+       SET status = 'falhou',
            erro = 'Falha definitiva: timeout de processamento excedido',
            data_envio = NOW(),
            processing_started_at = NULL
-       WHERE status = 'processando' 
-       AND processing_started_at < NOW() - INTERVAL '10 minutes'
-       AND tentativas >= $1
-       RETURNING id, schedule_id, user_id, tentativas`,
+       WHERE status = 'processando'
+         AND processing_started_at < NOW() - INTERVAL '10 minutes'
+         AND tentativas >= $1
+       RETURNING id, schedule_id, user_id, tentativas, campaign_id`,
       [MAX_TRIES]
-    );
+    )
 
     for (const msg of failRes.rows) {
-      console.log(`[Cleanup] Mensagem ${msg.id} marcada como falha definitiva.`);
-      await query('INSERT INTO scheduler_logs (event, details) VALUES ($1, $2)', 
-        ['zombie_failed', JSON.stringify({
+      console.log(`[Cleanup] Mensagem ${msg.id} marcada como falha definitiva.`)
+      await query('INSERT INTO scheduler_logs (event, details) VALUES ($1, $2)', [
+        'zombie_failed',
+        JSON.stringify({
           message_id: msg.id,
           schedule_id: msg.schedule_id,
           user_id: msg.user_id,
           motivo: 'Limite de tentativas excedido por timeout',
           tentativa_final: msg.tentativas,
-          timestamp: new Date().toISOString()
-        })]);
+          timestamp: new Date().toISOString(),
+        }),
+      ])
+      await setCampaignStatusFromQueue(msg.campaign_id)
     }
 
+    await finalizeCompletedSchedules()
   } catch (error) {
-    console.error('[Cleanup] Erro na rotina de recuperação:', error);
+    console.error('[Cleanup] Erro na rotina de recuperação:', error)
   }
 }
 
-// Inicialização dos Loops
-// O Scheduler roda a cada 1 minuto para não sobrecarregar o DB e pegar novos agendamentos
-setInterval(runScheduler, 60_000);
+setInterval(runScheduler, 60_000)
+setInterval(runWorker, 2000)
+setInterval(runCleanup, 300_000)
 
-// O Worker roda continuamente tentando pegar a próxima tarefa
-setInterval(runWorker, 2000);
+void runScheduler()
+void runWorker()
+void runCleanup()
 
-// O Cleanup roda a cada 5 minutos
-setInterval(runCleanup, 300_000);
-
-console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-console.log('🚀 MOTOR DE ENVIO (QUEUER + WORKER) ATIVO');
-console.log('🛡️  Proteção Anti-Bloqueio: Habilitada');
-console.log('🤖 Gestão de Filas: Habilitada');
-console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+console.log('================================================')
+console.log('MOTOR DE ENVIO (QUEUE + WORKER) ATIVO')
+console.log('Proteção anti-bloqueio: habilitada')
+console.log('Gestão de filas: habilitada')
+console.log('================================================')
