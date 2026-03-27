@@ -2,8 +2,24 @@ import 'dotenv/config'
 import { query } from './db.js'
 import { toEvolutionNumber, resolveTemplate, htmlToWhatsapp, extractImages } from './utils/messageUtils.js'
 
+const queueWorkerDeps = {
+  query,
+  fetchImpl: (...args) => globalThis.fetch(...args),
+  sleepImpl: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+}
+
+export function setQueueWorkerDepsForTests(overrides = {}) {
+  Object.assign(queueWorkerDeps, overrides)
+}
+
+export function resetQueueWorkerDepsForTests() {
+  queueWorkerDeps.query = query
+  queueWorkerDeps.fetchImpl = (...args) => globalThis.fetch(...args)
+  queueWorkerDeps.sleepImpl = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+}
+
 function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms))
+  return queueWorkerDeps.sleepImpl(ms)
 }
 
 function getEffectiveDailyLimit(reputationLevel, configuredLimit) {
@@ -42,11 +58,11 @@ function parseVariations(variations) {
 
 async function resolveEvolutionConfigForUser(userId) {
   const [profileResult, globalSettingsResult] = await Promise.all([
-    query(
+    queueWorkerDeps.query(
       'SELECT evolution_url, evolution_apikey, evolution_instance FROM user_profiles WHERE id = $1 LIMIT 1',
       [userId]
     ),
-    query(
+    queueWorkerDeps.query(
       'SELECT evolution_api_url, evolution_api_key, evolution_shared_instance FROM app_settings ORDER BY id DESC LIMIT 1'
     ),
   ])
@@ -62,7 +78,7 @@ async function resolveEvolutionConfigForUser(userId) {
 }
 
 async function pauseSchedulesForUser(userId, reason, details) {
-  const result = await query(
+  const result = await queueWorkerDeps.query(
     `UPDATE campaign_schedule
      SET status = 'pausado',
          pause_reason = $1,
@@ -75,7 +91,7 @@ async function pauseSchedulesForUser(userId, reason, details) {
   )
 
   for (const item of result.rows) {
-    await query('INSERT INTO scheduler_logs (event, details) VALUES ($1, $2)', [
+    await queueWorkerDeps.query('INSERT INTO scheduler_logs (event, details) VALUES ($1, $2)', [
       'schedule_paused',
       JSON.stringify({
         schedule_id: item.id,
@@ -91,7 +107,7 @@ async function pauseSchedulesForUser(userId, reason, details) {
 }
 
 async function resumeSchedule(scheduleId, campaignId, reason) {
-  await query(
+  await queueWorkerDeps.query(
     `UPDATE campaign_schedule
      SET status = 'em_execucao',
          pause_reason = NULL,
@@ -101,7 +117,7 @@ async function resumeSchedule(scheduleId, campaignId, reason) {
     [scheduleId]
   )
 
-  await query('INSERT INTO scheduler_logs (event, details) VALUES ($1, $2)', [
+  await queueWorkerDeps.query('INSERT INTO scheduler_logs (event, details) VALUES ($1, $2)', [
     'schedule_resumed',
     JSON.stringify({
       schedule_id: scheduleId,
@@ -112,7 +128,7 @@ async function resumeSchedule(scheduleId, campaignId, reason) {
 }
 
 async function setCampaignStatusFromQueue(campaignId) {
-  const summaryResult = await query(
+  const summaryResult = await queueWorkerDeps.query(
     `SELECT
        COUNT(*) FILTER (WHERE status = 'pendente')::int AS pendente,
        COUNT(*) FILTER (WHERE status = 'processando')::int AS processando,
@@ -138,11 +154,11 @@ async function setCampaignStatusFromQueue(campaignId) {
     nextStatus = 'enviada'
   }
 
-  await query('UPDATE campaigns SET status = $1 WHERE id = $2', [nextStatus, campaignId])
+  await queueWorkerDeps.query('UPDATE campaigns SET status = $1 WHERE id = $2', [nextStatus, campaignId])
 }
 
 async function finalizeCompletedSchedules() {
-  const completedResult = await query(
+  const completedResult = await queueWorkerDeps.query(
     `SELECT cs.id, cs.campaign_id
      FROM campaign_schedule cs
      WHERE cs.status = 'em_execucao'
@@ -155,13 +171,13 @@ async function finalizeCompletedSchedules() {
   )
 
   for (const schedule of completedResult.rows) {
-    await query('UPDATE campaign_schedule SET status = $1 WHERE id = $2', ['concluido', schedule.id])
+    await queueWorkerDeps.query('UPDATE campaign_schedule SET status = $1 WHERE id = $2', ['concluido', schedule.id])
     await setCampaignStatusFromQueue(schedule.campaign_id)
   }
 }
 
 async function resumePausedSchedules() {
-  const pausedResult = await query(
+  const pausedResult = await queueWorkerDeps.query(
     `SELECT cs.id, cs.campaign_id, cs.user_id, cs.limite_diario,
             cs.pause_reason, cs.pause_details, cs.paused_at,
             COALESCE(wr.level, 'NOVO') AS reputation_level
@@ -199,7 +215,7 @@ async function resumePausedSchedules() {
       continue
     }
 
-    const sentCountResult = await query(
+    const sentCountResult = await queueWorkerDeps.query(
       "SELECT COUNT(*)::int AS total FROM message_queue WHERE user_id = $1 AND status = 'enviado' AND data_envio >= CURRENT_DATE",
       [item.user_id]
     )
@@ -225,9 +241,9 @@ async function resumePausedSchedules() {
 async function enqueueScheduleMessages(schedule, campaign) {
   const channels = parseCampaignChannels(campaign.channels)
   if (!channels.includes('whatsapp')) {
-    await query('UPDATE campaign_schedule SET status = $1 WHERE id = $2', ['erro', schedule.id])
-    await query('UPDATE campaigns SET status = $1 WHERE id = $2', ['rascunho', campaign.id])
-    await query('INSERT INTO scheduler_logs (event, details) VALUES ($1, $2)', [
+    await queueWorkerDeps.query('UPDATE campaign_schedule SET status = $1 WHERE id = $2', ['erro', schedule.id])
+    await queueWorkerDeps.query('UPDATE campaigns SET status = $1 WHERE id = $2', ['rascunho', campaign.id])
+    await queueWorkerDeps.query('INSERT INTO scheduler_logs (event, details) VALUES ($1, $2)', [
       'schedule_error',
       JSON.stringify({
         schedule_id: schedule.id,
@@ -238,13 +254,13 @@ async function enqueueScheduleMessages(schedule, campaign) {
     return
   }
 
-  const queueExists = await query(
+  const queueExists = await queueWorkerDeps.query(
     'SELECT 1 FROM message_queue WHERE schedule_id = $1 LIMIT 1',
     [schedule.id]
   )
 
   if (queueExists.rows.length > 0) {
-    await query(
+    await queueWorkerDeps.query(
       `UPDATE campaign_schedule
        SET status = $1,
            pause_reason = NULL,
@@ -258,7 +274,7 @@ async function enqueueScheduleMessages(schedule, campaign) {
   const variations = parseVariations(campaign.variations)
   const variationsList = [campaign.message, ...variations].filter((t) => t && String(t).trim().length > 5)
 
-  const contactsResult = await query(
+  const contactsResult = await queueWorkerDeps.query(
     `SELECT *
      FROM contacts
      WHERE status = 'ativo'
@@ -271,9 +287,9 @@ async function enqueueScheduleMessages(schedule, campaign) {
 
   if (contacts.length === 0) {
     console.log(`[Scheduler] Nenhum contato elegível encontrado para a lista ${campaign.list_name}.`)
-    await query('UPDATE campaign_schedule SET status = $1 WHERE id = $2', ['erro', schedule.id])
-    await query('UPDATE campaigns SET status = $1 WHERE id = $2', ['rascunho', campaign.id])
-    await query('INSERT INTO scheduler_logs (event, details) VALUES ($1, $2)', [
+    await queueWorkerDeps.query('UPDATE campaign_schedule SET status = $1 WHERE id = $2', ['erro', schedule.id])
+    await queueWorkerDeps.query('UPDATE campaigns SET status = $1 WHERE id = $2', ['rascunho', campaign.id])
+    await queueWorkerDeps.query('INSERT INTO scheduler_logs (event, details) VALUES ($1, $2)', [
       'schedule_error',
       JSON.stringify({
         schedule_id: schedule.id,
@@ -284,7 +300,7 @@ async function enqueueScheduleMessages(schedule, campaign) {
     return
   }
 
-  await query(
+  await queueWorkerDeps.query(
     `UPDATE campaign_schedule
      SET status = $1,
          pause_reason = NULL,
@@ -297,14 +313,14 @@ async function enqueueScheduleMessages(schedule, campaign) {
 
   for (const contact of contacts) {
     const baseMessage = variationsList[Math.floor(Math.random() * variationsList.length)] || campaign.message || ''
-    await query(
+    await queueWorkerDeps.query(
       `INSERT INTO message_queue (schedule_id, campaign_id, user_id, contact_id, telefone, nome, mensagem)
        VALUES ($1, $2, $3, $4, $5, $6, $7)`,
       [schedule.id, schedule.campaign_id, schedule.user_id, contact.id, contact.phone, contact.name, baseMessage]
     )
   }
 
-  await query('INSERT INTO scheduler_logs (event, details) VALUES ($1, $2)', [
+  await queueWorkerDeps.query('INSERT INTO scheduler_logs (event, details) VALUES ($1, $2)', [
     'queue_created',
     JSON.stringify({
       schedule_id: schedule.id,
@@ -318,11 +334,11 @@ async function enqueueScheduleMessages(schedule, campaign) {
  * SCHEDULER: Transforma agendamentos em fila de mensagens.
  * Roda periodicamente para verificar o que precisa entrar na fila.
  */
-async function runScheduler() {
+export async function runScheduler() {
   try {
     await resumePausedSchedules()
 
-    const result = await query(
+    const result = await queueWorkerDeps.query(
       `SELECT *
        FROM campaign_schedule
        WHERE status = 'agendado'
@@ -332,11 +348,11 @@ async function runScheduler() {
     for (const schedule of result.rows) {
       console.log(`[Scheduler] Processando agendamento ${schedule.id} para campanha ${schedule.campaign_id}`)
 
-      const campResult = await query('SELECT * FROM campaigns WHERE id = $1', [schedule.campaign_id])
+      const campResult = await queueWorkerDeps.query('SELECT * FROM campaigns WHERE id = $1', [schedule.campaign_id])
       const campaign = campResult.rows[0]
 
       if (!campaign) {
-        await query('UPDATE campaign_schedule SET status = $1 WHERE id = $2', ['erro', schedule.id])
+        await queueWorkerDeps.query('UPDATE campaign_schedule SET status = $1 WHERE id = $2', ['erro', schedule.id])
         continue
       }
 
@@ -351,12 +367,16 @@ async function runScheduler() {
 
 let isWorkerRunning = false
 
-async function runWorker() {
+export function resetQueueWorkerRuntimeForTests() {
+  isWorkerRunning = false
+}
+
+export async function runWorker() {
   if (isWorkerRunning) return
   isWorkerRunning = true
 
   try {
-    const msgResult = await query(
+    const msgResult = await queueWorkerDeps.query(
       `UPDATE message_queue mq
        SET status = 'processando', processing_started_at = NOW()
        WHERE mq.id = (
@@ -380,14 +400,14 @@ async function runWorker() {
 
     const msg = msgResult.rows[0]
 
-    const configResult = await query(
+    const configResult = await queueWorkerDeps.query(
       'SELECT * FROM campaign_schedule WHERE id = $1 LIMIT 1',
       [msg.schedule_id]
     )
     const config = configResult.rows[0]
 
     if (!config || config.status !== 'em_execucao') {
-      await query(
+      await queueWorkerDeps.query(
         'UPDATE message_queue SET status = $1, erro = $2, processing_started_at = NULL WHERE id = $3',
         ['pendente', 'Agendamento não está em execução no momento.', msg.id]
       )
@@ -395,11 +415,11 @@ async function runWorker() {
       return
     }
 
-    const reputationResult = await query('SELECT * FROM whatsapp_reputation WHERE user_id = $1', [msg.user_id])
+    const reputationResult = await queueWorkerDeps.query('SELECT * FROM whatsapp_reputation WHERE user_id = $1', [msg.user_id])
     let reputation = reputationResult.rows[0]
 
     if (!reputation) {
-      const newRep = await query(
+      const newRep = await queueWorkerDeps.query(
         'INSERT INTO whatsapp_reputation (user_id) VALUES ($1) RETURNING *',
         [msg.user_id]
       )
@@ -413,7 +433,7 @@ async function runWorker() {
         'reputation_critical',
         'A reputação do número entrou em nível crítico. O envio fica pausado até a reputação melhorar.'
       )
-      await query(
+      await queueWorkerDeps.query(
         'UPDATE message_queue SET status = $1, erro = $2, processing_started_at = NULL WHERE id = $3',
         ['pendente', 'Envio pausado por reputação crítica do número.', msg.id]
       )
@@ -421,7 +441,7 @@ async function runWorker() {
       return
     }
 
-    const sentCountResult = await query(
+    const sentCountResult = await queueWorkerDeps.query(
       "SELECT count(*) FROM message_queue WHERE user_id = $1 AND status = 'enviado' AND data_envio >= CURRENT_DATE",
       [msg.user_id]
     )
@@ -436,7 +456,7 @@ async function runWorker() {
         'daily_limit',
         `O limite diário operacional de ${effectiveLimit} envios foi atingido. O agendamento será retomado automaticamente quando voltar a ficar elegível.`
       )
-      await query(
+      await queueWorkerDeps.query(
         'UPDATE message_queue SET status = $1, erro = $2, processing_started_at = NULL WHERE id = $3',
         ['pendente', `Limite diário operacional atingido (${effectiveLimit}/dia).`, msg.id]
       )
@@ -446,21 +466,21 @@ async function runWorker() {
 
     if (sentTodayOverall > 0 && sentTodayOverall % Number(config.mensagens_por_lote || 45) === 0) {
       console.log(`[Worker] Lote de ${config.mensagens_por_lote} atingido. Pausando por ${config.tempo_pausa_lote} minutos.`)
-      await query('INSERT INTO scheduler_logs (event, details) VALUES ($1, $2)', [
+      await queueWorkerDeps.query('INSERT INTO scheduler_logs (event, details) VALUES ($1, $2)', [
         'pausa_lote',
         JSON.stringify({ user_id: msg.user_id, schedule_id: msg.schedule_id, campaign_id: msg.campaign_id }),
       ])
       await sleep(Number(config.tempo_pausa_lote || 15) * 60 * 1000)
     }
 
-    const freshConfigResult = await query(
+    const freshConfigResult = await queueWorkerDeps.query(
       'SELECT status FROM campaign_schedule WHERE id = $1 LIMIT 1',
       [msg.schedule_id]
     )
     const freshConfig = freshConfigResult.rows[0]
 
     if (!freshConfig || freshConfig.status !== 'em_execucao') {
-      await query(
+      await queueWorkerDeps.query(
         'UPDATE message_queue SET status = $1, erro = $2, processing_started_at = NULL WHERE id = $3',
         ['falhou', 'Envio interrompido porque o agendamento não está mais ativo.', msg.id]
       )
@@ -481,7 +501,7 @@ async function runWorker() {
         const imageUrls = extractImages(resolvedHtml)
 
         if (messageTextProcessed) {
-          const textResp = await fetch(`${evolutionUrl}/message/sendText/${evolutionInstance}`, {
+          const textResp = await queueWorkerDeps.fetchImpl(`${evolutionUrl}/message/sendText/${evolutionInstance}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', apikey: evolutionApiKey },
             body: JSON.stringify({ number: evolutionNumber, text: messageTextProcessed, linkPreview: true }),
@@ -494,7 +514,7 @@ async function runWorker() {
         }
 
         for (const imageUrl of imageUrls) {
-          const mediaResp = await fetch(`${evolutionUrl}/message/sendMedia/${evolutionInstance}`, {
+          const mediaResp = await queueWorkerDeps.fetchImpl(`${evolutionUrl}/message/sendMedia/${evolutionInstance}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', apikey: evolutionApiKey },
             body: JSON.stringify({ number: evolutionNumber, media: imageUrl, mediatype: 'image', caption: '' }),
@@ -505,19 +525,19 @@ async function runWorker() {
           }
         }
 
-        await query(
+        await queueWorkerDeps.query(
           'UPDATE message_queue SET status = $1, data_envio = NOW(), processing_started_at = NULL WHERE id = $2',
           ['enviado', msg.id]
         )
       } catch (err) {
         console.error(`[Worker] Erro no envio (${msg.telefone}):`, err.message)
-        await query(
+        await queueWorkerDeps.query(
           'UPDATE message_queue SET status = $1, erro = $2, tentativas = tentativas + 1, processing_started_at = NULL WHERE id = $3',
           ['falhou', err.message, msg.id]
         )
       }
     } else {
-      await query(
+      await queueWorkerDeps.query(
         'UPDATE message_queue SET status = $1, erro = $2, processing_started_at = NULL WHERE id = $3',
         ['falhou', 'Evolution API não configurada para este perfil.', msg.id]
       )
@@ -536,7 +556,7 @@ async function runWorker() {
     }
 
     const delay = Math.floor(Math.random() * (maxDelay - minDelay + 1)) + minDelay
-    await query('INSERT INTO scheduler_logs (event, details) VALUES ($1, $2)', [
+    await queueWorkerDeps.query('INSERT INTO scheduler_logs (event, details) VALUES ($1, $2)', [
       'envio_sucesso',
       JSON.stringify({ telefone: msg.telefone, delay, reputacao: reputation.level, message_id: msg.id }),
     ])
@@ -550,11 +570,11 @@ async function runWorker() {
   }
 }
 
-async function runCleanup() {
+export async function runCleanup() {
   try {
     const MAX_TRIES = 3
 
-    const recoveryRes = await query(
+    const recoveryRes = await queueWorkerDeps.query(
       `UPDATE message_queue
        SET status = 'pendente',
            tentativas = tentativas + 1,
@@ -570,7 +590,7 @@ async function runCleanup() {
 
     for (const msg of recoveryRes.rows) {
       console.log(`[Cleanup] Mensagem ${msg.id} recuperada para pendente.`)
-      await query('INSERT INTO scheduler_logs (event, details) VALUES ($1, $2)', [
+      await queueWorkerDeps.query('INSERT INTO scheduler_logs (event, details) VALUES ($1, $2)', [
         'zombie_recovered',
         JSON.stringify({
           message_id: msg.id,
@@ -583,7 +603,7 @@ async function runCleanup() {
       ])
     }
 
-    const failRes = await query(
+    const failRes = await queueWorkerDeps.query(
       `UPDATE message_queue
        SET status = 'falhou',
            erro = 'Falha definitiva: timeout de processamento excedido',
@@ -598,7 +618,7 @@ async function runCleanup() {
 
     for (const msg of failRes.rows) {
       console.log(`[Cleanup] Mensagem ${msg.id} marcada como falha definitiva.`)
-      await query('INSERT INTO scheduler_logs (event, details) VALUES ($1, $2)', [
+      await queueWorkerDeps.query('INSERT INTO scheduler_logs (event, details) VALUES ($1, $2)', [
         'zombie_failed',
         JSON.stringify({
           message_id: msg.id,
@@ -618,16 +638,22 @@ async function runCleanup() {
   }
 }
 
-setInterval(runScheduler, 60_000)
-setInterval(runWorker, 2000)
-setInterval(runCleanup, 300_000)
+export function startQueueWorkerLoops() {
+  setInterval(runScheduler, 60_000)
+  setInterval(runWorker, 2000)
+  setInterval(runCleanup, 300_000)
 
-void runScheduler()
-void runWorker()
-void runCleanup()
+  void runScheduler()
+  void runWorker()
+  void runCleanup()
 
-console.log('================================================')
-console.log('MOTOR DE ENVIO (QUEUE + WORKER) ATIVO')
-console.log('Proteção anti-bloqueio: habilitada')
-console.log('Gestão de filas: habilitada')
-console.log('================================================')
+  console.log('================================================')
+  console.log('MOTOR DE ENVIO (QUEUE + WORKER) ATIVO')
+  console.log('Proteção anti-bloqueio: habilitada')
+  console.log('Gestão de filas: habilitada')
+  console.log('================================================')
+}
+
+if (process.env.DISABLE_QUEUE_WORKER_LOOPS !== 'true') {
+  startQueueWorkerLoops()
+}

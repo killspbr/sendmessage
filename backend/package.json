@@ -7,7 +7,8 @@
     "dev": "node src/index.js",
     "start": "node src/index.js",
     "worker": "node src/queueWorker.js",
-    "build": "echo Build not required for plain JS backend"
+    "build": "echo Build not required for plain JS backend",
+    "test:queue-worker": "node --test src/__tests__/queueWorker.test.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
