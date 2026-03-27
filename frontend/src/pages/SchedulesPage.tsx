@@ -84,6 +84,8 @@ function getScheduleHealth(schedule: ProfSchedule) {
             ? 'Pausado por limite diário'
             : schedule.pause_reason === 'reputation_critical'
                 ? 'Pausado por reputação'
+                : schedule.pause_reason === 'manual_cancel'
+                    ? 'Cancelado manualmente'
                 : 'Pausado com pendências'
         return {
             label: pauseLabel,

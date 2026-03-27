@@ -163,6 +163,7 @@ async function finalizeCompletedSchedules() {
 async function resumePausedSchedules() {
   const pausedResult = await query(
     `SELECT cs.id, cs.campaign_id, cs.user_id, cs.limite_diario,
+            cs.pause_reason, cs.pause_details, cs.paused_at,
             COALESCE(wr.level, 'NOVO') AS reputation_level
      FROM campaign_schedule cs
      LEFT JOIN whatsapp_reputation wr ON wr.user_id = cs.user_id
@@ -177,7 +178,24 @@ async function resumePausedSchedules() {
   )
 
   for (const item of pausedResult.rows) {
-    if (item.reputation_level === 'CRÍTICO') {
+    if (item.pause_reason === 'reputation_critical' && item.reputation_level === 'CRÍTICO') {
+      continue
+    }
+
+    if (item.pause_reason === 'daily_limit' && item.paused_at) {
+      const pausedDate = new Date(item.paused_at)
+      const today = new Date()
+      const isSameLocalDay =
+        pausedDate.getFullYear() === today.getFullYear() &&
+        pausedDate.getMonth() === today.getMonth() &&
+        pausedDate.getDate() === today.getDate()
+
+      if (isSameLocalDay) {
+        continue
+      }
+    }
+
+    if (!item.pause_reason && item.reputation_level === 'CRÍTICO') {
       continue
     }
 
@@ -192,7 +210,14 @@ async function resumePausedSchedules() {
       continue
     }
 
-    await resumeSchedule(item.id, item.campaign_id, 'automatic_resume')
+    const resumeReason =
+      item.pause_reason === 'daily_limit'
+        ? 'daily_limit_window_reset'
+        : item.pause_reason === 'reputation_critical'
+          ? 'reputation_recovered'
+          : 'automatic_resume'
+
+    await resumeSchedule(item.id, item.campaign_id, resumeReason)
     console.log(`[Scheduler] Retomando agendamento pausado ${item.id} da campanha ${item.campaign_id}`)
   }
 }
