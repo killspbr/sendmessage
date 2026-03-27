@@ -351,3 +351,52 @@ test('scheduler não retoma pausa por limite diário no mesmo dia, mas retoma no
   await runScheduler()
   assert.equal(nextDayState.schedules[0].status, 'em_execucao')
 })
+
+test('worker pausa por reputação crítica e só volta a pendente sem enviar', async () => {
+  const state = createState({
+    schedules: [{ id: 1, campaign_id: 'camp-1', user_id: 'user-1', status: 'em_execucao', limite_diario: 300, mensagens_por_lote: 45, tempo_pausa_lote: 15, intervalo_minimo: 1, intervalo_maximo: 1 }],
+    queue: [{ id: 1, schedule_id: 1, campaign_id: 'camp-1', user_id: 'user-1', telefone: '11999999999', nome: 'Contato 1', mensagem: 'Olá', status: 'pendente', tentativas: 0 }],
+    reputation: [{ user_id: 'user-1', level: 'CRÍTICO' }],
+  })
+
+  setQueueWorkerDepsForTests({ query: createQueryMock(state), sleepImpl: async () => {} })
+  await runWorker()
+
+  assert.equal(state.schedules[0].status, 'pausado')
+  assert.equal(state.schedules[0].pause_reason, 'reputation_critical')
+  assert.equal(state.queue[0].status, 'pendente')
+  assert.equal(state.logs.some((log) => log.event === 'schedule_paused'), true)
+})
+
+test('worker interrompe envio se o agendamento for cancelado durante o processamento', async () => {
+  const state = createState({
+    schedules: [{ id: 1, campaign_id: 'camp-1', user_id: 'user-1', status: 'em_execucao', limite_diario: 300, mensagens_por_lote: 45, tempo_pausa_lote: 15, intervalo_minimo: 1, intervalo_maximo: 1 }],
+    queue: [{ id: 1, schedule_id: 1, campaign_id: 'camp-1', user_id: 'user-1', telefone: '11999999999', nome: 'Contato 1', mensagem: '<p>Olá</p>', status: 'pendente', tentativas: 0 }],
+    userProfiles: [{ id: 'user-1', evolution_url: 'https://evolution.test', evolution_apikey: 'token', evolution_instance: 'instancia' }],
+    reputation: [{ user_id: 'user-1', level: 'AQUECENDO' }],
+  })
+
+  const baseQuery = createQueryMock(state)
+  const query = async (text, params = []) => {
+    const sql = String(text).replace(/\s+/g, ' ').trim()
+    if (sql === 'SELECT status FROM campaign_schedule WHERE id = $1 LIMIT 1') {
+      state.schedules[0].status = 'cancelado'
+    }
+    return baseQuery(text, params)
+  }
+
+  const fetchCalls = []
+  setQueueWorkerDepsForTests({
+    query,
+    sleepImpl: async () => {},
+    fetchImpl: async (...args) => {
+      fetchCalls.push(args)
+      return { ok: true, text: async () => '' }
+    }
+  })
+
+  await runWorker()
+
+  assert.equal(state.queue[0].status, 'falhou')
+  assert.equal(fetchCalls.length, 0)
+})
