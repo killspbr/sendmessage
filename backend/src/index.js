@@ -1813,7 +1813,66 @@ app.get('/api/schedules/professional', authenticateToken, async (req, res) => {
     }
 
     const resSched = await query(
-      `SELECT s.*, c.name as campaign_name
+      `SELECT s.*, c.name as campaign_name,
+              COALESCE((
+                SELECT COUNT(*)::int
+                FROM message_queue mq
+                WHERE mq.schedule_id = s.id
+                  AND mq.status = 'pendente'
+              ), 0) AS pending_count,
+              COALESCE((
+                SELECT COUNT(*)::int
+                FROM message_queue mq
+                WHERE mq.schedule_id = s.id
+                  AND mq.status = 'processando'
+              ), 0) AS processing_count,
+              COALESCE((
+                SELECT COUNT(*)::int
+                FROM message_queue mq
+                WHERE mq.schedule_id = s.id
+                  AND mq.status = 'enviado'
+              ), 0) AS sent_count,
+              COALESCE((
+                SELECT COUNT(*)::int
+                FROM message_queue mq
+                WHERE mq.schedule_id = s.id
+                  AND mq.status = 'falhou'
+              ), 0) AS failed_count,
+              (
+                SELECT mq.erro
+                FROM message_queue mq
+                WHERE mq.schedule_id = s.id
+                  AND COALESCE(TRIM(mq.erro), '') <> ''
+                ORDER BY COALESCE(mq.data_envio, mq.processing_started_at, mq.data_criacao) DESC
+                LIMIT 1
+              ) AS last_error,
+              (
+                SELECT COALESCE(mq.data_envio, mq.processing_started_at, mq.data_criacao)
+                FROM message_queue mq
+                WHERE mq.schedule_id = s.id
+                ORDER BY COALESCE(mq.data_envio, mq.processing_started_at, mq.data_criacao) DESC
+                LIMIT 1
+              ) AS last_queue_activity_at,
+              (
+                SELECT l.event
+                FROM scheduler_logs l
+                WHERE CASE
+                  WHEN l.details ~ '^\\s*\\{' THEN (l.details::jsonb->>'schedule_id')::integer
+                  ELSE NULL
+                END = s.id
+                ORDER BY l.data_evento DESC
+                LIMIT 1
+              ) AS last_event,
+              (
+                SELECT l.data_evento
+                FROM scheduler_logs l
+                WHERE CASE
+                  WHEN l.details ~ '^\\s*\\{' THEN (l.details::jsonb->>'schedule_id')::integer
+                  ELSE NULL
+                END = s.id
+                ORDER BY l.data_evento DESC
+                LIMIT 1
+              ) AS last_event_at
        FROM campaign_schedule s
        LEFT JOIN campaigns c ON s.campaign_id = c.id
        ${whereClause}
