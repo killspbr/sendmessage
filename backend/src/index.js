@@ -1783,6 +1783,14 @@ app.delete('/api/campaigns/:id/schedule', authenticateToken, async (req, res) =>
     }
 
     await query('DELETE FROM message_queue WHERE campaign_id = $1 AND status = $2', [id, 'pendente']);
+    await query(
+      `UPDATE message_queue
+       SET status = 'falhou',
+           erro = 'Envio cancelado pelo usuário antes da conclusão.',
+           processing_started_at = NULL
+       WHERE campaign_id = $1 AND status = 'processando'`,
+      [id]
+    );
     await query("UPDATE campaign_schedule SET status = 'cancelado' WHERE campaign_id = $1 AND status = ANY($2)", [id, ['agendado', 'em_execucao', 'pausado']]);
     await syncCampaignStatusFromQueue(id);
     res.json({ success: true });
@@ -1795,11 +1803,13 @@ app.get('/api/schedules/professional', authenticateToken, async (req, res) => {
   try {
     const admin = await isAdminUser(req.user.id);
     const params = [];
-    let whereClause = '';
+    let whereClause = "WHERE s.status = ANY($1)";
+
+    params.push(['agendado', 'em_execucao', 'pausado']);
 
     if (!admin) {
       params.push(req.user.id);
-      whereClause = 'WHERE s.user_id = $1';
+      whereClause += ' AND s.user_id = $2';
     }
 
     const resSched = await query(

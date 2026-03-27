@@ -356,6 +356,21 @@ async function runWorker() {
       await sleep(Number(config.tempo_pausa_lote || 15) * 60 * 1000)
     }
 
+    const freshConfigResult = await query(
+      'SELECT status FROM campaign_schedule WHERE id = $1 LIMIT 1',
+      [msg.schedule_id]
+    )
+    const freshConfig = freshConfigResult.rows[0]
+
+    if (!freshConfig || freshConfig.status !== 'em_execucao') {
+      await query(
+        'UPDATE message_queue SET status = $1, erro = $2, processing_started_at = NULL WHERE id = $3',
+        ['falhou', 'Envio interrompido porque o agendamento não está mais ativo.', msg.id]
+      )
+      isWorkerRunning = false
+      return
+    }
+
     const evolutionConfig = await resolveEvolutionConfigForUser(msg.user_id)
     const { evolutionUrl, evolutionApiKey, evolutionInstance } = evolutionConfig
 
