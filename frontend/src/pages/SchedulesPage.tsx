@@ -14,6 +14,10 @@ type ProfSchedule = {
     mensagens_por_lote: number
     tempo_pausa_lote: number
     status: string
+    pause_reason?: string | null
+    pause_details?: string | null
+    paused_at?: string | null
+    resumed_at?: string | null
     data_criacao: string
     campaign_name?: string
     pending_count?: number
@@ -76,10 +80,15 @@ function getScheduleHealth(schedule: ProfSchedule) {
     const failed = Number(schedule.failed_count || 0)
 
     if (schedule.status === 'pausado') {
+        const pauseLabel = schedule.pause_reason === 'daily_limit'
+            ? 'Pausado por limite diário'
+            : schedule.pause_reason === 'reputation_critical'
+                ? 'Pausado por reputação'
+                : 'Pausado com pendências'
         return {
-            label: 'Pausado com pendências',
+            label: pauseLabel,
             tone: 'amber',
-            detail: schedule.last_error || 'O agendamento está pausado e aguardando retomada.',
+            detail: schedule.pause_details || schedule.last_error || 'O agendamento está pausado e aguardando retomada.',
         }
     }
 
@@ -248,11 +257,17 @@ export function SchedulesPage({ effectiveUserId }: SchedulesPageProps) {
                                                 </span>
                                             </div>
 
-                                            <div className="flex flex-wrap items-center gap-4 text-xs font-medium text-slate-500">
-                                                <span>Criado em {formatDateTime(s.data_criacao)}</span>
-                                                <span>Início previsto: {s.data_inicio} {s.hora_inicio}</span>
-                                                <span>Última atividade: {formatDateTime(s.last_queue_activity_at || s.last_event_at)}</span>
-                                            </div>
+                                                <div className="flex flex-wrap items-center gap-4 text-xs font-medium text-slate-500">
+                                                    <span>Criado em {formatDateTime(s.data_criacao)}</span>
+                                                    <span>Início previsto: {s.data_inicio} {s.hora_inicio}</span>
+                                                    <span>Última atividade: {formatDateTime(s.last_queue_activity_at || s.last_event_at)}</span>
+                                                    {s.paused_at && s.status === 'pausado' && (
+                                                        <span>Pausado em {formatDateTime(s.paused_at)}</span>
+                                                    )}
+                                                    {s.resumed_at && s.status === 'em_execucao' && (
+                                                        <span>Retomado em {formatDateTime(s.resumed_at)}</span>
+                                                    )}
+                                                </div>
 
                                             <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
                                                 <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">Leitura operacional</div>

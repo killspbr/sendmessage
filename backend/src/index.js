@@ -1791,7 +1791,16 @@ app.delete('/api/campaigns/:id/schedule', authenticateToken, async (req, res) =>
        WHERE campaign_id = $1 AND status = 'processando'`,
       [id]
     );
-    await query("UPDATE campaign_schedule SET status = 'cancelado' WHERE campaign_id = $1 AND status = ANY($2)", [id, ['agendado', 'em_execucao', 'pausado']]);
+    await query(
+      `UPDATE campaign_schedule
+       SET status = 'cancelado',
+           pause_reason = 'manual_cancel',
+           pause_details = 'Agendamento cancelado manualmente pelo usuário.',
+           paused_at = COALESCE(paused_at, NOW())
+       WHERE campaign_id = $1
+         AND status = ANY($2)`,
+      [id, ['agendado', 'em_execucao', 'pausado']]
+    );
     await syncCampaignStatusFromQueue(id);
     res.json({ success: true });
   } catch (error) {
@@ -2039,6 +2048,10 @@ async function runMigrations() {
       mensagens_por_lote INTEGER DEFAULT 45,
       tempo_pausa_lote INTEGER DEFAULT 15,
       status TEXT DEFAULT 'agendado',
+      pause_reason TEXT,
+      pause_details TEXT,
+      paused_at TIMESTAMP WITH TIME ZONE,
+      resumed_at TIMESTAMP WITH TIME ZONE,
       data_criacao TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
     )`,
     `CREATE TABLE IF NOT EXISTS message_queue (
@@ -2104,6 +2117,10 @@ async function runMigrations() {
     `ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS variations JSONB DEFAULT '[]'::jsonb`,
     `ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS last_scheduled_at TIMESTAMP WITH TIME ZONE`,
     `UPDATE campaigns SET status = 'agendada' WHERE status = 'agendado'`,
+    `ALTER TABLE campaign_schedule ADD COLUMN IF NOT EXISTS pause_reason TEXT`,
+    `ALTER TABLE campaign_schedule ADD COLUMN IF NOT EXISTS pause_details TEXT`,
+    `ALTER TABLE campaign_schedule ADD COLUMN IF NOT EXISTS paused_at TIMESTAMP WITH TIME ZONE`,
+    `ALTER TABLE campaign_schedule ADD COLUMN IF NOT EXISTS resumed_at TIMESTAMP WITH TIME ZONE`,
     `ALTER TABLE message_queue ADD COLUMN IF NOT EXISTS processing_started_at TIMESTAMP WITH TIME ZONE`,
     `ALTER TABLE message_queue ADD COLUMN IF NOT EXISTS recovered_at TIMESTAMP WITH TIME ZONE`,
   ];

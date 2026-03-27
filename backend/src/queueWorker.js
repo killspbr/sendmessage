@@ -61,6 +61,56 @@ async function resolveEvolutionConfigForUser(userId) {
   }
 }
 
+async function pauseSchedulesForUser(userId, reason, details) {
+  const result = await query(
+    `UPDATE campaign_schedule
+     SET status = 'pausado',
+         pause_reason = $1,
+         pause_details = $2,
+         paused_at = NOW()
+     WHERE user_id = $3
+       AND status = 'em_execucao'
+     RETURNING id, campaign_id`,
+    [reason, details, userId]
+  )
+
+  for (const item of result.rows) {
+    await query('INSERT INTO scheduler_logs (event, details) VALUES ($1, $2)', [
+      'schedule_paused',
+      JSON.stringify({
+        schedule_id: item.id,
+        campaign_id: item.campaign_id,
+        user_id: userId,
+        pause_reason: reason,
+        pause_details: details,
+      }),
+    ])
+  }
+
+  return result.rows
+}
+
+async function resumeSchedule(scheduleId, campaignId, reason) {
+  await query(
+    `UPDATE campaign_schedule
+     SET status = 'em_execucao',
+         pause_reason = NULL,
+         pause_details = NULL,
+         resumed_at = NOW()
+     WHERE id = $1`,
+    [scheduleId]
+  )
+
+  await query('INSERT INTO scheduler_logs (event, details) VALUES ($1, $2)', [
+    'schedule_resumed',
+    JSON.stringify({
+      schedule_id: scheduleId,
+      campaign_id: campaignId,
+      resume_reason: reason,
+    }),
+  ])
+}
+
 async function setCampaignStatusFromQueue(campaignId) {
   const summaryResult = await query(
     `SELECT
@@ -142,7 +192,7 @@ async function resumePausedSchedules() {
       continue
     }
 
-    await query('UPDATE campaign_schedule SET status = $1 WHERE id = $2', ['em_execucao', item.id])
+    await resumeSchedule(item.id, item.campaign_id, 'automatic_resume')
     console.log(`[Scheduler] Retomando agendamento pausado ${item.id} da campanha ${item.campaign_id}`)
   }
 }
@@ -169,7 +219,14 @@ async function enqueueScheduleMessages(schedule, campaign) {
   )
 
   if (queueExists.rows.length > 0) {
-    await query('UPDATE campaign_schedule SET status = $1 WHERE id = $2', ['em_execucao', schedule.id])
+    await query(
+      `UPDATE campaign_schedule
+       SET status = $1,
+           pause_reason = NULL,
+           pause_details = NULL
+       WHERE id = $2`,
+      ['em_execucao', schedule.id]
+    )
     return
   }
 
@@ -202,7 +259,14 @@ async function enqueueScheduleMessages(schedule, campaign) {
     return
   }
 
-  await query('UPDATE campaign_schedule SET status = $1 WHERE id = $2', ['em_execucao', schedule.id])
+  await query(
+    `UPDATE campaign_schedule
+     SET status = $1,
+         pause_reason = NULL,
+         pause_details = NULL
+     WHERE id = $2`,
+    ['em_execucao', schedule.id]
+  )
 
   console.log(`[Scheduler] Gerando fila para ${contacts.length} contatos na campanha ${campaign.id}.`)
 
@@ -319,7 +383,11 @@ async function runWorker() {
 
     if (reputation.level === 'CRÍTICO') {
       console.log(`[Worker] Reputação crítica para usuário ${msg.user_id}. Pausando envios.`)
-      await query('UPDATE campaign_schedule SET status = $1 WHERE user_id = $2 AND status = $3', ['pausado', msg.user_id, 'em_execucao'])
+      await pauseSchedulesForUser(
+        msg.user_id,
+        'reputation_critical',
+        'A reputação do número entrou em nível crítico. O envio fica pausado até a reputação melhorar.'
+      )
       await query(
         'UPDATE message_queue SET status = $1, erro = $2, processing_started_at = NULL WHERE id = $3',
         ['pendente', 'Envio pausado por reputação crítica do número.', msg.id]
@@ -338,7 +406,11 @@ async function runWorker() {
 
     if (sentTodayOverall >= effectiveLimit) {
       console.log(`[Worker] Limite operacional (${effectiveLimit}) atingido para ${msg.user_id}. Pausando.`)
-      await query('UPDATE campaign_schedule SET status = $1 WHERE user_id = $2 AND status = $3', ['pausado', msg.user_id, 'em_execucao'])
+      await pauseSchedulesForUser(
+        msg.user_id,
+        'daily_limit',
+        `O limite diário operacional de ${effectiveLimit} envios foi atingido. O agendamento será retomado automaticamente quando voltar a ficar elegível.`
+      )
       await query(
         'UPDATE message_queue SET status = $1, erro = $2, processing_started_at = NULL WHERE id = $3',
         ['pendente', `Limite diário operacional atingido (${effectiveLimit}/dia).`, msg.id]
