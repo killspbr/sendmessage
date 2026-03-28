@@ -3206,7 +3206,41 @@ async function runMigrations() {
         sent_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
       )`,
       `CREATE INDEX IF NOT EXISTS idx_warmer_configs_status ON warmer_configs(status)`,
-      `CREATE INDEX IF NOT EXISTS idx_warmer_logs_warmer_id_sent_at ON warmer_logs(warmer_id, sent_at)`
+      `CREATE INDEX IF NOT EXISTS idx_warmer_logs_warmer_id_sent_at ON warmer_logs(warmer_id, sent_at)`,
+      `CREATE TABLE IF NOT EXISTS warmer_runs (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        warmer_id UUID NOT NULL REFERENCES warmer_configs(id) ON DELETE CASCADE,
+        initiated_by UUID REFERENCES users(id) ON DELETE SET NULL,
+        status TEXT NOT NULL DEFAULT 'queued' CHECK (status IN ('queued', 'running', 'completed', 'failed')),
+        steps_total INTEGER NOT NULL DEFAULT 1,
+        steps_completed INTEGER NOT NULL DEFAULT 0,
+        step_delay_seconds INTEGER NOT NULL DEFAULT 5,
+        preferred_start_side TEXT CHECK (preferred_start_side IN ('a', 'b')),
+        last_error TEXT,
+        started_at TIMESTAMP WITH TIME ZONE,
+        finished_at TIMESTAMP WITH TIME ZONE,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      )`,
+      `ALTER TABLE warmer_configs ADD COLUMN IF NOT EXISTS name TEXT`,
+      `ALTER TABLE warmer_configs ADD COLUMN IF NOT EXISTS notes TEXT`,
+      `ALTER TABLE warmer_configs ADD COLUMN IF NOT EXISTS default_delay_seconds INTEGER DEFAULT 5`,
+      `ALTER TABLE warmer_configs ADD COLUMN IF NOT EXISTS default_messages_per_run INTEGER DEFAULT 4`,
+      `ALTER TABLE warmer_configs ADD COLUMN IF NOT EXISTS sample_image_url TEXT`,
+      `ALTER TABLE warmer_configs ADD COLUMN IF NOT EXISTS sample_document_url TEXT`,
+      `ALTER TABLE warmer_configs ADD COLUMN IF NOT EXISTS sample_audio_url TEXT`,
+      `ALTER TABLE warmer_configs ADD COLUMN IF NOT EXISTS last_run_status TEXT`,
+      `ALTER TABLE warmer_configs ADD COLUMN IF NOT EXISTS last_run_error TEXT`,
+      `ALTER TABLE warmer_configs ADD COLUMN IF NOT EXISTS last_run_at TIMESTAMP WITH TIME ZONE`,
+      `ALTER TABLE warmer_logs ADD COLUMN IF NOT EXISTS run_id UUID REFERENCES warmer_runs(id) ON DELETE SET NULL`,
+      `ALTER TABLE warmer_logs ADD COLUMN IF NOT EXISTS from_instance TEXT`,
+      `ALTER TABLE warmer_logs ADD COLUMN IF NOT EXISTS to_instance TEXT`,
+      `ALTER TABLE warmer_logs ADD COLUMN IF NOT EXISTS payload_type TEXT`,
+      `ALTER TABLE warmer_logs ADD COLUMN IF NOT EXISTS ok BOOLEAN DEFAULT true`,
+      `ALTER TABLE warmer_logs ADD COLUMN IF NOT EXISTS provider_status INTEGER`,
+      `ALTER TABLE warmer_logs ADD COLUMN IF NOT EXISTS response_time_ms INTEGER`,
+      `ALTER TABLE warmer_logs ADD COLUMN IF NOT EXISTS error_detail TEXT`,
+      `CREATE INDEX IF NOT EXISTS idx_warmer_runs_warmer_created_at ON warmer_runs(warmer_id, created_at DESC)`,
+      `CREATE INDEX IF NOT EXISTS idx_warmer_runs_status_created_at ON warmer_runs(status, created_at DESC)`
   ];
 
   for (const sql of migrations) {
@@ -3224,7 +3258,7 @@ app.post('/api/admin/users/:id/invalidate-sessions', authenticateToken, checkAdm
 
 app.post('/api/admin/invalidate-all-sessions', authenticateToken, checkAdmin, invalidateAllSessions);
 
-// --- ROTAS DO MATURADOR ---
+// --- ROTAS DO LABORATORIO DE INSTANCIAS ---
 app.get('/api/admin/warmer', authenticateToken, checkAdmin, listWarmers);
 app.post('/api/admin/warmer', authenticateToken, checkAdmin, createWarmer);
 app.put('/api/admin/warmer/:id/status', authenticateToken, checkAdmin, toggleWarmerStatus);

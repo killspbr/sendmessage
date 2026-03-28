@@ -188,10 +188,10 @@ export function Sidebar({ currentPage, onChangePage, can, userEmail, userName, o
                 : 'text-slate-400 hover:bg-slate-900/80 hover:text-slate-50'
               }`}
             onClick={() => handlePageChange('warmer')}
-            title="Maturador de Chips"
+            title="Laboratorio de Instancias"
           >
             <span className="h-6 w-6 rounded-lg bg-slate-900/80 flex items-center justify-center text-[11px] shrink-0">🧬</span>
-            <span className="inline text-xs">Maturador</span>
+            <span className="inline text-xs">Laboratorio</span>
           </button>
         )}
       </nav>

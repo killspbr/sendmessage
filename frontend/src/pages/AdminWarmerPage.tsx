@@ -1,419 +1,757 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { apiFetch } from '../api'
 
-type WarmerConfig = {
+type InstanceLabPair = {
   id: string
+  name?: string | null
   instance_a_id: string
   instance_b_id: string
   phone_a: string
   phone_b: string
   status: 'active' | 'paused' | 'error'
-  base_daily_limit: number
-  increment_per_day: number
-  start_date: string
-  business_hours_start: string
-  business_hours_end?: string
+  default_delay_seconds?: number
+  default_messages_per_run?: number
+  sample_image_url?: string | null
+  sample_document_url?: string | null
+  sample_audio_url?: string | null
+  notes?: string | null
   sent_today?: number
-  current_mode?: 'active' | 'sleeping' | 'afk'
-  mode_until?: string
+  failed_today?: number
+  active_run_id?: string | null
+  active_run_status?: 'queued' | 'running' | null
+  active_run_steps_total?: number | null
+  active_run_steps_completed?: number | null
+  last_run_status?: string | null
+  last_run_status_actual?: string | null
+  last_run_error?: string | null
+  last_run_error_actual?: string | null
+  last_run_at?: string | null
+  last_run_finished_at?: string | null
+}
+
+type InstanceLabLog = {
+  id: string
+  from_phone: string
+  to_phone: string
+  from_instance?: string | null
+  to_instance?: string | null
+  payload_type?: string | null
+  content_summary?: string | null
+  ok?: boolean
+  provider_status?: number | null
+  response_time_ms?: number | null
+  error_detail?: string | null
+  sent_at: string
+  run_id?: string | null
+  run_status?: string | null
+}
+
+type InstanceLabForm = {
+  name: string
+  instance_a_id: string
+  phone_a: string
+  instance_b_id: string
+  phone_b: string
+  default_delay_seconds: number
+  default_messages_per_run: number
+  sample_image_url: string
+  sample_document_url: string
+  sample_audio_url: string
+  notes: string
+}
+
+const EMPTY_FORM: InstanceLabForm = {
+  name: '',
+  instance_a_id: '',
+  phone_a: '',
+  instance_b_id: '',
+  phone_b: '',
+  default_delay_seconds: 5,
+  default_messages_per_run: 4,
+  sample_image_url: '',
+  sample_document_url: '',
+  sample_audio_url: '',
+  notes: '',
+}
+
+function formatDateTime(value?: string | null) {
+  if (!value) return '-'
+  try {
+    return new Date(value).toLocaleString('pt-BR', {
+      day: '2-digit',
+      month: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+    })
+  } catch {
+    return value
+  }
+}
+
+function getStatusBadge(pair: InstanceLabPair) {
+  if (pair.active_run_status === 'running') {
+    return {
+      label: 'Rodando',
+      className: 'border border-emerald-200 bg-emerald-50 text-emerald-700',
+    }
+  }
+
+  if (pair.active_run_status === 'queued') {
+    return {
+      label: 'Na fila',
+      className: 'border border-sky-200 bg-sky-50 text-sky-700',
+    }
+  }
+
+  if (pair.status === 'paused') {
+    return {
+      label: 'Pausado',
+      className: 'border border-amber-200 bg-amber-50 text-amber-700',
+    }
+  }
+
+  if (pair.status === 'error' || pair.last_run_status_actual === 'failed') {
+    return {
+      label: 'Com erro',
+      className: 'border border-rose-200 bg-rose-50 text-rose-700',
+    }
+  }
+
+  return {
+    label: 'Ativo',
+    className: 'border border-emerald-200 bg-emerald-50 text-emerald-700',
+  }
 }
 
 export function AdminWarmerPage({ can }: { can?: (code: string) => boolean }) {
-  const [warmers, setWarmers] = useState<WarmerConfig[]>([])
+  const [pairs, setPairs] = useState<InstanceLabPair[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  
-  // Dashboard states
-  const [logsModalId, setLogsModalId] = useState<string | null>(null)
-  const [logs, setLogs] = useState<any[]>([])
-  const [loadingLogs, setLoadingLogs] = useState(false)
-  const [forcingId, setForcingId] = useState<string | null>(null)
-  const [manualLoading, setManualLoading] = useState<string | null>(null)
-
-  // Formulário
-  const [isCreating, setIsCreating] = useState(false)
+  const [feedback, setFeedback] = useState<string | null>(null)
+  const [isFormOpen, setIsFormOpen] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
-  const [form, setForm] = useState({
-    instance_a_id: '',
-    phone_a: '',
-    instance_b_id: '',
-    phone_b: '',
-    base_daily_limit: 10,
-    increment_per_day: 10,
-    business_hours_start: '08:00',
-    business_hours_end: '20:00'
-  })
+  const [form, setForm] = useState<InstanceLabForm>(EMPTY_FORM)
+  const [saving, setSaving] = useState(false)
+  const [logsModalId, setLogsModalId] = useState<string | null>(null)
+  const [logs, setLogs] = useState<InstanceLabLog[]>([])
+  const [loadingLogs, setLoadingLogs] = useState(false)
+  const [busyAction, setBusyAction] = useState<string | null>(null)
 
-  useEffect(() => {
-    loadWarmers()
-    const polling = setInterval(() => {
-      loadWarmers(true)
-    }, 10000)
-    return () => clearInterval(polling)
-  }, [])
+  const totals = useMemo(() => {
+    return pairs.reduce(
+      (acc, pair) => {
+        acc.totalPairs += 1
+        acc.sentToday += Number(pair.sent_today || 0)
+        acc.failedToday += Number(pair.failed_today || 0)
+        if (pair.active_run_status === 'queued' || pair.active_run_status === 'running') {
+          acc.runningPairs += 1
+        }
+        return acc
+      },
+      { totalPairs: 0, runningPairs: 0, sentToday: 0, failedToday: 0 }
+    )
+  }, [pairs])
 
-  const loadWarmers = async (silent = false) => {
+  const resetForm = () => {
+    setEditingId(null)
+    setForm(EMPTY_FORM)
+    setIsFormOpen(false)
+  }
+
+  const loadPairs = async (silent = false) => {
     try {
-      if (!silent) setLoading(true)
+      if (!silent) {
+        setLoading(true)
+        setError(null)
+      }
       const data = await apiFetch('/api/admin/warmer')
-      setWarmers(Array.isArray(data) ? data : [])
+      setPairs(Array.isArray(data) ? data : [])
     } catch (e: any) {
-      if (!silent) setError(e.message || 'Erro ao carregar dados do maturador')
+      if (!silent) setError(e.message || 'Erro ao carregar o laboratorio.')
     } finally {
       if (!silent) setLoading(false)
     }
   }
 
-  const handleForceRun = async (id: string) => {
-    try {
-      setForcingId(id)
-      const res = await apiFetch(`/api/admin/warmer/${id}/force`, { method: 'POST' })
-      if (res?.success === false) {
-        alert('⚠️ Aviso: ' + (res.message || res.error || 'Erro na instância'))
-      } else {
-        alert('Disparo evocado com sucesso! A mensagem foi testada.')
-      }
-      loadWarmers(true)
-    } catch (e: any) {
-      alert('Erro ao forçar disparo: ' + e.message)
-    } finally {
-      setForcingId(null)
-    }
+  useEffect(() => {
+    void loadPairs()
+    const timer = setInterval(() => {
+      void loadPairs(true)
+    }, 15000)
+    return () => clearInterval(timer)
+  }, [])
+
+  const startEdit = (pair: InstanceLabPair) => {
+    setEditingId(pair.id)
+    setForm({
+      name: pair.name || '',
+      instance_a_id: pair.instance_a_id,
+      phone_a: pair.phone_a,
+      instance_b_id: pair.instance_b_id,
+      phone_b: pair.phone_b,
+      default_delay_seconds: Number(pair.default_delay_seconds || 5),
+      default_messages_per_run: Number(pair.default_messages_per_run || 4),
+      sample_image_url: pair.sample_image_url || '',
+      sample_document_url: pair.sample_document_url || '',
+      sample_audio_url: pair.sample_audio_url || '',
+      notes: pair.notes || '',
+    })
+    setIsFormOpen(true)
+    setFeedback(null)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
-  const handleManualSend = async (id: string, side: 'a' | 'b') => {
-    const loadingKey = `${id}-${side}`
+  const openCreate = () => {
+    setEditingId(null)
+    setForm(EMPTY_FORM)
+    setIsFormOpen(true)
+    setFeedback(null)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  const handleSave = async () => {
     try {
-      setManualLoading(loadingKey)
-      const res = await apiFetch(`/api/admin/warmer/${id}/manual`, {
-        method: 'POST',
-        body: JSON.stringify({ side })
+      setSaving(true)
+      setFeedback(null)
+
+      if (!form.instance_a_id || !form.instance_b_id || !form.phone_a || !form.phone_b) {
+        setFeedback('Preencha instancias e telefones dos dois lados.')
+        return
+      }
+
+      const endpoint = editingId ? `/api/admin/warmer/${editingId}` : '/api/admin/warmer'
+      const method = editingId ? 'PUT' : 'POST'
+
+      await apiFetch(endpoint, {
+        method,
+        body: JSON.stringify(form),
       })
-      if (res?.success === false) {
-        alert('❌ Falha na Evolution: ' + (res.error || 'Erro desconhecido'))
-      } else {
-        alert(`✅ Chip ${side.toUpperCase()} enviou:\n\n"${res.message}"`)
-        loadWarmers(true)
-      }
+
+      await loadPairs()
+      setFeedback(editingId ? 'Par atualizado com sucesso.' : 'Par do laboratorio criado com sucesso.')
+      resetForm()
     } catch (e: any) {
-      alert('❌ Erro de comunicação: ' + e.message)
+      setFeedback(e.message || 'Erro ao salvar o par.')
     } finally {
-      setManualLoading(null)
+      setSaving(false)
     }
   }
 
-  const openLogs = async (id: string) => {
-    setLogsModalId(id)
-    setLoadingLogs(true)
-    setLogs([])
+  const handleToggleStatus = async (pair: InstanceLabPair) => {
+    const actionKey = `${pair.id}-status`
     try {
-      const data = await apiFetch(`/api/admin/warmer/${id}/logs`)
+      setBusyAction(actionKey)
+      setFeedback(null)
+      await apiFetch(`/api/admin/warmer/${pair.id}/status`, {
+        method: 'PUT',
+        body: JSON.stringify({ status: pair.status === 'active' ? 'paused' : 'active' }),
+      })
+      await loadPairs(true)
+    } catch (e: any) {
+      setFeedback(e.message || 'Erro ao alterar o status do par.')
+    } finally {
+      setBusyAction(null)
+    }
+  }
+
+  const handleStartRun = async (pairId: string) => {
+    const actionKey = `${pairId}-run`
+    try {
+      setBusyAction(actionKey)
+      setFeedback(null)
+      await apiFetch(`/api/admin/warmer/${pairId}/force`, { method: 'POST' })
+      setFeedback('Rodada de teste iniciada. O laboratorio vai registrar os eventos em segundo plano.')
+      await loadPairs(true)
+    } catch (e: any) {
+      setFeedback(e.message || 'Erro ao iniciar a rodada de teste.')
+    } finally {
+      setBusyAction(null)
+    }
+  }
+
+  const handleManual = async (pairId: string, side: 'a' | 'b') => {
+    const actionKey = `${pairId}-${side}`
+    try {
+      setBusyAction(actionKey)
+      setFeedback(null)
+      await apiFetch(`/api/admin/warmer/${pairId}/manual`, {
+        method: 'POST',
+        body: JSON.stringify({ side }),
+      })
+      setFeedback(`Envio manual ${side.toUpperCase()} iniciado com sucesso.`)
+      await loadPairs(true)
+    } catch (e: any) {
+      setFeedback(e.message || 'Erro ao iniciar o envio manual.')
+    } finally {
+      setBusyAction(null)
+    }
+  }
+
+  const openLogs = async (pairId: string) => {
+    setLogsModalId(pairId)
+    setLogs([])
+    setLoadingLogs(true)
+    try {
+      const data = await apiFetch(`/api/admin/warmer/${pairId}/logs`)
       setLogs(Array.isArray(data) ? data : [])
     } catch (e: any) {
-      alert('Erro ao carregar logs: ' + e.message)
+      setFeedback(e.message || 'Erro ao carregar os logs do laboratorio.')
     } finally {
       setLoadingLogs(false)
     }
   }
 
-  const handleSave = async () => {
-    try {
-      if (!form.instance_a_id || !form.instance_b_id || !form.phone_a || !form.phone_b) {
-        alert('Preencha os nomes das instâncias e os telefones com DDI.')
-        return
-      }
-
-      const method = editingId ? 'PUT' : 'POST'
-      const url = editingId ? `/api/admin/warmer/${editingId}` : '/api/admin/warmer'
-
-      await apiFetch(url, {
-        method,
-        body: JSON.stringify(form)
-      })
-      
-      setIsCreating(false)
-      setEditingId(null)
-      loadWarmers()
-      setForm({
-        instance_a_id: '',
-        phone_a: '',
-        instance_b_id: '',
-        phone_b: '',
-        base_daily_limit: 10,
-        increment_per_day: 10,
-        business_hours_start: '08:00',
-        business_hours_end: '20:00'
-      })
-    } catch (e: any) {
-      alert(e.message || 'Erro ao salvar maturação')
-    }
-  }
-
-  const startEdit = (warmer: WarmerConfig) => {
-     setForm({
-        instance_a_id: warmer.instance_a_id,
-        phone_a: warmer.phone_a,
-        instance_b_id: warmer.instance_b_id,
-        phone_b: warmer.phone_b,
-        base_daily_limit: warmer.base_daily_limit,
-        increment_per_day: warmer.increment_per_day,
-        business_hours_start: warmer.business_hours_start?.substring(0,5) || '08:00',
-        business_hours_end: warmer.business_hours_end?.substring(0,5) || '20:00'
-     })
-     setEditingId(warmer.id)
-     setIsCreating(true)
-     window.scrollTo({ top: 0, behavior: 'smooth' })
-  }
-
-  const handleToggleStatus = async (id: string, currentStatus: string) => {
-    const newStatus = currentStatus === 'active' ? 'paused' : 'active'
-    try {
-      await apiFetch(`/api/admin/warmer/${id}/status`, {
-        method: 'PUT',
-        body: JSON.stringify({ status: newStatus })
-      })
-      loadWarmers()
-    } catch (e: any) {
-      alert('Erro ao alterar status: ' + e.message)
-    }
-  }
-
   if (can && !can('admin.users')) {
-    return <section className="p-5"><p>Acesso negado.</p></section>
+    return (
+      <section className="p-5">
+        <p>Acesso negado.</p>
+      </section>
+    )
   }
 
   return (
-    <section className="flex flex-col gap-6 max-w-5xl mx-auto w-full">
-      <div className="rounded-[28px] border border-slate-200 bg-gradient-to-br from-indigo-950 via-slate-900 to-indigo-900 p-6 text-white shadow-xl shadow-slate-300/40">
+    <section className="mx-auto flex w-full max-w-6xl flex-col gap-6">
+      <div className="rounded-[28px] border border-slate-200 bg-gradient-to-br from-slate-950 via-slate-900 to-emerald-950 p-6 text-white shadow-xl shadow-slate-300/40">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-indigo-300/80 flex items-center gap-2">
-              <span className="text-[10px]">🧬</span> Laboratório
-            </p>
-            <h1 className="mt-2 text-2xl font-semibold tracking-tight">Maturador de Chips</h1>
+            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-emerald-300/80">Laboratorio Admin</p>
+            <h1 className="mt-2 text-2xl font-semibold tracking-tight">Laboratorio de Instancias</h1>
             <p className="mt-2 max-w-3xl text-sm text-slate-300">
-              Configure instâncias para conversarem entre si de forma autônoma e humanizada, aumentando gradualmente a reputação para evitar banimentos em disparos em massa.
+              Use este modulo para validar conectividade, latencia e tipos de payload entre duas instancias autorizadas da
+              Evolution API. Ele substitui o antigo maturador por um fluxo de QA tecnico, controlado e auditavel.
             </p>
           </div>
-          <div>
-             <button onClick={() => { 
-                if (isCreating) {
-                  setIsCreating(false);
-                  setEditingId(null);
-                  setForm({
-                    instance_a_id: '',
-                    phone_a: '',
-                    instance_b_id: '',
-                    phone_b: '',
-                    base_daily_limit: 10,
-                    increment_per_day: 10,
-                    business_hours_start: '08:00',
-                    business_hours_end: '20:00'
-                  });
-                } else {
-                  setIsCreating(true);
-                }
-             }} className="rounded-2xl border border-white/20 bg-white/10 px-5 py-2.5 text-sm font-semibold transition hover:bg-white/20">
-              {isCreating ? 'Cancelar' : 'Nova Maturação +'}
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={() => (isFormOpen ? resetForm() : openCreate())}
+            className="rounded-2xl border border-white/20 bg-white/10 px-5 py-2.5 text-sm font-semibold transition hover:bg-white/20"
+          >
+            {isFormOpen ? 'Fechar formulario' : 'Novo par de teste'}
+          </button>
         </div>
       </div>
 
-      {isCreating && (
-        <div className="rounded-3xl border border-indigo-200 bg-indigo-50/50 p-6 shadow-sm">
-          <h2 className="text-lg font-semibold text-slate-800 mb-4 flex items-center gap-2">
-            {editingId ? '✏️ Editar Interação' : '⚙️ Configurar Interação'}
-          </h2>
-          {/* Form Omitido para não ficar muito longo visualmente se minimizado */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="space-y-4">
-              <div className="p-4 bg-white rounded-2xl border border-slate-200">
-                <h3 className="font-medium text-slate-700 mb-3 border-b pb-2">Instância A</h3>
-                <input type="text" placeholder="Nome exato da Instância A na Evolution" value={form.instance_a_id} onChange={e=>setForm({...form, instance_a_id: e.target.value})} className="w-full text-sm p-3 mb-2 rounded-xl bg-slate-50 border border-slate-200 outline-none focus:border-indigo-500" />
-                <input type="text" placeholder="Telefone do Chip A (ex: 551199999999)" value={form.phone_a} onChange={e=>setForm({...form, phone_a: e.target.value})} className="w-full text-sm p-3 rounded-xl bg-slate-50 border border-slate-200 outline-none focus:border-indigo-500" />
-              </div>
-            </div>
-            <div className="space-y-4">
-               <div className="p-4 bg-white rounded-2xl border border-slate-200">
-                <h3 className="font-medium text-slate-700 mb-3 border-b pb-2">Instância B</h3>
-                <input type="text" placeholder="Nome exato da Instância B na Evolution" value={form.instance_b_id} onChange={e=>setForm({...form, instance_b_id: e.target.value})} className="w-full text-sm p-3 mb-2 rounded-xl bg-slate-50 border border-slate-200 outline-none focus:border-indigo-500" />
-                <input type="text" placeholder="Telefone do Chip B (ex: 551188888888)" value={form.phone_b} onChange={e=>setForm({...form, phone_b: e.target.value})} className="w-full text-sm p-3 rounded-xl bg-slate-50 border border-slate-200 outline-none focus:border-indigo-500" />
-              </div>
-            </div>
-            <div className="md:col-span-2 p-4 bg-white rounded-2xl border border-slate-200 grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div>
-                <label className="text-xs font-semibold text-slate-600">Mensagens Dia 1</label>
-                <input type="number" value={form.base_daily_limit} onChange={e=>setForm({...form, base_daily_limit: Number(e.target.value)})} className="mt-1 w-full text-sm p-3 rounded-xl bg-slate-50 border border-slate-200 outline-none focus:border-indigo-500" />
-              </div>
-              <div>
-                <label className="text-xs font-semibold text-slate-600">Incremento/Dia</label>
-                <input type="number" value={form.increment_per_day} onChange={e=>setForm({...form, increment_per_day: Number(e.target.value)})} className="mt-1 w-full text-sm p-3 rounded-xl bg-slate-50 border border-slate-200 outline-none focus:border-indigo-500" />
-              </div>
-              <div>
-                <label className="text-xs font-semibold text-slate-600">Início Expediente</label>
-                <input type="time" value={form.business_hours_start} onChange={e=>setForm({...form, business_hours_start: e.target.value})} className="mt-1 w-full text-sm p-3 rounded-xl bg-slate-50 border border-slate-200 outline-none focus:border-indigo-500" />
-              </div>
-              <div>
-                <label className="text-xs font-semibold text-slate-600">Fim Expediente</label>
-                <input type="time" value={form.business_hours_end} onChange={e=>setForm({...form, business_hours_end: e.target.value})} className="mt-1 w-full text-sm p-3 rounded-xl bg-slate-50 border border-slate-200 outline-none focus:border-indigo-500" />
-              </div>
-            </div>
-          </div>
-          <div className="mt-6 flex justify-end">
-            <button onClick={handleSave} className="rounded-2xl bg-indigo-600 px-6 py-3 text-sm font-semibold text-white transition hover:bg-indigo-700">
-              {editingId ? 'Salvar Alterações' : 'Iniciar Maturação'}
-            </button>
-          </div>
+      <div className="grid gap-4 md:grid-cols-4">
+        <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">Pares</p>
+          <p className="mt-3 text-3xl font-semibold text-slate-900">{totals.totalPairs}</p>
+        </div>
+        <div className="rounded-3xl border border-emerald-200 bg-emerald-50/70 p-5 shadow-sm">
+          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-emerald-600">Rodadas ativas</p>
+          <p className="mt-3 text-3xl font-semibold text-emerald-900">{totals.runningPairs}</p>
+        </div>
+        <div className="rounded-3xl border border-sky-200 bg-sky-50/70 p-5 shadow-sm">
+          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-sky-600">Eventos hoje</p>
+          <p className="mt-3 text-3xl font-semibold text-sky-900">{totals.sentToday}</p>
+        </div>
+        <div className="rounded-3xl border border-rose-200 bg-rose-50/70 p-5 shadow-sm">
+          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-rose-600">Falhas hoje</p>
+          <p className="mt-3 text-3xl font-semibold text-rose-900">{totals.failedToday}</p>
+        </div>
+      </div>
+
+      {feedback && (
+        <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 shadow-sm">
+          {feedback}
         </div>
       )}
 
-      {/* Modal de Logs */}
-      {logsModalId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4">
-          <div className="w-full max-w-xl bg-slate-50 border border-slate-200 rounded-3xl shadow-xl flex flex-col max-h-[85vh]">
-            <div className="p-4 border-b border-slate-200 flex justify-between items-center bg-white rounded-t-3xl">
-              <h2 className="font-semibold text-slate-800 flex items-center gap-2">💬 Histórico de Interação</h2>
-              <button onClick={() => setLogsModalId(null)} className="text-slate-400 hover:text-slate-600 hover:bg-slate-100 p-2 rounded-full">✕</button>
+      {isFormOpen && (
+        <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+          <div className="mb-4">
+            <h2 className="text-lg font-semibold text-slate-900">{editingId ? 'Editar par do laboratorio' : 'Novo par do laboratorio'}</h2>
+            <p className="mt-1 text-sm text-slate-500">
+              Configure o par de instancias e os payloads opcionais que farao parte da rodada de teste.
+            </p>
+          </div>
+
+          <div className="grid gap-6 lg:grid-cols-2">
+            <div className="space-y-4">
+              <label className="block text-sm font-medium text-slate-700">
+                Nome do par
+                <input
+                  type="text"
+                  value={form.name}
+                  onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))}
+                  className="mt-1 w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm outline-none transition focus:border-emerald-500"
+                  placeholder="Ex: QA Distribuidora A/B"
+                />
+              </label>
+
+              <div className="rounded-2xl border border-slate-200 p-4">
+                <p className="mb-3 text-sm font-semibold text-slate-800">Lado A</p>
+                <div className="space-y-3">
+                  <input
+                    type="text"
+                    value={form.instance_a_id}
+                    onChange={(e) => setForm((prev) => ({ ...prev, instance_a_id: e.target.value }))}
+                    className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm outline-none transition focus:border-emerald-500"
+                    placeholder="Nome da instancia A"
+                  />
+                  <input
+                    type="text"
+                    value={form.phone_a}
+                    onChange={(e) => setForm((prev) => ({ ...prev, phone_a: e.target.value }))}
+                    className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm outline-none transition focus:border-emerald-500"
+                    placeholder="Telefone A com DDI"
+                  />
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-slate-200 p-4">
+                <p className="mb-3 text-sm font-semibold text-slate-800">Lado B</p>
+                <div className="space-y-3">
+                  <input
+                    type="text"
+                    value={form.instance_b_id}
+                    onChange={(e) => setForm((prev) => ({ ...prev, instance_b_id: e.target.value }))}
+                    className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm outline-none transition focus:border-emerald-500"
+                    placeholder="Nome da instancia B"
+                  />
+                  <input
+                    type="text"
+                    value={form.phone_b}
+                    onChange={(e) => setForm((prev) => ({ ...prev, phone_b: e.target.value }))}
+                    className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm outline-none transition focus:border-emerald-500"
+                    placeholder="Telefone B com DDI"
+                  />
+                </div>
+              </div>
             </div>
-            <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-[#efeae2]">
-              {loadingLogs ? (
-                 <div className="text-center text-sm text-slate-500 p-10 animate-pulse">Carregando conversas...</div>
-              ) : logs.length === 0 ? (
-                 <div className="text-center text-sm text-slate-500 p-10 bg-white/50 rounded-xl">Nenhuma mensagem registrada.</div>
-              ) : (
-                [...logs].reverse().map(log => {
-                  const warmer = warmers.find(w => w.id === logsModalId);
-                  const isSentByA = warmer ? log.from_phone === warmer.phone_a : true; 
-                  return (
-                    <div key={log.id} className={`flex flex-col mb-4 ${isSentByA ? 'items-end' : 'items-start'}`}>
-                       <span className={`text-[10px] text-slate-400 mb-0.5 font-medium ${isSentByA ? 'pr-1' : 'pl-1'}`}>{log.from_phone}</span>
-                       <div className={`w-fit min-w-[120px] max-w-[85%] px-3 pt-2 pb-1.5 shadow-sm text-[15px] leading-relaxed text-slate-800 ${isSentByA ? 'bg-[#dcf8c6] rounded-t-xl rounded-bl-xl rounded-br-sm' : 'bg-white rounded-t-xl rounded-br-xl rounded-bl-sm border border-slate-100'}`}>
-                          <span className="whitespace-pre-wrap font-sans">{log.content_summary}</span>
-                          <div className={`text-[10px] text-right mt-1 flex justify-end items-center gap-1 ${isSentByA ? 'text-emerald-700/60' : 'text-slate-400'}`}>
-                            <span>{new Date(log.sent_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
-                            {isSentByA && <span className="text-blue-500 text-[12px] leading-none mb-[2px]">✓✓</span>}
-                          </div>
-                       </div>
-                    </div>
-                  )
-                })
-              )}
+
+            <div className="space-y-4">
+              <div className="grid gap-4 md:grid-cols-2">
+                <label className="block text-sm font-medium text-slate-700">
+                  Delay entre etapas (s)
+                  <input
+                    type="number"
+                    min={1}
+                    max={120}
+                    value={form.default_delay_seconds}
+                    onChange={(e) => setForm((prev) => ({ ...prev, default_delay_seconds: Number(e.target.value || 1) }))}
+                    className="mt-1 w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm outline-none transition focus:border-emerald-500"
+                  />
+                </label>
+                <label className="block text-sm font-medium text-slate-700">
+                  Mensagens por rodada
+                  <input
+                    type="number"
+                    min={1}
+                    max={20}
+                    value={form.default_messages_per_run}
+                    onChange={(e) => setForm((prev) => ({ ...prev, default_messages_per_run: Number(e.target.value || 1) }))}
+                    className="mt-1 w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm outline-none transition focus:border-emerald-500"
+                  />
+                </label>
+              </div>
+
+              <label className="block text-sm font-medium text-slate-700">
+                URL de imagem de teste
+                <input
+                  type="text"
+                  value={form.sample_image_url}
+                  onChange={(e) => setForm((prev) => ({ ...prev, sample_image_url: e.target.value }))}
+                  className="mt-1 w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm outline-none transition focus:border-emerald-500"
+                  placeholder="https://..."
+                />
+              </label>
+
+              <label className="block text-sm font-medium text-slate-700">
+                URL de documento de teste
+                <input
+                  type="text"
+                  value={form.sample_document_url}
+                  onChange={(e) => setForm((prev) => ({ ...prev, sample_document_url: e.target.value }))}
+                  className="mt-1 w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm outline-none transition focus:border-emerald-500"
+                  placeholder="https://.../arquivo.pdf"
+                />
+              </label>
+
+              <label className="block text-sm font-medium text-slate-700">
+                URL de audio de teste
+                <input
+                  type="text"
+                  value={form.sample_audio_url}
+                  onChange={(e) => setForm((prev) => ({ ...prev, sample_audio_url: e.target.value }))}
+                  className="mt-1 w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm outline-none transition focus:border-emerald-500"
+                  placeholder="https://.../audio.mp3"
+                />
+              </label>
+
+              <label className="block text-sm font-medium text-slate-700">
+                Observacoes
+                <textarea
+                  value={form.notes}
+                  onChange={(e) => setForm((prev) => ({ ...prev, notes: e.target.value }))}
+                  className="mt-1 min-h-[110px] w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm outline-none transition focus:border-emerald-500"
+                  placeholder="Anote objetivo do par, payloads habilitados ou restricoes."
+                />
+              </label>
             </div>
+          </div>
+
+          <div className="mt-6 flex justify-end gap-3">
+            <button
+              type="button"
+              onClick={resetForm}
+              className="rounded-2xl border border-slate-200 px-5 py-2.5 text-sm font-semibold text-slate-600 transition hover:bg-slate-50"
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleSave()}
+              disabled={saving}
+              className="rounded-2xl bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {saving ? 'Salvando...' : editingId ? 'Salvar alteracoes' : 'Criar par'}
+            </button>
           </div>
         </div>
       )}
 
       {error && (
-        <div className="rounded-2xl border border-red-300 bg-red-50 p-6 text-red-600 mb-6 font-medium">
-          ⚠️ Ocorreu um erro: {error}
+        <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700 shadow-sm">
+          {error}
         </div>
       )}
 
       {loading ? (
-        <div className="p-10 text-center text-slate-500 text-sm animate-pulse">Carregando maturadores...</div>
-      ) : warmers.length === 0 && !isCreating ? (
-        <div className="rounded-3xl border border-dashed border-slate-300 bg-slate-50 p-10 flex flex-col items-center justify-center gap-4 text-center text-slate-500 text-sm">
-          <p>Nenhuma rotina de maturação ativa. Crie o seu primeiro aquecimento de instâncias.</p>
-          <button onClick={() => setIsCreating(true)} className="rounded-2xl bg-indigo-600 px-6 py-2 text-sm font-semibold text-white transition hover:bg-indigo-700">Adicionar Instância +</button>
+        <div className="rounded-3xl border border-slate-200 bg-white p-8 text-sm text-slate-500 shadow-sm">
+          Carregando laboratorio...
+        </div>
+      ) : pairs.length === 0 ? (
+        <div className="rounded-3xl border border-dashed border-slate-300 bg-white p-10 text-center shadow-sm">
+          <h2 className="text-lg font-semibold text-slate-900">Nenhum par configurado</h2>
+          <p className="mt-2 text-sm text-slate-500">
+            Crie o primeiro par de teste para validar texto, imagem, documento e audio entre instancias autorizadas.
+          </p>
+          <button
+            type="button"
+            onClick={openCreate}
+            className="mt-5 rounded-2xl bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800"
+          >
+            Criar primeiro par
+          </button>
         </div>
       ) : (
-        <div className="grid gap-4 md:grid-cols-2">
-          {warmers.map(warmer => {
-              const startDate = new Date(warmer.start_date);
-              const diffDays = Math.floor(Math.abs(new Date().getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
-              const currentLimit = warmer.base_daily_limit + (diffDays * warmer.increment_per_day);
-              const isPaused = warmer.status === 'paused';
-              const progressPct = Math.min((warmer.sent_today || 0) / currentLimit * 100, 100);
+        <div className="space-y-4">
+          {pairs.map((pair) => {
+            const statusBadge = getStatusBadge(pair)
+            const progressTotal = Number(pair.active_run_steps_total || 0)
+            const progressDone = Number(pair.active_run_steps_completed || 0)
 
-              return (
-                <div key={warmer.id} className={`rounded-3xl border p-5 transition ${isPaused ? 'border-amber-200 bg-amber-50/30' : 'border-slate-200 bg-white shadow-sm'}`}>
-                  <div className="flex justify-between items-start mb-4">
-                    <div className="flex gap-2 items-center">
-                      <div className={`p-2 rounded-full ${
-                        warmer.current_mode === 'sleeping' ? 'bg-indigo-900 text-indigo-200' :
-                        warmer.current_mode === 'afk' ? 'bg-orange-100 text-orange-600' :
-                        isPaused ? 'bg-amber-100 text-amber-600' : 'bg-emerald-100 text-emerald-600'
-                      }`}>
-                        {warmer.current_mode === 'sleeping' ? <span className="text-xs">🌙</span> :
-                         warmer.current_mode === 'afk' ? <span className="text-xs">☕</span> :
-                         isPaused ? <span className="text-xs">⏹️</span> : <span className="text-xs">▶️</span>}
-                      </div>
-                      <div>
-                        <h3 className="font-semibold text-slate-800 text-sm tracking-tight flex items-center gap-1">
-                          {warmer.instance_a_id} <span className="text-[10px] text-slate-400">↔️</span> {warmer.instance_b_id}
-                        </h3>
-                        <p className="text-[11px] text-slate-500 uppercase tracking-wide">
-                          {warmer.current_mode === 'sleeping' ? `Dormindo até ${warmer.mode_until ? new Date(warmer.mode_until).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : ''}` :
-                           warmer.current_mode === 'afk' ? `Pausa p/ Café até ${warmer.mode_until ? new Date(warmer.mode_until).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : ''}` :
-                           isPaused ? 'Pausado' : `Dia ${diffDays + 1} de maturação`}
-                        </p>
-                      </div>
+            return (
+              <article key={pair.id} className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+                <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+                  <div className="space-y-3">
+                    <div className="flex flex-wrap items-center gap-3">
+                      <h2 className="text-xl font-semibold text-slate-900">
+                        {pair.name || `${pair.instance_a_id} ↔ ${pair.instance_b_id}`}
+                      </h2>
+                      <span className={`rounded-full px-3 py-1 text-xs font-semibold ${statusBadge.className}`}>
+                        {statusBadge.label}
+                      </span>
                     </div>
-                    
-                    <div className="flex gap-2">
-                      <button onClick={() => startEdit(warmer)} title="Editar Configuração" className="text-xs font-semibold px-3 py-1.5 rounded-full border border-slate-200 text-slate-600 hover:bg-slate-50 transition">
-                        ✏️
-                      </button>
-                      <button onClick={() => openLogs(warmer.id)} title="Ver conversas" className="text-xs font-semibold px-3 py-1.5 rounded-full border border-indigo-200 text-indigo-600 hover:bg-indigo-50 transition">
-                        💬
-                      </button>
-                      <button onClick={() => handleForceRun(warmer.id)} disabled={forcingId === warmer.id} title="Forçar Disparo Agora" className={`text-xs font-semibold px-3 py-1.5 rounded-full border transition ${forcingId === warmer.id ? 'border-slate-300 text-slate-400 bg-slate-100 cursor-not-allowed' : 'border-amber-300 text-amber-600 hover:bg-amber-50'} flex items-center gap-1`}>
-                        {forcingId === warmer.id ? <span className="animate-spin text-[10px]">⏳</span> : '⚡'}
-                      </button>
-                      <button onClick={() => handleToggleStatus(warmer.id, warmer.status)} className={`text-xs font-semibold px-4 py-1.5 rounded-full border ${isPaused ? 'border-amber-300 text-amber-700 hover:bg-amber-100' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}>
-                        {isPaused ? 'Retomar' : 'Pausar'}
-                      </button>
+
+                    <div className="grid gap-3 text-sm text-slate-600 md:grid-cols-2">
+                      <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Lado A</p>
+                        <p className="mt-2 font-medium text-slate-900">{pair.instance_a_id}</p>
+                        <p className="mt-1">{pair.phone_a}</p>
+                      </div>
+                      <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Lado B</p>
+                        <p className="mt-2 font-medium text-slate-900">{pair.instance_b_id}</p>
+                        <p className="mt-1">{pair.phone_b}</p>
+                      </div>
                     </div>
                   </div>
 
-                  <div className="space-y-4">
-                    <div className="flex justify-between items-center text-xs text-slate-500 border-b border-slate-100 pb-3">
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium text-slate-700">{warmer.phone_a}</span>
-                        <button 
-                          onClick={() => handleManualSend(warmer.id, 'a')} 
-                          disabled={manualLoading === `${warmer.id}-a`}
-                          className={`p-1.5 rounded-lg border transition ${manualLoading === `${warmer.id}-a` ? 'bg-slate-50 text-slate-400 border-slate-200' : 'bg-indigo-50 text-indigo-600 border-indigo-100 hover:bg-indigo-100'}`}
-                          title="Enviar Mensagem Manual do Chip A"
-                        >
-                          {manualLoading === `${warmer.id}-a` ? <span className="animate-spin text-[10px] inline-block">⏳</span> : '✈️'}
-                        </button>
-                      </div>
+                  <div className="flex flex-wrap gap-2 xl:justify-end">
+                    <button
+                      type="button"
+                      onClick={() => void handleStartRun(pair.id)}
+                      disabled={busyAction === `${pair.id}-run`}
+                      className="rounded-2xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {busyAction === `${pair.id}-run` ? 'Iniciando...' : 'Iniciar rodada'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => startEdit(pair)}
+                      className="rounded-2xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                    >
+                      Editar
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void handleToggleStatus(pair)}
+                      disabled={busyAction === `${pair.id}-status`}
+                      className="rounded-2xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {pair.status === 'active' ? 'Pausar' : 'Ativar'}
+                    </button>
+                  </div>
+                </div>
 
-                      <div className="text-slate-300">↔️</div>
+                <div className="mt-5 grid gap-3 md:grid-cols-4">
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Delay</p>
+                    <p className="mt-2 text-2xl font-semibold text-slate-900">{Number(pair.default_delay_seconds || 5)}s</p>
+                  </div>
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Rodada</p>
+                    <p className="mt-2 text-2xl font-semibold text-slate-900">{Number(pair.default_messages_per_run || 4)}</p>
+                  </div>
+                  <div className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-4">
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-500">Eventos hoje</p>
+                    <p className="mt-2 text-2xl font-semibold text-sky-900">{Number(pair.sent_today || 0)}</p>
+                  </div>
+                  <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-4">
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-rose-500">Falhas</p>
+                    <p className="mt-2 text-2xl font-semibold text-rose-900">{Number(pair.failed_today || 0)}</p>
+                  </div>
+                </div>
 
-                      <div className="flex items-center gap-2">
-                        <button 
-                          onClick={() => handleManualSend(warmer.id, 'b')} 
-                          disabled={manualLoading === `${warmer.id}-b`}
-                          className={`p-1.5 rounded-lg border transition ${manualLoading === `${warmer.id}-b` ? 'bg-slate-50 text-slate-400 border-slate-200' : 'bg-emerald-50 text-emerald-600 border-emerald-100 hover:bg-emerald-100'}`}
-                          title="Enviar Mensagem Manual do Chip B"
-                        >
-                          {manualLoading === `${warmer.id}-b` ? <span className="animate-spin text-[10px] inline-block">⏳</span> : '✈️'}
-                        </button>
-                        <span className="font-medium text-slate-700">{warmer.phone_b}</span>
-                      </div>
+                <div className="mt-5 rounded-3xl border border-slate-200 bg-slate-50/80 p-5">
+                  <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                    <div className="space-y-2">
+                      <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">Execucao</p>
+                      <p className="text-sm text-slate-600">
+                        Ultima rodada: <span className="font-medium text-slate-900">{formatDateTime(pair.last_run_at || pair.last_run_finished_at)}</span>
+                      </p>
+                      <p className="text-sm text-slate-600">
+                        Status final: <span className="font-medium text-slate-900">{pair.last_run_status_actual || pair.last_run_status || '-'}</span>
+                      </p>
+                      {pair.active_run_id && (
+                        <p className="text-sm text-slate-600">
+                          Progresso atual:{' '}
+                          <span className="font-medium text-slate-900">
+                            {progressDone}/{progressTotal || 0}
+                          </span>
+                        </p>
+                      )}
+                      {(pair.last_run_error_actual || pair.last_run_error) && (
+                        <p className="max-w-3xl text-sm text-rose-700">
+                          {pair.last_run_error_actual || pair.last_run_error}
+                        </p>
+                      )}
                     </div>
-                    
-                    <div>
-                      <div className="flex justify-between text-xs mb-1.5">
-                        <span className="font-medium text-slate-600">Progresso Diário</span>
-                        <span className="text-slate-500">{warmer.sent_today || 0} / {currentLimit} envios</span>
-                      </div>
-                      <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
-                        <div className={`h-1.5 rounded-full ${progressPct >= 100 ? 'bg-emerald-500' : 'bg-indigo-500'}`} style={{ width: `${progressPct}%` }}></div>
-                      </div>
-                    </div>
 
-                    <div className="bg-slate-50 rounded-xl p-3 text-[11px] text-slate-500 flex items-center gap-2">
-                      <span className="text-indigo-400">ℹ️</span>
-                      Ativo dás {warmer.business_hours_start?.substring(0,5) || '08:00'}h às {warmer.business_hours_end?.substring(0,5) || '20:00'}h. Incremento: {warmer.increment_per_day} msgs/dia.
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => void handleManual(pair.id, 'a')}
+                        disabled={busyAction === `${pair.id}-a`}
+                        className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {busyAction === `${pair.id}-a` ? 'Enviando...' : 'Teste A → B'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void handleManual(pair.id, 'b')}
+                        disabled={busyAction === `${pair.id}-b`}
+                        className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {busyAction === `${pair.id}-b` ? 'Enviando...' : 'Teste B → A'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void openLogs(pair.id)}
+                        className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
+                      >
+                        Ver logs
+                      </button>
                     </div>
                   </div>
                 </div>
-              )
+
+                <div className="mt-5 flex flex-wrap gap-2">
+                  <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-600">Texto</span>
+                  {pair.sample_image_url && (
+                    <span className="rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-xs font-semibold text-sky-700">Imagem</span>
+                  )}
+                  {pair.sample_document_url && (
+                    <span className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700">Documento</span>
+                  )}
+                  {pair.sample_audio_url && (
+                    <span className="rounded-full border border-violet-200 bg-violet-50 px-3 py-1 text-xs font-semibold text-violet-700">Audio</span>
+                  )}
+                </div>
+
+                {pair.notes && (
+                  <div className="mt-4 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
+                    {pair.notes}
+                  </div>
+                )}
+              </article>
+            )
           })}
+        </div>
+      )}
+
+      {logsModalId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4">
+          <div className="flex max-h-[85vh] w-full max-w-5xl flex-col overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
+              <div>
+                <h2 className="text-lg font-semibold text-slate-900">Logs do laboratorio</h2>
+                <p className="mt-1 text-sm text-slate-500">Ultimos 200 eventos do par selecionado.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setLogsModalId(null)}
+                className="rounded-2xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+              >
+                Fechar
+              </button>
+            </div>
+
+            <div className="overflow-y-auto px-6 py-5">
+              {loadingLogs ? (
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-500">Carregando logs...</div>
+              ) : logs.length === 0 ? (
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-500">Nenhum log encontrado.</div>
+              ) : (
+                <div className="space-y-3">
+                  {logs.map((log) => (
+                    <div key={log.id} className="rounded-2xl border border-slate-200 p-4">
+                      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                        <div className="space-y-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${log.ok ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}`}>
+                              {log.ok ? 'OK' : 'Falha'}
+                            </span>
+                            <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">
+                              {(log.payload_type || 'texto').toUpperCase()}
+                            </span>
+                            {log.run_status && (
+                              <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-500">
+                                {log.run_status}
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-sm font-medium text-slate-900">
+                            {log.from_instance || log.from_phone} → {log.to_instance || log.to_phone}
+                          </p>
+                          <p className="text-sm text-slate-600">{log.content_summary || '-'}</p>
+                          {log.error_detail && <p className="text-sm text-rose-700">{log.error_detail}</p>}
+                        </div>
+
+                        <div className="grid shrink-0 gap-2 text-right text-xs text-slate-500">
+                          <span>{formatDateTime(log.sent_at)}</span>
+                          <span>HTTP: {log.provider_status ?? '-'}</span>
+                          <span>Tempo: {log.response_time_ms != null ? `${log.response_time_ms} ms` : '-'}</span>
+                          <span>Run: {log.run_id ? log.run_id.slice(0, 8) : '-'}</span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       )}
     </section>
