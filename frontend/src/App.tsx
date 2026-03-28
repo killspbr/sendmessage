@@ -37,6 +37,7 @@ import type {
   ContactSendHistoryItem,
   ImportConflict,
   CampaignSendLog,
+  ActiveUserPresenceSnapshot,
 } from './types'
 import { BACKEND_URL, normalizePhone, formatRating, logError } from './utils'
 import { buildCampaignDeliveryPayload, extractCampaignDeliveryState } from './utils/campaignDelivery'
@@ -485,6 +486,21 @@ function App() {
     }
     return 'contacts'
   })
+  const [activeUserPresence, setActiveUserPresence] = useState<ActiveUserPresenceSnapshot | null>(null)
+
+  const getPresenceSessionId = () => {
+    const storageKey = 'sendmessage_presence_session_id'
+    const existing = sessionStorage.getItem(storageKey)
+    if (existing) return existing
+
+    const nextId =
+      typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+        ? crypto.randomUUID()
+        : `presence-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+
+    sessionStorage.setItem(storageKey, nextId)
+    return nextId
+  }
 
   useEffect(() => {
     try {
@@ -493,6 +509,57 @@ function App() {
       // ignore
     }
   }, [currentPage])
+
+  useEffect(() => {
+    if (!currentUser?.id) {
+      setActiveUserPresence(null)
+      return
+    }
+
+    const sendHeartbeat = async () => {
+      try {
+        await apiFetch('/api/auth/presence', {
+          method: 'POST',
+          body: JSON.stringify({
+            sessionId: getPresenceSessionId(),
+            currentPage,
+          }),
+        })
+      } catch (e) {
+        logError('presence.heartbeat', 'Erro ao registrar presença da sessão', e)
+      }
+    }
+
+    void sendHeartbeat()
+    const interval = setInterval(() => {
+      void sendHeartbeat()
+    }, 60000)
+
+    return () => clearInterval(interval)
+  }, [currentUser?.id, currentPage])
+
+  useEffect(() => {
+    if (!currentUser?.id || currentPage !== 'dashboard' || !can('admin.users')) {
+      setActiveUserPresence(null)
+      return
+    }
+
+    const loadActiveUserPresence = async () => {
+      try {
+        const data = await apiFetch('/api/admin/active-users')
+        setActiveUserPresence(data)
+      } catch (e) {
+        logError('presence.admin', 'Erro ao carregar usuários ativos', e)
+      }
+    }
+
+    void loadActiveUserPresence()
+    const interval = setInterval(() => {
+      void loadActiveUserPresence()
+    }, 30000)
+
+    return () => clearInterval(interval)
+  }, [currentUser?.id, currentPage, can])
 
 
   const [sendingCampaignId, setSendingCampaignId] = useState<string | null>(null)
@@ -2758,6 +2825,21 @@ function App() {
 
   const _handleSignOut = async () => {
     try {
+      const token = localStorage.getItem('auth_token')
+      const sessionId = sessionStorage.getItem('sendmessage_presence_session_id')
+
+      if (token && sessionId) {
+        await fetch(`${BACKEND_URL}/api/auth/presence/logout`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ sessionId }),
+          keepalive: true,
+        }).catch(() => null)
+      }
+
       authLogout()
     } catch (e) {
       console.error('Erro ao sair:', e)
@@ -3005,6 +3087,8 @@ function App() {
                 sendingTotal={sendingTotal}
                 sendingErrors={sendingErrors}
                 hasEvolutionConfigured={(!!userSettings?.evolution_url || !!globalSettings?.evolution_api_url) && (!!userSettings?.evolution_instance || !!globalSettings?.evolution_shared_instance)}
+                activeUserPresence={activeUserPresence}
+                showAdminPresenceCard={can('admin.users')}
                 onNavigate={setCurrentPage}
                   onCreateCampaign={() => {
                     setCurrentPage('campaigns')

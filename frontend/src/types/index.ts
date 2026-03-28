@@ -186,6 +186,23 @@ export type UserLimitSnapshot = {
   }
 }
 
+export type ActiveUserPresenceItem = {
+  userId: string
+  sessionId: string
+  name: string
+  email: string
+  currentPage: string | null
+  lastSeenAt: string
+}
+
+export type ActiveUserPresenceSnapshot = {
+  totalUsers: number
+  totalSessions: number
+  windowSeconds: number
+  generatedAt: string
+  users: ActiveUserPresenceItem[]
+}
+
 export type SupabaseListRow = {
   id: string
   name: string

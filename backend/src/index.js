@@ -32,6 +32,7 @@ const app = express();
 const port = process.env.PORT || 4000;
 const SYSTEM_TIMEZONE = process.env.SYSTEM_TIMEZONE || 'America/Sao_Paulo';
 const SYSTEM_TIMEZONE_LABEL = 'GMT-3 (America/Sao_Paulo)';
+const ACTIVE_USER_WINDOW_SECONDS = 120;
 
 ensureUploadStorageRoot();
 
@@ -135,6 +136,26 @@ async function isAdminUser(userId) {
   );
 
   return result.rows.length > 0;
+}
+
+async function cleanupExpiredPresenceSessions() {
+  await query(
+    `DELETE FROM active_user_sessions
+     WHERE last_seen_at < CURRENT_TIMESTAMP - INTERVAL '1 day'`
+  );
+}
+
+async function upsertPresenceSession({ sessionId, userId, currentPage, userAgent }) {
+  await query(
+    `INSERT INTO active_user_sessions (session_id, user_id, current_page, user_agent, last_seen_at)
+     VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)
+     ON CONFLICT (session_id) DO UPDATE SET
+       user_id = EXCLUDED.user_id,
+       current_page = EXCLUDED.current_page,
+       user_agent = EXCLUDED.user_agent,
+       last_seen_at = CURRENT_TIMESTAMP`,
+    [sessionId, userId, currentPage || null, userAgent || null]
+  );
 }
 
 function buildRequestBaseUrl(req) {
@@ -427,6 +448,100 @@ app.get('/api/auth/me', authenticateToken, async (req, res) => {
     res.json(result.rows[0]);
   } catch (error) {
     res.status(500).json({ error: 'Erro ao buscar perfil' });
+  }
+});
+
+app.post('/api/auth/presence', authenticateToken, async (req, res) => {
+  try {
+    const sessionId = String(req.body?.sessionId || '').trim();
+    const currentPage = String(req.body?.currentPage || '').trim();
+
+    if (!sessionId) {
+      return res.status(400).json({ error: 'sessionId é obrigatório.' });
+    }
+
+    await upsertPresenceSession({
+      sessionId,
+      userId: req.user.id,
+      currentPage,
+      userAgent: req.headers['user-agent'],
+    });
+
+    await cleanupExpiredPresenceSessions();
+
+    res.json({ ok: true, windowSeconds: ACTIVE_USER_WINDOW_SECONDS });
+  } catch (error) {
+    console.error('[Presence] Erro ao registrar presença:', error);
+    res.status(500).json({ error: 'Erro ao registrar presença.' });
+  }
+});
+
+app.post('/api/auth/presence/logout', authenticateToken, async (req, res) => {
+  try {
+    const sessionId = String(req.body?.sessionId || '').trim();
+    if (!sessionId) {
+      return res.status(400).json({ error: 'sessionId é obrigatório.' });
+    }
+
+    await query(
+      `DELETE FROM active_user_sessions
+       WHERE session_id = $1
+         AND user_id = $2`,
+      [sessionId, req.user.id]
+    );
+
+    res.json({ ok: true });
+  } catch (error) {
+    console.error('[Presence] Erro ao encerrar presença:', error);
+    res.status(500).json({ error: 'Erro ao encerrar presença.' });
+  }
+});
+
+app.get('/api/admin/active-users', authenticateToken, checkAdmin, async (_req, res) => {
+  try {
+    await cleanupExpiredPresenceSessions();
+
+    const sessionsResult = await query(
+      `SELECT
+         s.session_id,
+         s.user_id,
+         s.current_page,
+         s.last_seen_at,
+         u.email,
+         u.name
+       FROM active_user_sessions s
+       JOIN users u ON u.id = s.user_id
+       WHERE s.last_seen_at >= CURRENT_TIMESTAMP - ($1::text || ' seconds')::interval
+       ORDER BY s.last_seen_at DESC`,
+      [String(ACTIVE_USER_WINDOW_SECONDS)]
+    );
+
+    const latestByUser = new Map();
+    for (const row of sessionsResult.rows) {
+      if (!latestByUser.has(row.user_id)) {
+        latestByUser.set(row.user_id, row);
+      }
+    }
+
+    const users = Array.from(latestByUser.values()).map((row) => ({
+      userId: row.user_id,
+      sessionId: row.session_id,
+      email: row.email,
+      name: row.name || row.email,
+      currentPage: row.current_page || null,
+      lastSeenAt: row.last_seen_at,
+    }));
+
+    res.json({
+      totalUsers: users.length,
+      totalSessions: sessionsResult.rows.length,
+      windowSeconds: ACTIVE_USER_WINDOW_SECONDS,
+      generatedAt: new Date().toISOString(),
+      users,
+    });
+  } catch (error) {
+    console.error('[Presence] Erro ao listar usuários ativos:', error);
+    res.status(500).json({ error: 'Erro ao carregar usuários ativos.' });
   }
 });
 
@@ -3019,6 +3134,16 @@ async function runMigrations() {
       )`,
       `ALTER TABLE user_uploaded_files ADD COLUMN IF NOT EXISTS file_blob BYTEA`,
       `CREATE INDEX IF NOT EXISTS idx_user_uploaded_files_user_created_at ON user_uploaded_files(user_id, created_at DESC)`,
+      `CREATE TABLE IF NOT EXISTS active_user_sessions (
+        session_id TEXT PRIMARY KEY,
+        user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        current_page TEXT,
+        user_agent TEXT,
+        last_seen_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )`,
+      `CREATE INDEX IF NOT EXISTS idx_active_user_sessions_last_seen_at ON active_user_sessions(last_seen_at DESC)`,
+      `CREATE INDEX IF NOT EXISTS idx_active_user_sessions_user_last_seen_at ON active_user_sessions(user_id, last_seen_at DESC)`,
   ];
 
   for (const sql of migrations) {
