@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
-import type { Campaign, CampaignChannel } from '../types'
+import type { Campaign, CampaignChannel, CampaignDeliveryPayload } from '../types'
 import { apiFetch } from '../api'
 import { logError } from '../utils'
 
@@ -48,6 +48,7 @@ export function useCampaigns({ effectiveUserId }: UseCampaignsOptions): UseCampa
                     listName: row.list_name ?? 'Lista padrão',
                     createdAt: createdAtStr,
                     message: row.message ?? '',
+                    deliveryPayload: (row.delivery_payload as CampaignDeliveryPayload | null) ?? null,
                     intervalMinSeconds: typeof row.interval_min_seconds === 'number' ? row.interval_min_seconds : 30,
                     intervalMaxSeconds: typeof row.interval_max_seconds === 'number' ? row.interval_max_seconds : 90,
                 }

@@ -22,6 +22,35 @@ export type CampaignChannel = 'whatsapp' | 'email'
 
 export type CampaignStatus = 'rascunho' | 'agendada' | 'enviada' | 'enviada_com_erros'
 
+export type CampaignMediaType = 'image' | 'document'
+
+export type CampaignMediaItem = {
+  id: string
+  sourceType: 'url'
+  mediaType: CampaignMediaType
+  url: string
+  caption: string
+}
+
+export type CampaignSharedContact = {
+  fullName: string
+  phone: string
+  company: string
+  email: string
+  url: string
+}
+
+export type CampaignDeliveryPayload = {
+  version: number
+  whatsapp?: {
+    blocks: Array<
+      | { type: 'text'; content: string }
+      | { type: 'media'; items: CampaignMediaItem[] }
+      | { type: 'contact'; contact: CampaignSharedContact }
+    >
+  }
+}
+
 export type Campaign = {
   id: string
   name: string
@@ -32,6 +61,7 @@ export type Campaign = {
   message: string
   intervalMinSeconds?: number
   intervalMaxSeconds?: number
+  deliveryPayload?: CampaignDeliveryPayload | null
 }
 
 export type SendHistoryItem = {
@@ -104,6 +134,7 @@ export type SupabaseCampaignRow = {
   message: string | null
   interval_min_seconds: number | null
   interval_max_seconds: number | null
+  delivery_payload: CampaignDeliveryPayload | null
 }
 
 export type SupabaseListRow = {

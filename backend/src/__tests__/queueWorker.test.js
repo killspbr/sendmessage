@@ -142,7 +142,7 @@ function createQueryMock(state) {
       return { rows: dueSchedules }
     }
 
-    if (sql === 'SELECT * FROM campaigns WHERE id = $1') {
+    if (sql === 'SELECT * FROM campaigns WHERE id = $1' || sql === 'SELECT * FROM campaigns WHERE id = $1 LIMIT 1') {
       const campaign = state.campaigns.find((c) => c.id === params[0])
       return { rows: campaign ? [clone(campaign)] : [] }
     }
@@ -255,11 +255,12 @@ function createQueryMock(state) {
     }
 
     if (sql.startsWith('UPDATE message_queue SET status = $1, data_envio = NOW()')) {
-      const item = state.queue.find((q) => q.id === params[1])
+      const item = state.queue.find((q) => q.id === params[params.length - 1])
       if (item) {
         item.status = params[0]
         item.data_envio = state.now.toISOString()
         item.processing_started_at = null
+        item.erro = params.length > 2 ? params[1] : item.erro
       }
       return { rows: [] }
     }
@@ -378,6 +379,7 @@ test('scheduler reencola agendamento preso em preparando sem fila', async () => 
 
 test('worker envia mensagem com sucesso sem chamar integraÃ§Ãµes reais', async () => {
   const state = createState({
+    campaigns: [{ id: 'camp-1', message: '<p>OlÃƒÂ¡ {name}</p>', status: 'agendada' }],
     schedules: [{ id: 1, campaign_id: 'camp-1', user_id: 'user-1', status: 'em_execucao', limite_diario: 300, mensagens_por_lote: 45, tempo_pausa_lote: 15, intervalo_minimo: 1, intervalo_maximo: 1 }],
     queue: [{ id: 1, schedule_id: 1, campaign_id: 'camp-1', user_id: 'user-1', telefone: '11999999999', nome: 'Contato 1', mensagem: '<p>OlÃ¡ {name}</p>', status: 'pendente', tentativas: 0 }],
     userProfiles: [{ id: 'user-1', evolution_url: 'https://evolution.test', evolution_apikey: 'token', evolution_instance: 'instancia' }],
@@ -420,8 +422,12 @@ test('worker pausa agendamentos quando atinge limite diÃ¡rio', async () => {
 })
 
 test('scheduler nÃ£o retoma pausa por limite diÃ¡rio no mesmo dia, mas retoma no dia seguinte', async () => {
+  const now = new Date()
+  const sameDayIso = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 7, 0, 0).toISOString()
+  const previousDayIso = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 7, 0, 0).toISOString()
+
   const sameDayState = createState({
-    schedules: [{ id: 1, campaign_id: 'camp-1', user_id: 'user-1', status: 'pausado', limite_diario: 300, pause_reason: 'daily_limit', paused_at: '2026-03-27T07:00:00.000Z' }],
+    schedules: [{ id: 1, campaign_id: 'camp-1', user_id: 'user-1', status: 'pausado', limite_diario: 300, pause_reason: 'daily_limit', paused_at: sameDayIso }],
     queue: [{ id: 1, schedule_id: 1, campaign_id: 'camp-1', user_id: 'user-1', status: 'pendente' }],
   })
   setQueueWorkerDepsForTests({ query: createQueryMock(sameDayState) })
@@ -429,7 +435,7 @@ test('scheduler nÃ£o retoma pausa por limite diÃ¡rio no mesmo dia, mas retom
   assert.equal(sameDayState.schedules[0].status, 'pausado')
 
   const nextDayState = createState({
-    schedules: [{ id: 1, campaign_id: 'camp-1', user_id: 'user-1', status: 'pausado', limite_diario: 300, pause_reason: 'daily_limit', paused_at: '2026-03-26T07:00:00.000Z' }],
+    schedules: [{ id: 1, campaign_id: 'camp-1', user_id: 'user-1', status: 'pausado', limite_diario: 300, pause_reason: 'daily_limit', paused_at: previousDayIso }],
     queue: [{ id: 1, schedule_id: 1, campaign_id: 'camp-1', user_id: 'user-1', status: 'pendente' }],
   })
   setQueueWorkerDepsForTests({ query: createQueryMock(nextDayState) })
@@ -439,6 +445,7 @@ test('scheduler nÃ£o retoma pausa por limite diÃ¡rio no mesmo dia, mas retom
 
 test('worker pausa por reputaÃ§Ã£o crÃ­tica e sÃ³ volta a pendente sem enviar', async () => {
   const state = createState({
+    campaigns: [{ id: 'camp-1', message: '<p>OlÃƒÂ¡</p>', status: 'agendada' }],
     schedules: [{ id: 1, campaign_id: 'camp-1', user_id: 'user-1', status: 'em_execucao', limite_diario: 300, mensagens_por_lote: 45, tempo_pausa_lote: 15, intervalo_minimo: 1, intervalo_maximo: 1 }],
     queue: [{ id: 1, schedule_id: 1, campaign_id: 'camp-1', user_id: 'user-1', telefone: '11999999999', nome: 'Contato 1', mensagem: 'OlÃ¡', status: 'pendente', tentativas: 0 }],
     reputation: [{ user_id: 'user-1', level: 'CRÃTICO' }],

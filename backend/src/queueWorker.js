@@ -1,6 +1,6 @@
 import 'dotenv/config'
 import { query } from './db.js'
-import { toEvolutionNumber, resolveTemplate, htmlToWhatsapp, extractImages } from './utils/messageUtils.js'
+import { executeWhatsappCampaignDelivery } from './services/campaignDeliveryService.js'
 
 process.env.TZ = process.env.SYSTEM_TIMEZONE || process.env.TZ || 'America/Sao_Paulo'
 
@@ -605,41 +605,34 @@ export async function runWorker() {
 
     if (evolutionUrl && evolutionInstance && evolutionApiKey) {
       try {
-        const evolutionNumber = toEvolutionNumber(msg.telefone)
-        if (!evolutionNumber) throw new Error('N?mero de telefone inv?lido no formato Evolution.')
+        const campaignResult = await queueWorkerDeps.query('SELECT * FROM campaigns WHERE id = $1 LIMIT 1', [msg.campaign_id])
+        const campaign = campaignResult.rows[0]
 
-        const resolvedHtml = resolveTemplate(msg.mensagem, { name: msg.nome, phone: msg.telefone })
-        const messageTextProcessed = htmlToWhatsapp(resolvedHtml)
-        const imageUrls = extractImages(resolvedHtml)
-
-        if (messageTextProcessed) {
-          const textResp = await queueWorkerDeps.fetchImpl(`${evolutionUrl}/message/sendText/${evolutionInstance}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', apikey: evolutionApiKey },
-            body: JSON.stringify({ number: evolutionNumber, text: messageTextProcessed, linkPreview: true }),
-          })
-
-          if (!textResp.ok) {
-            const errBody = await textResp.text()
-            throw new Error(`Evolution Erro (Texto): ${errBody}`)
-          }
+        if (!campaign) {
+          throw new Error('Campanha do item de fila n?o foi encontrada.')
         }
 
-        for (const imageUrl of imageUrls) {
-          const mediaResp = await queueWorkerDeps.fetchImpl(`${evolutionUrl}/message/sendMedia/${evolutionInstance}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', apikey: evolutionApiKey },
-            body: JSON.stringify({ number: evolutionNumber, media: imageUrl, mediatype: 'image', caption: '' }),
-          })
-
-          if (!mediaResp.ok) {
-            console.error('[Worker] Falha ao enviar imagem do lote:', await mediaResp.text())
-          }
-        }
+        const deliveryResult = await executeWhatsappCampaignDelivery({
+          fetchImpl: queueWorkerDeps.fetchImpl,
+          evolutionUrl,
+          evolutionApiKey,
+          evolutionInstance,
+          campaign,
+          contact: {
+            id: msg.contact_id,
+            name: msg.nome,
+            phone: msg.telefone,
+          },
+          messageOverride: msg.mensagem,
+        })
 
         await queueWorkerDeps.query(
-          'UPDATE message_queue SET status = $1, data_envio = NOW(), processing_started_at = NULL WHERE id = $2',
-          ['enviado', msg.id]
+          'UPDATE message_queue SET status = $1, data_envio = NOW(), processing_started_at = NULL, erro = $2 WHERE id = $3',
+          [
+            'enviado',
+            deliveryResult.errors.length > 0 ? deliveryResult.errors.join(' | ') : null,
+            msg.id,
+          ]
         )
       } catch (err) {
         console.error(`[Worker] Erro no envio (${msg.telefone}):`, err.message)

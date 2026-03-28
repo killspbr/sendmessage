@@ -4,6 +4,7 @@ import { query } from './db.js';
 import { login, signup, forgotPassword, resetPassword, authenticateToken, checkAdmin, resetUserPasswordToDefault, invalidateUserSessions, invalidateAllSessions } from './auth.js';
 import { toEvolutionNumber } from './utils/messageUtils.js';
 import { getActiveGeminiKey, incrementKeyUsage, logGeminiUsage } from './services/aiService.js';
+import { executeWhatsappCampaignDelivery, validateCampaignDeliveryPayload } from './services/campaignDeliveryService.js';
 
 process.env.TZ = process.env.SYSTEM_TIMEZONE || process.env.TZ || 'America/Sao_Paulo';
 
@@ -417,10 +418,17 @@ app.get('/api/campaigns', authenticateToken, async (req, res) => {
 
 app.post('/api/campaigns', authenticateToken, async (req, res) => {
   try {
-    const { name, status, channels, list_name, message, variations, interval_min_seconds, interval_max_seconds } = req.body;
+    const { name, status, channels, list_name, message, variations, interval_min_seconds, interval_max_seconds, delivery_payload } = req.body;
+    const parsedChannels = parseCampaignChannels(channels);
+    const { payload: normalizedPayload, errors } = validateCampaignDeliveryPayload(delivery_payload, parsedChannels);
+
+    if (errors.length > 0) {
+      return res.status(400).json({ error: errors[0] });
+    }
+
     const result = await query(
-      'INSERT INTO campaigns (user_id, name, status, channels, list_name, message, variations, interval_min_seconds, interval_max_seconds) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *',
-      [req.user.id, name, status || 'rascunho', channels || [], list_name, message, JSON.stringify(variations || []), interval_min_seconds || 30, interval_max_seconds || 90]
+      'INSERT INTO campaigns (user_id, name, status, channels, list_name, message, variations, interval_min_seconds, interval_max_seconds, delivery_payload) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *',
+      [req.user.id, name, status || 'rascunho', parsedChannels, list_name, message, JSON.stringify(variations || []), interval_min_seconds || 30, interval_max_seconds || 90, normalizedPayload ? JSON.stringify(normalizedPayload) : null]
     );
     res.status(201).json(result.rows[0]);
   } catch (error) {
@@ -432,10 +440,17 @@ app.post('/api/campaigns', authenticateToken, async (req, res) => {
 app.put('/api/campaigns/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, status, channels, list_name, message, variations, interval_min_seconds, interval_max_seconds } = req.body;
+    const { name, status, channels, list_name, message, variations, interval_min_seconds, interval_max_seconds, delivery_payload } = req.body;
+    const parsedChannels = parseCampaignChannels(channels);
+    const { payload: normalizedPayload, errors } = validateCampaignDeliveryPayload(delivery_payload, parsedChannels);
+
+    if (errors.length > 0) {
+      return res.status(400).json({ error: errors[0] });
+    }
+
     const result = await query(
-      'UPDATE campaigns SET name = $1, status = $2, channels = $3, list_name = $4, message = $5, variations = $6, interval_min_seconds = $7, interval_max_seconds = $8 WHERE id = $9 AND user_id = $10 RETURNING *',
-      [name, status, channels, list_name, message, JSON.stringify(variations || []), interval_min_seconds, interval_max_seconds, id, req.user.id]
+      'UPDATE campaigns SET name = $1, status = $2, channels = $3, list_name = $4, message = $5, variations = $6, interval_min_seconds = $7, interval_max_seconds = $8, delivery_payload = $9 WHERE id = $10 AND user_id = $11 RETURNING *',
+      [name, status, parsedChannels, list_name, message, JSON.stringify(variations || []), interval_min_seconds, interval_max_seconds, normalizedPayload ? JSON.stringify(normalizedPayload) : null, id, req.user.id]
     );
     res.json(result.rows[0]);
   } catch (error) {
@@ -994,6 +1009,12 @@ app.post('/api/campaigns/:id/send', authenticateToken, async (req, res) => {
       return res.status(400).json({ error: 'Lista da campanha não encontrada.' });
     }
 
+    const channels = Array.isArray(campaign.channels) ? campaign.channels : [];
+    const { errors: payloadErrors } = validateCampaignDeliveryPayload(campaign.delivery_payload, channels);
+    if (payloadErrors.length > 0) {
+      return res.status(400).json({ error: payloadErrors[0] });
+    }
+
     // 3) Buscar contatos da lista
     const contactsResult = await query(
       'SELECT id, name, phone, email, category, cep, address, city, rating FROM contacts WHERE user_id = $1 AND list_id = $2',
@@ -1025,11 +1046,10 @@ app.post('/api/campaigns/:id/send', authenticateToken, async (req, res) => {
     const webhookUrlEmail = userProfile?.webhook_email_url || globalSettings.global_webhook_email_url || process.env.WEBHOOK_EMAIL || '';
 
     // 5) Determinar canais efetivos
-    const channels = Array.isArray(campaign.channels) ? campaign.channels : [];
     const effectiveChannels = channels.filter((ch) => {
       if (ch === 'whatsapp') {
         // Agora disparos de WhatsApp exigem Evolution API configurada
-        return (!!evolutionUrl && !!evolutionInstance);
+        return (!!evolutionUrl && !!evolutionApiKey && !!evolutionInstance);
       }
       return !!webhookUrlEmail.trim();
     });
@@ -1157,6 +1177,20 @@ app.post('/api/campaigns/:id/send', authenticateToken, async (req, res) => {
 
           if (evolutionUrl && evolutionInstance) {
             try {
+              const deliveryResult = await executeWhatsappCampaignDelivery({
+                evolutionUrl,
+                evolutionApiKey,
+                evolutionInstance,
+                campaign,
+                contact,
+              });
+
+              if (deliveryResult.mediaFailed > 0 || deliveryResult.contactFailed) {
+                errors++;
+              }
+
+              continue;
+
               const resolvedHtml = resolveTemplate(messageHtml, contact);
               const messageTextProcessed = htmlToWhatsapp(resolvedHtml);
               const imageUrls = extractImages(resolvedHtml);
@@ -1672,7 +1706,7 @@ app.post('/api/campaigns/:id/schedule', authenticateToken, async (req, res) => {
     const systemNow = getSystemDateTimeParts();
 
     const campaignResult = await query(
-      'SELECT id, user_id, name, list_name, channels FROM campaigns WHERE id = $1 LIMIT 1',
+      'SELECT id, user_id, name, list_name, channels, delivery_payload FROM campaigns WHERE id = $1 LIMIT 1',
       [id]
     );
     const campaign = campaignResult.rows[0];
@@ -1686,6 +1720,11 @@ app.post('/api/campaigns/:id/schedule', authenticateToken, async (req, res) => {
       return res.status(400).json({
         error: 'O agendamento profissional exige o canal WhatsApp ativo nesta campanha.'
       });
+    }
+
+    const { errors: payloadErrors } = validateCampaignDeliveryPayload(campaign.delivery_payload, channels);
+    if (payloadErrors.length > 0) {
+      return res.status(400).json({ error: payloadErrors[0] });
     }
 
     const evolutionConfig = await resolveEvolutionConfigForUser(req.user.id);
@@ -2282,8 +2321,9 @@ async function runMigrations() {
       failure_rate NUMERIC(5,2) DEFAULT 0.00,
       last_updated TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
     )`,
-    `ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS variations JSONB DEFAULT '[]'::jsonb`,
-    `ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS last_scheduled_at TIMESTAMP WITH TIME ZONE`,
+      `ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS variations JSONB DEFAULT '[]'::jsonb`,
+      `ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS delivery_payload JSONB`,
+      `ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS last_scheduled_at TIMESTAMP WITH TIME ZONE`,
     `UPDATE campaigns SET status = 'agendada' WHERE status = 'agendado'`,
     `ALTER TABLE campaign_schedule ADD COLUMN IF NOT EXISTS scheduler_claimed_at TIMESTAMP WITH TIME ZONE`,
     `ALTER TABLE campaign_schedule ADD COLUMN IF NOT EXISTS pause_reason TEXT`,

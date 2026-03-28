@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { CampaignEditor } from '../components/campaigns/CampaignEditor'
-import type { Campaign, CampaignChannel, ContactList, Contact, SendHistoryItem, ContactSendHistoryItem, CampaignSendLog } from '../types'
+import { CampaignDeliveryComposer } from '../components/campaigns/CampaignDeliveryComposer'
+import type { Campaign, CampaignChannel, CampaignMediaItem, CampaignSharedContact, ContactList, Contact, SendHistoryItem, ContactSendHistoryItem, CampaignSendLog } from '../types'
 
 type CampaignsPageProps = {
   // Dados
@@ -19,6 +20,8 @@ type CampaignsPageProps = {
   newCampaignListId: string
   newCampaignChannels: CampaignChannel[]
   newCampaignMessage: string
+  newCampaignMediaItems: CampaignMediaItem[]
+  newCampaignSharedContact: CampaignSharedContact | null
 
   // Estado de envio
   sendingCampaignId: string | null
@@ -46,6 +49,8 @@ type CampaignsPageProps = {
   onSetNewCampaignListId: (id: string) => void
   onSetNewCampaignChannels: (channels: CampaignChannel[]) => void
   onSetNewCampaignMessage: (message: string) => void
+  onSetNewCampaignMediaItems: (items: CampaignMediaItem[]) => void
+  onSetNewCampaignSharedContact: (contact: CampaignSharedContact | null) => void
 
   // Handlers de ações
   onCreateCampaign: () => void
@@ -110,6 +115,8 @@ export function CampaignsPage({
   newCampaignListId,
   newCampaignChannels,
   newCampaignMessage,
+  newCampaignMediaItems,
+  newCampaignSharedContact,
   sendingCampaignId,
   sendingCurrentIndex,
   sendingTotal,
@@ -129,6 +136,8 @@ export function CampaignsPage({
   onSetNewCampaignListId,
   onSetNewCampaignChannels,
   onSetNewCampaignMessage,
+  onSetNewCampaignMediaItems,
+  onSetNewCampaignSharedContact,
   onCreateCampaign,
   onCancelEditCampaign,
   onStartEditCampaign,
@@ -248,6 +257,8 @@ export function CampaignsPage({
                 onSetNewCampaignListId(sortedLists[0]?.id || '')
                 onSetNewCampaignChannels(['whatsapp'])
                 onSetNewCampaignMessage('')
+                onSetNewCampaignMediaItems([])
+                onSetNewCampaignSharedContact(null)
                 onSetCampaignEditorOpen(true)
               }}
               disabled={!canCreateCampaign}
@@ -586,6 +597,14 @@ export function CampaignsPage({
                       }
                     : undefined
                 }
+              />
+
+              <CampaignDeliveryComposer
+                channels={newCampaignChannels}
+                mediaItems={newCampaignMediaItems}
+                sharedContact={newCampaignSharedContact}
+                onChangeMediaItems={onSetNewCampaignMediaItems}
+                onChangeSharedContact={onSetNewCampaignSharedContact}
               />
             </div>
 

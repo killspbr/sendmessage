@@ -30,12 +30,16 @@ import type {
   ContactList,
   Campaign,
   CampaignChannel,
+  CampaignDeliveryPayload,
+  CampaignMediaItem,
+  CampaignSharedContact,
   SendHistoryItem,
   ContactSendHistoryItem,
   ImportConflict,
   CampaignSendLog,
 } from './types'
 import { BACKEND_URL, normalizePhone, formatRating, logError } from './utils'
+import { buildCampaignDeliveryPayload, extractCampaignDeliveryState } from './utils/campaignDelivery'
 
 const _defaultContacts: Contact[] = [
   {
@@ -626,6 +630,8 @@ function App() {
   const [newCampaignListId, setNewCampaignListId] = useState<string>('default')
   const [newCampaignChannels, setNewCampaignChannels] = useState<CampaignChannel[]>(['whatsapp'])
   const [newCampaignMessage, setNewCampaignMessage] = useState('')
+  const [newCampaignMediaItems, setNewCampaignMediaItems] = useState<CampaignMediaItem[]>([])
+  const [newCampaignSharedContact, setNewCampaignSharedContact] = useState<CampaignSharedContact | null>(null)
   const [editingCampaignId, setEditingCampaignId] = useState<string | null>(null)
   const [campaignEditorOpen, setCampaignEditorOpen] = useState(false)
 
@@ -794,6 +800,14 @@ function App() {
     return { backendOk, backendStatus }
   }
   // Função para salvar histórico de envio no backend
+  const resetCampaignComposerState = () => {
+    setNewCampaignName('')
+    setNewCampaignMessage('')
+    setNewCampaignChannels(['whatsapp'])
+    setNewCampaignMediaItems([])
+    setNewCampaignSharedContact(null)
+  }
+
   const saveSendHistory = async (entry: {
     campaignId: string
     contactName: string
@@ -846,6 +860,42 @@ function App() {
 
     const list = lists.find((l) => l.id === newCampaignListId) ?? lists[0]
     const listName = list?.name ?? newCampaignListId
+    const deliveryPayload = buildCampaignDeliveryPayload({
+      channels: newCampaignChannels,
+      message: newCampaignMessage,
+      mediaItems: newCampaignMediaItems,
+      sharedContact: newCampaignSharedContact,
+    })
+
+    for (const media of newCampaignMediaItems) {
+      const mediaUrl = String(media.url || '').trim()
+      if (!mediaUrl) {
+        setLastMoveMessage('Preencha a URL de todas as mídias do WhatsApp antes de salvar.')
+        return
+      }
+
+      try {
+        const parsedUrl = new URL(mediaUrl)
+        if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
+          setLastMoveMessage('As mídias do WhatsApp precisam usar URLs públicas HTTP ou HTTPS.')
+          return
+        }
+      } catch {
+        setLastMoveMessage('As mídias do WhatsApp precisam usar URLs públicas válidas.')
+        return
+      }
+    }
+
+    if (newCampaignSharedContact) {
+      if (!newCampaignSharedContact.fullName.trim()) {
+        setLastMoveMessage('Informe o nome do contato compartilhado antes de salvar.')
+        return
+      }
+      if (!newCampaignSharedContact.phone.trim()) {
+        setLastMoveMessage('Informe o telefone do contato compartilhado antes de salvar.')
+        return
+      }
+    }
 
     try {
       if (editingCampaignId) {
@@ -858,6 +908,7 @@ function App() {
             channels: newCampaignChannels,
             list_name: listName,
             message,
+            delivery_payload: deliveryPayload,
             interval_min_seconds: sendIntervalMinSeconds,
             interval_max_seconds: sendIntervalMaxSeconds,
           })
@@ -882,6 +933,7 @@ function App() {
           listName: data.list_name ?? listName,
           createdAt: createdAtStr,
           message: data.message ?? '',
+          deliveryPayload: (data.delivery_payload as CampaignDeliveryPayload | null) ?? deliveryPayload,
           intervalMinSeconds: typeof data.interval_min_seconds === 'number' ? data.interval_min_seconds : sendIntervalMinSeconds,
           intervalMaxSeconds: typeof data.interval_max_seconds === 'number' ? data.interval_max_seconds : sendIntervalMaxSeconds,
         }
@@ -899,6 +951,7 @@ function App() {
             channels: newCampaignChannels,
             list_name: listName,
             message,
+            delivery_payload: deliveryPayload,
             interval_min_seconds: sendIntervalMinSeconds,
             interval_max_seconds: sendIntervalMaxSeconds,
           })
@@ -923,6 +976,7 @@ function App() {
           listName: data.list_name ?? listName,
           createdAt: createdAtStr,
           message: data.message ?? '',
+          deliveryPayload: (data.delivery_payload as CampaignDeliveryPayload | null) ?? deliveryPayload,
           intervalMinSeconds: typeof data.interval_min_seconds === 'number' ? data.interval_min_seconds : sendIntervalMinSeconds,
           intervalMaxSeconds: typeof data.interval_max_seconds === 'number' ? data.interval_max_seconds : sendIntervalMaxSeconds,
         }
@@ -931,9 +985,7 @@ function App() {
         setLastMoveMessage('Campanha criada com sucesso.')
       }
 
-      setNewCampaignName('')
-      setNewCampaignMessage('')
-      setNewCampaignChannels(['whatsapp'])
+      resetCampaignComposerState()
       setCampaignEditorOpen(false)
     } catch (e) {
       console.error('Erro inesperado ao salvar campanha no Supabase', e)
@@ -942,6 +994,7 @@ function App() {
   }
 
   const handleStartEditCampaign = (camp: Campaign) => {
+    const deliveryState = extractCampaignDeliveryState(camp)
     setEditingCampaignId(camp.id)
     setNewCampaignName(camp.name)
     // tenta achar o id da lista pelo nome; se não achar, mantém o atual
@@ -949,6 +1002,8 @@ function App() {
     setNewCampaignListId(listByName?.id ?? newCampaignListId)
     setNewCampaignChannels(camp.channels)
     setNewCampaignMessage(camp.message)
+    setNewCampaignMediaItems(deliveryState.mediaItems)
+    setNewCampaignSharedContact(deliveryState.sharedContact)
     // Intervalo específico da campanha (fallback 30/90)
     setSendIntervalMinSeconds(camp.intervalMinSeconds ?? 30)
     setSendIntervalMaxSeconds(camp.intervalMaxSeconds ?? 90)
@@ -958,6 +1013,7 @@ function App() {
   }
 
   const handleDuplicateCampaign = (camp: Campaign) => {
+    const deliveryState = extractCampaignDeliveryState(camp)
     const copyName = `${camp.name} (cópia)`
     setEditingCampaignId(null)
     setNewCampaignName(copyName)
@@ -965,6 +1021,8 @@ function App() {
     setNewCampaignListId(listByName?.id ?? newCampaignListId)
     setNewCampaignChannels(camp.channels)
     setNewCampaignMessage(camp.message)
+    setNewCampaignMediaItems(deliveryState.mediaItems)
+    setNewCampaignSharedContact(deliveryState.sharedContact)
     const input = document.getElementById('new-campaign-name') as HTMLInputElement | null
     input?.focus()
     setCampaignEditorOpen(true)
@@ -972,9 +1030,7 @@ function App() {
 
   const handleCancelEditCampaign = () => {
     setEditingCampaignId(null)
-    setNewCampaignName('')
-    setNewCampaignMessage('')
-    setNewCampaignChannels(['whatsapp'])
+    resetCampaignComposerState()
     setCampaignEditorOpen(false)
   }
 
@@ -997,8 +1053,7 @@ function App() {
       if (editingCampaignId === id) {
         setEditingCampaignId(null)
         setLastMoveMessage('')
-        setNewCampaignName('')
-        setNewCampaignMessage('')
+        resetCampaignComposerState()
       }
       setDeleteCampaignId(null)
       setLastMoveMessage('Campanha excluída com sucesso.')
@@ -2416,16 +2471,17 @@ function App() {
               ? camp.listName
               : 'Lista padrão'
 
-            await apiFetch('/api/campaigns', {
-              method: 'POST',
-              body: JSON.stringify({
-                name: camp.name ?? '',
-                status: camp.status ?? 'rascunho',
-                channels,
-                list_name: listName,
-                message: camp.message ?? '',
+              await apiFetch('/api/campaigns', {
+                method: 'POST',
+                body: JSON.stringify({
+                  name: camp.name ?? '',
+                  status: camp.status ?? 'rascunho',
+                  channels,
+                  list_name: listName,
+                  message: camp.message ?? '',
+                  delivery_payload: camp.deliveryPayload ?? camp.delivery_payload ?? null,
+                })
               })
-            })
           } catch (e) {
             console.error('Erro ao recriar campanha durante importação', e, camp)
           }
@@ -2925,15 +2981,13 @@ function App() {
                 sendingErrors={sendingErrors}
                 hasEvolutionConfigured={(!!userSettings?.evolution_url || !!globalSettings?.evolution_api_url) && (!!userSettings?.evolution_instance || !!globalSettings?.evolution_shared_instance)}
                 onNavigate={setCurrentPage}
-                onCreateCampaign={() => {
-                  setCurrentPage('campaigns')
-                  setEditingCampaignId(null)
-                  setNewCampaignName('')
-                  setNewCampaignListId(lists[0]?.id || '')
-                  setNewCampaignChannels(['whatsapp'])
-                  setNewCampaignMessage('')
-                  setCampaignEditorOpen(true)
-                }}
+                  onCreateCampaign={() => {
+                    setCurrentPage('campaigns')
+                    setEditingCampaignId(null)
+                    resetCampaignComposerState()
+                    setNewCampaignListId(lists[0]?.id || '')
+                    setCampaignEditorOpen(true)
+                  }}
                 onEditCampaign={(camp) => {
                   setCurrentPage('campaigns')
                   handleStartEditCampaign(camp)
@@ -3030,9 +3084,11 @@ function App() {
                 campaignEditorOpen={campaignEditorOpen}
                 editingCampaignId={editingCampaignId}
                 newCampaignName={newCampaignName}
-                newCampaignListId={newCampaignListId}
-                newCampaignChannels={newCampaignChannels}
-                newCampaignMessage={newCampaignMessage}
+                  newCampaignListId={newCampaignListId}
+                  newCampaignChannels={newCampaignChannels}
+                  newCampaignMessage={newCampaignMessage}
+                  newCampaignMediaItems={newCampaignMediaItems}
+                  newCampaignSharedContact={newCampaignSharedContact}
                 sendingCampaignId={sendingCampaignId}
                 sendingCurrentIndex={sendingCurrentIndex}
                 sendingTotal={sendingTotal}
@@ -3049,9 +3105,11 @@ function App() {
                 onSetCampaignEditorOpen={setCampaignEditorOpen}
                 onSetEditingCampaignId={setEditingCampaignId}
                 onSetNewCampaignName={setNewCampaignName}
-                onSetNewCampaignListId={setNewCampaignListId}
-                onSetNewCampaignChannels={setNewCampaignChannels}
-                onSetNewCampaignMessage={setNewCampaignMessage}
+                  onSetNewCampaignListId={setNewCampaignListId}
+                  onSetNewCampaignChannels={setNewCampaignChannels}
+                  onSetNewCampaignMessage={setNewCampaignMessage}
+                  onSetNewCampaignMediaItems={setNewCampaignMediaItems}
+                  onSetNewCampaignSharedContact={setNewCampaignSharedContact}
                 onCreateCampaign={handleCreateCampaign}
                 onCancelEditCampaign={handleCancelEditCampaign}
                 onStartEditCampaign={handleStartEditCampaign}
