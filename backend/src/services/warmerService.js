@@ -94,11 +94,13 @@ async function postEvolution(url, apiKey, body) {
 // Envio de presença (composing/recording)
 async function sendPresence(evolutionUrl, apiKey, instanceName, toPhone, type = 'composing') {
   const normalizedInstance = String(instanceName || '').toLowerCase().trim();
+  const remoteJid = toPhone.includes('@') ? toPhone : `${toPhone}@s.whatsapp.net`;
+  
   return await postEvolution(
     `${evolutionUrl}/chat/sendPresence/${normalizedInstance}`,
     apiKey,
     {
-      number: toPhone,
+      number: remoteJid,
       presence: type,
       delay: 0
     }
@@ -108,11 +110,13 @@ async function sendPresence(evolutionUrl, apiKey, instanceName, toPhone, type = 
 // Envio de texto
 async function sendText(evolutionUrl, apiKey, instanceName, toPhone, text) {
   const normalizedInstance = String(instanceName || '').toLowerCase().trim();
+  const remoteJid = toPhone.includes('@') ? toPhone : `${toPhone}@s.whatsapp.net`;
+
   return await postEvolution(
     `${evolutionUrl}/message/sendText/${normalizedInstance}`,
     apiKey,
     {
-      number: toPhone,
+      number: remoteJid,
       text: text,
       linkPreview: true,
       delay: 0
@@ -437,8 +441,9 @@ export async function performManualSend(warmerId, fromSide = 'a') {
      messageContent = await generateDynamicMessage(historyText, fromPhone, toPhone);
      console.log(`[ManualSend] IA Message: "${messageContent}"`);
   } catch (aiErr) {
-     console.warn(`[ManualSend] IA Falhou (usando pool local):`, aiErr.message);
-     messageContent = getRandomMessage();
+     console.warn(`[ManualSend] IA Falhou (usando fallback amigável):`, aiErr.message);
+     // Fallback Robusto solicitado pelo usuário
+     messageContent = WARMER_MESSAGES.length > 0 ? getRandomMessage() : 'Oi, tudo bem?';
   }
 
   // Envio real

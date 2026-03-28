@@ -160,6 +160,7 @@ export async function sendManualMessage(req, res) {
     
     const { performManualSend } = await import('../services/warmerService.js');
     console.log(`[ManualSend] Rota evocada para Maturador ${id}, Lado ${side?.toUpperCase()}`);
+    console.log('[ManualSend] Rastreio:', { warmer_id: id, side: side, timestamp: new Date().toISOString() });
     
     const result = await performManualSend(id, side);
     
