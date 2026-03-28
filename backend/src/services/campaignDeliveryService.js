@@ -2,6 +2,7 @@ import { extractImages, htmlToWhatsapp, resolveTemplate, toEvolutionNumber } fro
 
 const MAX_MEDIA_ITEMS = 5
 const ALLOWED_MEDIA_TYPES = new Set(['image', 'document', 'audio'])
+const INTRA_CONTACT_DELAY_MS = 1000
 
 function safeTrim(value) {
   return String(value || '').trim()
@@ -311,6 +312,10 @@ function canUseMessageAsFirstMediaCaption(media) {
   return media?.mediaType === 'image'
 }
 
+function wait(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
 async function resolveMediaBody(fetchImpl, media, resolvedUrl) {
   if (media.sourceType !== 'asset' || media.mediaType === 'document') {
     return resolvedUrl
@@ -498,6 +503,13 @@ export async function executeWhatsappCampaignDelivery({
   const useMessageAsFirstMediaCaption = Boolean(
     messageText && firstMedia && canUseMessageAsFirstMediaCaption(firstMedia)
   )
+  const hasSharedContact = Boolean(plan.sharedContact)
+
+  const waitBetweenStepsIfNeeded = async ({ hasMoreMedia = false, hasPendingText = false, hasPendingContact = false }) => {
+    if (hasMoreMedia || hasPendingText || hasPendingContact) {
+      await wait(INTRA_CONTACT_DELAY_MS)
+    }
+  }
 
   const sendMediaItem = async (media, options = {}) => {
     const resolvedUrl = safeTrim(resolveTemplate(media.url, contact))
@@ -549,6 +561,11 @@ export async function executeWhatsappCampaignDelivery({
 
   if (firstMedia) {
     await sendMediaItem(firstMedia, { attachMessage: useMessageAsFirstMediaCaption })
+    await waitBetweenStepsIfNeeded({
+      hasMoreMedia: remainingMedia.length > 0,
+      hasPendingText: Boolean(messageText && !useMessageAsFirstMediaCaption),
+      hasPendingContact: hasSharedContact,
+    })
   }
 
   if (messageText && !useMessageAsFirstMediaCaption) {
@@ -563,10 +580,19 @@ export async function executeWhatsappCampaignDelivery({
       }
     )
     result.sentText = true
+    await waitBetweenStepsIfNeeded({
+      hasMoreMedia: remainingMedia.length > 0,
+      hasPendingContact: hasSharedContact,
+    })
   }
 
-  for (const media of remainingMedia) {
+  for (let index = 0; index < remainingMedia.length; index++) {
+    const media = remainingMedia[index]
     await sendMediaItem(media, { attachMessage: false })
+    await waitBetweenStepsIfNeeded({
+      hasMoreMedia: index < remainingMedia.length - 1,
+      hasPendingContact: hasSharedContact,
+    })
   }
 
   if (plan.sharedContact) {

@@ -1685,9 +1685,11 @@ app.post('/api/campaigns/:id/send', authenticateToken, async (req, res) => {
         }
       }
 
-      const delaySeconds =
-        intervalMin + Math.floor(Math.random() * Math.max(1, intervalMax - intervalMin + 1));
-      await new Promise((resolve) => setTimeout(resolve, delaySeconds * 1000));
+      if (contact !== contacts[contacts.length - 1]) {
+        const delaySeconds =
+          intervalMin + Math.floor(Math.random() * Math.max(1, intervalMax - intervalMin + 1));
+        await new Promise((resolve) => setTimeout(resolve, delaySeconds * 1000));
+      }
     }
 
     return res.json({ ok: true, campaignId, contactsCount: contacts.length, errors, items });
@@ -1987,9 +1989,11 @@ app.post('/api/campaigns/:id/send', authenticateToken, async (req, res) => {
         }
       }
 
-      const delaySeconds =
-        intervalMin + Math.floor(Math.random() * Math.max(1, intervalMax - intervalMin + 1));
-      await new Promise((resolve) => setTimeout(resolve, delaySeconds * 1000));
+      if (i < contacts.length - 1) {
+        const delaySeconds =
+          intervalMin + Math.floor(Math.random() * Math.max(1, intervalMax - intervalMin + 1));
+        await new Promise((resolve) => setTimeout(resolve, delaySeconds * 1000));
+      }
     }
 
     return res.json({ ok: true, campaignId, contactsCount: contacts.length, errors });
