@@ -679,7 +679,7 @@ function App() {
     text = text.replace(/<code[^>]*>([\s\S]*?)<\/code>/gi, '$1')
 
     // listas com marcas (simples)
-    text = text.replace(/<li[^>]*>([\s\S]*?)<\/li>/gi, '* $1\n')
+    text = text.replace(/<li[^>]*>\s*([\s\S]*?)\s*<\/li>/gi, '• $1\n')
 
     // citação
     text = text.replace(/<blockquote[^>]*>([\s\S]*?)<\/blockquote>/gi, '> $1\n')

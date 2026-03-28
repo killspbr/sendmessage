@@ -5,7 +5,7 @@ import Underline from '@tiptap/extension-underline'
 import Link from '@tiptap/extension-link'
 import TextAlign from '@tiptap/extension-text-align'
 import Image from '@tiptap/extension-image'
-import type { CampaignChannel } from '../../types'
+import type { CampaignChannel, CampaignMediaItem, CampaignSharedContact } from '../../types'
 
 type CampaignEditorProps = {
   content: string
@@ -14,6 +14,8 @@ type CampaignEditorProps = {
   aiLoading: 'suggest' | 'rewrite' | null
   channels: CampaignChannel[]
   htmlToWhatsapp: (html: string) => string
+  mediaItems?: CampaignMediaItem[]
+  sharedContact?: CampaignSharedContact | null
 }
 
 const variables = [
@@ -44,6 +46,14 @@ const testData = {
 
 const resolveTemplate = (template: string, data: Record<string, string>) =>
   Object.entries(data).reduce((acc, [key, value]) => acc.replace(new RegExp(key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), value), template)
+
+const normalizeWhatsappPreview = (text: string) =>
+  String(text || '')
+    .replace(/\n[ \t]+/g, '\n')
+    .replace(/\n{2,}•/g, '\n•')
+    .replace(/•\s*\n+/g, '• ')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
 
 const EDITOR_EXTENSIONS = [
   StarterKit.configure({ link: false, underline: false }),
@@ -82,6 +92,8 @@ export function CampaignEditor({
   aiLoading,
   channels,
   htmlToWhatsapp,
+  mediaItems = [],
+  sharedContact = null,
 }: CampaignEditorProps) {
   const [activeTab, setActiveTab] = useState<'editor' | 'preview'>('editor')
   const [useTestData, setUseTestData] = useState(false)
@@ -108,7 +120,25 @@ export function CampaignEditor({
     return text ? text.split(/\s+/).length : 0
   }, [editor, content])
   const finalContent = useMemo(() => (useTestData ? resolveTemplate(content, testData) : content), [content, useTestData])
-  const whatsappPreview = useMemo(() => htmlToWhatsapp(finalContent), [finalContent, htmlToWhatsapp])
+  const whatsappPreview = useMemo(
+    () => normalizeWhatsappPreview(htmlToWhatsapp(finalContent)),
+    [finalContent, htmlToWhatsapp]
+  )
+  const previewContact = useMemo(() => {
+    if (!sharedContact) return null
+    const base = useTestData
+      ? {
+          fullName: resolveTemplate(sharedContact.fullName || '', testData),
+          phone: resolveTemplate(sharedContact.phone || '', testData),
+          company: resolveTemplate(sharedContact.company || '', testData),
+          email: resolveTemplate(sharedContact.email || '', testData),
+          url: resolveTemplate(sharedContact.url || '', testData),
+        }
+      : sharedContact
+
+    const hasData = Object.values(base).some((value) => String(value || '').trim())
+    return hasData ? base : null
+  }, [sharedContact, useTestData])
 
   const insertVariable = (value: string) => editor?.chain().focus().insertContent(value).run()
   const insertQuickBlock = (html: string) => editor?.chain().focus().insertContent(html).run()
@@ -180,6 +210,33 @@ export function CampaignEditor({
                       {whatsappPreview || <span className="italic text-slate-400">Mensagem vazia...</span>}
                     </div>
                   </div>
+                  {mediaItems.length > 0 && (
+                    <div className="mt-3 space-y-2">
+                      {mediaItems.map((item, index) => (
+                        <div key={item.id} className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+                          <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">
+                            {item.mediaType === 'document' ? 'Documento' : 'Imagem'} {index + 1}
+                          </div>
+                          <div className="mt-1 truncate text-xs text-slate-500">{item.url || 'URL pendente'}</div>
+                          {item.caption && (
+                            <div className="mt-2 rounded-xl bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                              {useTestData ? resolveTemplate(item.caption, testData) : item.caption}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {previewContact && (
+                    <div className="mt-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                      <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">Contato compartilhado</div>
+                      <div className="mt-2 text-sm font-semibold text-slate-800">{previewContact.fullName}</div>
+                      {previewContact.company && <div className="text-sm text-slate-600">{previewContact.company}</div>}
+                      {previewContact.phone && <div className="mt-1 text-sm text-slate-700">{previewContact.phone}</div>}
+                      {previewContact.email && <div className="text-sm text-slate-500">{previewContact.email}</div>}
+                      {previewContact.url && <div className="text-sm text-slate-500">{previewContact.url}</div>}
+                    </div>
+                  )}
                 </div>
               )}
               {channels.includes('email') && (

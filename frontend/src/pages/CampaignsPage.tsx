@@ -572,6 +572,8 @@ export function CampaignsPage({
                 onChange={onSetNewCampaignMessage}
                 channels={newCampaignChannels}
                 htmlToWhatsapp={htmlToWhatsapp}
+                mediaItems={newCampaignMediaItems}
+                sharedContact={newCampaignSharedContact}
                 aiLoading={aiLoading}
                 onGenerateAI={
                   onGenerateCampaignContentWithAI

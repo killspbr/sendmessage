@@ -186,9 +186,14 @@ export function useGeminiAI({
             : '- Não use emojis.'
 
         const channelStrategy = getChannelStrategy(channels, messageSize)
+        const whatsappEnabled = channels.includes('whatsapp')
 
         const companyContext = userCompanyInfo
             ? `\nContexto sobre a empresa remetente:\n${userCompanyInfo}\n(Use essas informações para alinhar o conteúdo ao perfil do negócio.)\n`
+            : ''
+
+        const whatsappPromptRules = whatsappEnabled
+            ? '\n- Para WhatsApp, abra como conversa real e evite tom institucional.\n- Use no máximo 1 emoji na abertura e poucos emojis no restante.\n- Se usar bullets, use no máximo 3 itens e sem linhas em branco exageradas.\n'
             : ''
 
         let prompt: string
@@ -262,6 +267,10 @@ FORMATO DE SAÍDA:
 - Retorne apenas o HTML reescrito com tags como <p>, <ul>, <li>, <strong>, <em> e <br>.
 - Não use markdown nem explicações fora do HTML.
 `
+        }
+
+        if (whatsappPromptRules) {
+            prompt += `\nREGRAS EXTRAS PARA WHATSAPP:\n${whatsappPromptRules}`
         }
 
         try {

@@ -65,7 +65,7 @@ export const htmlToWhatsapp = (html) => {
   });
 
   // listas
-  text = text.replace(/<li[^>]*>([\s\S]*?)<\/li>/gi, '* $1\n');
+  text = text.replace(/<li[^>]*>\s*([\s\S]*?)\s*<\/li>/gi, '• $1\n');
   text = text.replace(/<\/?(ul|ol)[^>]*>/gi, '\n');
   // parágrafos e quebras
   text = text.replace(/<br\s*\/?>/gi, '\n');
@@ -74,6 +74,10 @@ export const htmlToWhatsapp = (html) => {
   // remover demais tags e limpar
   return text
     .replace(/<[^>]+>/g, '')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n[ \t]+/g, '\n')
+    .replace(/\n{2,}•/g, '\n•')
+    .replace(/•\s*\n+/g, '• ')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
 };
