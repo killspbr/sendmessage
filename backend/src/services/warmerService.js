@@ -73,11 +73,18 @@ async function postEvolution(url, apiKey, body) {
     } catch(e) {}
 
     // Resiliência: Se for 404 ou erro de instância, retornamos success false em vez de throw
-    if (response.status === 404 || errorText.toLowerCase().includes('not found') || errorText.toLowerCase().includes('does not exist')) {
+    const isInstanceError = response.status === 404 || 
+                            errorText.toLowerCase().includes('not found') || 
+                            errorText.toLowerCase().includes('does not exist') ||
+                            errorText.toLowerCase().includes('instance_not_found');
+
+    if (isInstanceError) {
       return { success: false, error: 'Instância desconectada ou inexistente na Evolution API' };
     }
 
-    throw new Error(errorText || `Erro HTTP ${response.status} da Evolution API`)
+    // Blindagem de Log: Nunca lance um objeto bruto como erro. Garanta String para evitar [object Object]
+    const finalErrorMsg = String(errorText || `Erro HTTP ${response.status} na API`).substring(0, 300);
+    throw new Error(finalErrorMsg);
   }
 
   return { success: true };
@@ -85,8 +92,9 @@ async function postEvolution(url, apiKey, body) {
 
 // Envio de presença (composing/recording)
 async function sendPresence(evolutionUrl, apiKey, instanceName, toPhone, type = 'composing') {
+  const normalizedInstance = String(instanceName || '').toLowerCase().trim();
   return await postEvolution(
-    `${evolutionUrl}/chat/sendPresence/${instanceName}`,
+    `${evolutionUrl}/chat/sendPresence/${normalizedInstance}`,
     apiKey,
     {
       number: toPhone,
@@ -98,8 +106,9 @@ async function sendPresence(evolutionUrl, apiKey, instanceName, toPhone, type = 
 
 // Envio de texto
 async function sendText(evolutionUrl, apiKey, instanceName, toPhone, text) {
+  const normalizedInstance = String(instanceName || '').toLowerCase().trim();
   return await postEvolution(
-    `${evolutionUrl}/message/sendText/${instanceName}`,
+    `${evolutionUrl}/message/sendText/${normalizedInstance}`,
     apiKey,
     {
       number: toPhone,
@@ -130,8 +139,8 @@ async function fetchRecentLogs(warmerId) {
 }
 
 async function generateDynamicMessage(history, myPhone, toPhone) {
-  // Vamos usar a chave do banco da nossa engine do backend
-  const keyObj = await getActiveGeminiKey();
+  // Chamada de IA: Priorização de cota para Maturação (isPriority = true)
+  const keyObj = await getActiveGeminiKey(true);
   if (!keyObj || !keyObj.api_key) {
     throw new Error('Sem chave Gemini disponível');
   }
@@ -329,7 +338,8 @@ export async function executeWarmerInteraction(warmer, evoUrl, evoKey, sentToday
     const countMsgs = historyText === 'Nenhum histórico anterior.' ? 0 : historyText.split('\n').length;
     console.log(`[Warmer${isForced ? ' FOREGROUND' : ''}] AI Generated: "${messageContent}" (based on ${countMsgs} logs)`);
   } catch (aiError) {
-    console.warn(`[Warmer${isForced ? ' FOREGROUND' : ''}] Fallback activado (Erro Gemini):`, aiError.message);
+    // Fallback Totalmente Silencioso: Se a IA falhar por cota ou erro, apenas usamos o pool local
+    console.warn(`[Warmer${isForced ? ' FOREGROUND' : ''}] Usando Fallback (Sem Cota AI):`, aiError.message);
     messageContent = getRandomMessage();
   }
 

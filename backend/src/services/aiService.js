@@ -3,16 +3,18 @@ import { query } from '../db.js';
 /**
  * Serviço para gerenciar múltiplas chaves do Gemini com rotação automática e limites.
  */
-export async function getActiveGeminiKey() {
-  // Busca todas as chaves ativas que ainda não atingiram o limite de 20 usos
-  const result = await query(
-    'SELECT * FROM gemini_api_keys WHERE status = $1 AND requests_count < 20 ORDER BY requests_count ASC, ultimo_uso ASC LIMIT 1',
-    ['ativa']
-  );
+export async function getActiveGeminiKey(isPriority = false) {
+  // Se for prioridade (ex: warmer), ignorar o limite de 20 usos e incluir chaves com status limite_atingido
+  const queryText = isPriority
+    ? 'SELECT * FROM gemini_api_keys WHERE status IN ($1, $2) ORDER BY requests_count ASC, ultimo_uso ASC LIMIT 1'
+    : 'SELECT * FROM gemini_api_keys WHERE status = $1 AND requests_count < 20 ORDER BY requests_count ASC, ultimo_uso ASC LIMIT 1';
+
+  const params = isPriority ? ['ativa', 'limite_atingido'] : ['ativa'];
+
+  const result = await query(queryText, params);
 
   if (result.rows.length === 0) {
-    // Se não houver chaves com menos de 20 usos, tenta rotacionar ou alerta
-    console.warn('[GeminiService] Nenhuma chave disponível com cota restante.');
+    if (!isPriority) console.warn('[GeminiService] Nenhuma chave disponível com cota restante.');
     return null;
   }
 
