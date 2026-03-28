@@ -162,6 +162,11 @@ async function finalizeCompletedSchedules() {
     `SELECT cs.id, cs.campaign_id
      FROM campaign_schedule cs
      WHERE cs.status = 'em_execucao'
+       AND EXISTS (
+         SELECT 1
+         FROM message_queue mq_exists
+         WHERE mq_exists.schedule_id = cs.id
+       )
        AND NOT EXISTS (
          SELECT 1
          FROM message_queue mq
@@ -320,15 +325,6 @@ async function enqueueScheduleMessages(schedule, campaign) {
     return
   }
 
-  await queueWorkerDeps.query(
-    `UPDATE campaign_schedule
-     SET status = $1,
-         pause_reason = NULL,
-         pause_details = NULL
-     WHERE id = $2`,
-    ['em_execucao', schedule.id]
-  )
-
   console.log(`[Scheduler] Gerando fila para ${contacts.length} contatos na campanha ${campaign.id}.`)
 
   for (const contact of contacts) {
@@ -348,6 +344,15 @@ async function enqueueScheduleMessages(schedule, campaign) {
       total_contatos: contacts.length,
     }),
   ])
+
+  await queueWorkerDeps.query(
+    `UPDATE campaign_schedule
+     SET status = $1,
+         pause_reason = NULL,
+         pause_details = NULL
+     WHERE id = $2`,
+    ['em_execucao', schedule.id]
+  )
 }
 
 /**

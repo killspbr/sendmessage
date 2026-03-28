@@ -138,7 +138,11 @@ function createQueryMock(state) {
 
     if (sql.includes("FROM campaign_schedule cs WHERE cs.status = 'em_execucao'")) {
       const rows = state.schedules
-        .filter((s) => s.status === 'em_execucao' && !state.queue.some((q) => q.schedule_id === s.id && (q.status === 'pendente' || q.status === 'processando')))
+        .filter((s) =>
+          s.status === 'em_execucao' &&
+          state.queue.some((q) => q.schedule_id === s.id) &&
+          !state.queue.some((q) => q.schedule_id === s.id && (q.status === 'pendente' || q.status === 'processando'))
+        )
         .map((s) => ({ id: s.id, campaign_id: s.campaign_id }))
       return { rows }
     }
@@ -298,6 +302,18 @@ test('scheduler gera fila para campanha agendada com contatos elegíveis', async
   assert.equal(state.queue.length, 2)
   assert.equal(state.schedules[0].status, 'em_execucao')
   assert.equal(state.logs.some((log) => log.event === 'queue_created'), true)
+})
+
+test('scheduler não conclui agendamento em execução sem fila criada', async () => {
+  const state = createState({
+    campaigns: [{ id: 'camp-1', status: 'agendada' }],
+    schedules: [{ id: 1, campaign_id: 'camp-1', user_id: 'user-1', status: 'em_execucao', limite_diario: 300 }],
+  })
+
+  setQueueWorkerDepsForTests({ query: createQueryMock(state) })
+  await runScheduler()
+
+  assert.equal(state.schedules[0].status, 'em_execucao')
 })
 
 test('worker envia mensagem com sucesso sem chamar integrações reais', async () => {
