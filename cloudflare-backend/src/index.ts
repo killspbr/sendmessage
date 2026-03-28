@@ -4,6 +4,7 @@ import { getDb } from './lib/db'
 import { ensureCloudflareSchema } from './lib/schema'
 import type { AppVariables, Bindings } from './types'
 import { healthRoutes } from './routes/health'
+import { statusRoutes } from './routes/status'
 import { presenceRoutes } from './routes/presence'
 import { uploadRoutes } from './routes/uploads'
 import { instanceLabRoutes } from './routes/instanceLab'
@@ -29,6 +30,7 @@ app.use('*', async (c, next) => {
 })
 
 app.route('/api', healthRoutes)
+app.route('/api', statusRoutes)
 app.route('/api', presenceRoutes)
 app.route('/api', uploadRoutes)
 app.route('/api', instanceLabRoutes)

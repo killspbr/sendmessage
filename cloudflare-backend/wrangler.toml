@@ -1,0 +1,21 @@
+name = "sendmessage-backend"
+main = "src/index.ts"
+compatibility_date = "2026-03-28"
+compatibility_flags = ["nodejs_compat"]
+
+[observability.logs]
+enabled = true
+
+[[r2_buckets]]
+binding = "UPLOADS_BUCKET"
+bucket_name = "sendmessage-uploads"
+
+[[hyperdrive]]
+binding = "HYPERDRIVE"
+id = "YOUR_HYPERDRIVE_ID"
+
+[vars]
+SYSTEM_TIMEZONE = "America/Sao_Paulo"
+SYSTEM_TIMEZONE_LABEL = "GMT-3 (America/Sao_Paulo)"
+ACTIVE_USER_WINDOW_SECONDS = "120"
+
