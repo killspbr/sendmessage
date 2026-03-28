@@ -42,14 +42,24 @@ async function getGlobalEvolutionConfig() {
 
 // Disparo assíncrono genérico
 async function postEvolution(url, apiKey, body) {
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      apikey: apiKey,
-    },
-    body: JSON.stringify(body),
-  })
+  let response;
+  try {
+    response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        apikey: apiKey,
+      },
+      body: JSON.stringify(body),
+    });
+  } catch (fetchErr) {
+    throw new Error(`Falha de conexão com a Evolution API: ${fetchErr.message}`);
+  }
+
+  if (!response) {
+    throw new Error('Nenhuma resposta retornada da Evolution API.');
+  }
+
   if (!response.ok) {
     let errorText = await response.text();
     try {
@@ -60,7 +70,7 @@ async function postEvolution(url, apiKey, body) {
          errorText = json.error;
        }
     } catch(e) {}
-    throw new Error(errorText)
+    throw new Error(errorText || `Erro HTTP ${response.status} da Evolution API`)
   }
 }
 
@@ -139,15 +149,24 @@ Regras obrigatórias:
     }
   };
 
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body)
-  });
+  let response;
+  try {
+    response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+  } catch (fetchErr) {
+    throw new Error(`Falha de conexão com o Gemini API: ${fetchErr.message}`);
+  }
+
+  if (!response) {
+    throw new Error('Nenhuma resposta retornada do Gemini API.');
+  }
 
   if (!response.ok) {
     const errorText = await response.text();
-    throw new Error(errorText.substring(0, 100));
+    throw new Error(`Erro Gemini [${response.status}]: ${errorText.substring(0, 100)}`);
   }
 
   const data = await response.json();
@@ -319,10 +338,14 @@ export async function executeWarmerInteraction(warmer, evoUrl, evoKey, sentToday
     await sendText(evoUrl, evoKey, fromInstance, toPhone, messageContent);
 
     // Record Log
-    await query(`
-      INSERT INTO warmer_logs (warmer_id, from_phone, to_phone, message_type, content_summary)
-      VALUES ($1, $2, $3, $4, $5)
-    `, [warmer.id, fromInstance, toPhone, 'text', messageContent]);
+    if (!warmer.id) {
+       console.warn('[Warmer Interaction] Não foi possível salvar log: warmer.id ausente.');
+    } else {
+       await query(`
+         INSERT INTO warmer_logs (warmer_id, from_phone, to_phone, message_type, content_summary)
+         VALUES ($1, $2, $3, $4, $5)
+       `, [warmer.id, fromInstance, toPhone, 'text', messageContent]);
+    }
 
     console.log(`[Warmer${isForced ? ' FOREGROUND' : ''}] Sucesso ${isForced ? '(Disparo Manual)' : `(${sentToday + 1}/${limiteHoje} hoje)`}`);
     return { success: true, message: messageContent, from: fromInstance, to: toPhone };
