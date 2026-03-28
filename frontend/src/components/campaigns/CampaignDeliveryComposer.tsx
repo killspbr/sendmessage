@@ -199,7 +199,12 @@ export function CampaignDeliveryComposer({
             </div>
           ) : (
             mediaItems.map((item, index) => {
-              const compatibleFiles = serverFiles.filter((file) => file.mediaType === item.mediaType)
+              const compatibleFiles = serverFiles.filter(
+                (file) => file.mediaType === item.mediaType && file.isAvailable
+              )
+              const selectedAsset = item.assetId
+                ? serverFiles.find((file) => file.id === item.assetId)
+                : null
               const usingAssetLibrary = item.sourceType === 'asset'
 
               return (
@@ -345,6 +350,18 @@ export function CampaignDeliveryComposer({
                       {item.assetName ? (
                         <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
                           Arquivo selecionado: <span className="font-semibold">{item.assetName}</span>
+                        </div>
+                      ) : null}
+
+                      {usingAssetLibrary && selectedAsset && !selectedAsset.isAvailable ? (
+                        <div className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
+                          {selectedAsset.availabilityReason || 'Este arquivo nao esta mais disponivel no servidor. Reenvie para a biblioteca e selecione novamente.'}
+                        </div>
+                      ) : null}
+
+                      {usingAssetLibrary && item.assetId && !selectedAsset ? (
+                        <div className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
+                          O arquivo vinculado a esta campanha nao foi encontrado na sua biblioteca atual. Reenvie e selecione novamente.
                         </div>
                       ) : null}
 

@@ -106,6 +106,18 @@ export function buildPublicFileUrl(baseUrl, file) {
   return `${baseUrl}/api/uploads/public/${file.public_token}/${encodeURIComponent(file.stored_name)}`
 }
 
+export function isStoredFileAvailable(file) {
+  if (file?.file_blob) {
+    return true
+  }
+
+  if (file?.storage_path && fs.existsSync(file.storage_path)) {
+    return true
+  }
+
+  return false
+}
+
 export function canInlineInBrowser(mimeType) {
   return (
     String(mimeType || '').startsWith('image/') ||
@@ -118,6 +130,7 @@ export function canInlineInBrowser(mimeType) {
 }
 
 export function formatUploadFileResponse(baseUrl, file) {
+  const isAvailable = isStoredFileAvailable(file)
   return {
     id: file.id,
     originalName: file.original_name,
@@ -129,6 +142,8 @@ export function formatUploadFileResponse(baseUrl, file) {
     createdAt: file.created_at,
     canInline: canInlineInBrowser(file.mime_type),
     publicUrl: buildPublicFileUrl(baseUrl, file),
+    isAvailable,
+    availabilityReason: isAvailable ? null : 'Arquivo indisponivel no armazenamento atual. Reenvie para a biblioteca.',
   }
 }
 

@@ -161,6 +161,8 @@ export type UploadedUserFile = {
   createdAt: string
   canInline: boolean
   publicUrl: string
+  isAvailable: boolean
+  availabilityReason?: string | null
 }
 
 export type UserLimitMetric = {
