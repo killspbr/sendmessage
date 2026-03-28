@@ -386,11 +386,19 @@ async function enqueueScheduleMessages(schedule, campaign) {
 
   for (const contact of contacts) {
     const baseMessage = variationsList[Math.floor(Math.random() * variationsList.length)] || campaign.message || ''
-    await queueWorkerDeps.query(
-      `INSERT INTO message_queue (schedule_id, campaign_id, user_id, contact_id, telefone, nome, mensagem)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-      [schedule.id, schedule.campaign_id, schedule.user_id, contact.id, contact.phone, contact.name, baseMessage]
-    )
+      await queueWorkerDeps.query(
+        `INSERT INTO message_queue (schedule_id, campaign_id, user_id, contact_id, telefone, nome, mensagem)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [
+          schedule.id,
+          schedule.campaign_id,
+          schedule.user_id,
+          contact.id == null ? null : String(contact.id),
+          contact.phone,
+          contact.name,
+          baseMessage,
+        ]
+      )
   }
 
   await queueWorkerDeps.query('INSERT INTO scheduler_logs (event, details) VALUES ($1, $2)', [

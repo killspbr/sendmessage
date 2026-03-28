@@ -2221,16 +2221,16 @@ async function runMigrations() {
       resumed_at TIMESTAMP WITH TIME ZONE,
       data_criacao TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
     )`,
-    `CREATE TABLE IF NOT EXISTS message_queue (
-      id SERIAL PRIMARY KEY,
-      schedule_id INTEGER REFERENCES campaign_schedule(id) ON DELETE CASCADE,
-      campaign_id UUID NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
-      user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-      contact_id UUID REFERENCES contacts(id) ON DELETE SET NULL,
-      telefone TEXT NOT NULL,
-      nome TEXT,
-      mensagem TEXT NOT NULL,
-      status TEXT DEFAULT 'pendente',
+      `CREATE TABLE IF NOT EXISTS message_queue (
+        id SERIAL PRIMARY KEY,
+        schedule_id INTEGER REFERENCES campaign_schedule(id) ON DELETE CASCADE,
+        campaign_id UUID NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
+        user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        contact_id TEXT,
+        telefone TEXT NOT NULL,
+        nome TEXT,
+        mensagem TEXT NOT NULL,
+        status TEXT DEFAULT 'pendente',
       tentativas INTEGER DEFAULT 0,
       data_criacao TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
       data_envio TIMESTAMP WITH TIME ZONE,
@@ -2288,12 +2288,31 @@ async function runMigrations() {
     `ALTER TABLE campaign_schedule ADD COLUMN IF NOT EXISTS scheduler_claimed_at TIMESTAMP WITH TIME ZONE`,
     `ALTER TABLE campaign_schedule ADD COLUMN IF NOT EXISTS pause_reason TEXT`,
     `ALTER TABLE campaign_schedule ADD COLUMN IF NOT EXISTS pause_details TEXT`,
-    `ALTER TABLE campaign_schedule ADD COLUMN IF NOT EXISTS paused_at TIMESTAMP WITH TIME ZONE`,
-    `ALTER TABLE campaign_schedule ADD COLUMN IF NOT EXISTS resumed_at TIMESTAMP WITH TIME ZONE`,
-    `ALTER TABLE message_queue ADD COLUMN IF NOT EXISTS schedule_id INTEGER REFERENCES campaign_schedule(id) ON DELETE CASCADE`,
-    `CREATE INDEX IF NOT EXISTS idx_mq_schedule_status ON message_queue(schedule_id, status)`,
-    `ALTER TABLE message_queue ADD COLUMN IF NOT EXISTS processing_started_at TIMESTAMP WITH TIME ZONE`,
-    `ALTER TABLE message_queue ADD COLUMN IF NOT EXISTS recovered_at TIMESTAMP WITH TIME ZONE`,
+      `ALTER TABLE campaign_schedule ADD COLUMN IF NOT EXISTS paused_at TIMESTAMP WITH TIME ZONE`,
+      `ALTER TABLE campaign_schedule ADD COLUMN IF NOT EXISTS resumed_at TIMESTAMP WITH TIME ZONE`,
+      `ALTER TABLE message_queue ADD COLUMN IF NOT EXISTS schedule_id INTEGER REFERENCES campaign_schedule(id) ON DELETE CASCADE`,
+      `DO $$
+       DECLARE fk_name TEXT;
+       BEGIN
+         SELECT tc.constraint_name
+           INTO fk_name
+         FROM information_schema.table_constraints tc
+         JOIN information_schema.key_column_usage kcu
+           ON tc.constraint_name = kcu.constraint_name
+          AND tc.table_schema = kcu.table_schema
+         WHERE tc.table_name = 'message_queue'
+           AND tc.constraint_type = 'FOREIGN KEY'
+           AND kcu.column_name = 'contact_id'
+         LIMIT 1;
+
+         IF fk_name IS NOT NULL THEN
+           EXECUTE format('ALTER TABLE message_queue DROP CONSTRAINT %I', fk_name);
+         END IF;
+       END $$;`,
+      `ALTER TABLE message_queue ALTER COLUMN contact_id TYPE TEXT USING contact_id::text`,
+      `CREATE INDEX IF NOT EXISTS idx_mq_schedule_status ON message_queue(schedule_id, status)`,
+      `ALTER TABLE message_queue ADD COLUMN IF NOT EXISTS processing_started_at TIMESTAMP WITH TIME ZONE`,
+      `ALTER TABLE message_queue ADD COLUMN IF NOT EXISTS recovered_at TIMESTAMP WITH TIME ZONE`,
   ];
 
   for (const sql of migrations) {
