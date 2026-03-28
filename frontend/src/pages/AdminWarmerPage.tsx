@@ -42,8 +42,10 @@ export function AdminWarmerPage({ can }: { can?: (code: string) => boolean }) {
     try {
       setLoading(true)
       const data = await apiFetch('/api/admin/warmer')
-      setWarmers(data || [])
+      console.log('[WarmerPage] Dados Carregados:', data)
+      setWarmers(Array.isArray(data) ? data : [])
     } catch (e: any) {
+      console.error('[WarmerPage] Erro ao carregar:', e)
       setError(e.message || 'Erro ao carregar dados do maturador')
     } finally {
       setLoading(false)
@@ -154,11 +156,18 @@ export function AdminWarmerPage({ can }: { can?: (code: string) => boolean }) {
         </div>
       )}
 
+      {error && (
+        <div className="rounded-2xl border border-red-300 bg-red-50 p-6 text-red-600 mb-6 font-medium">
+          ⚠️ Ocorreu um erro: {error}
+        </div>
+      )}
+
       {loading ? (
         <div className="p-10 text-center text-slate-500 text-sm animate-pulse">Carregando maturadores...</div>
       ) : warmers.length === 0 && !isCreating ? (
-        <div className="rounded-3xl border border-dashed border-slate-300 bg-slate-50 p-10 text-center text-slate-500 text-sm">
-          Nenhuma rotina de maturação ativa. Crie uma para começar o aquecimento dos chips.
+        <div className="rounded-3xl border border-dashed border-slate-300 bg-slate-50 p-10 flex flex-col items-center justify-center gap-4 text-center text-slate-500 text-sm">
+          <p>Nenhuma rotina de maturação ativa. Crie o seu primeiro aquecimento de instâncias.</p>
+          <button onClick={() => setIsCreating(true)} className="rounded-2xl bg-indigo-600 px-6 py-2 text-sm font-semibold text-white transition hover:bg-indigo-700">Adicionar Instância +</button>
         </div>
       ) : (
         <div className="grid gap-4 md:grid-cols-2">

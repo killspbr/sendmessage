@@ -3313,6 +3313,8 @@ function App() {
                 impersonatedUserId={impersonatedUserId}
                 onImpersonateUser={setImpersonatedUserId}
               />
+            ) : currentPage === 'warmer' ? (
+              <AdminWarmerPage can={can} />
             ) : currentPage === 'gemini-keys' ? (
               <GeminiKeysPage />
             ) : currentPage === 'security' ? (
