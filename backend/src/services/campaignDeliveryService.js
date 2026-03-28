@@ -140,7 +140,7 @@ export function validateCampaignDeliveryPayload(rawPayload, channels = []) {
   if (!payload) {
     return {
       payload: null,
-      errors: ['O payload estruturado da campanha está inválido.'],
+      errors: ['O payload estruturado da campanha esta invalido.'],
     }
   }
 
@@ -152,12 +152,12 @@ export function validateCampaignDeliveryPayload(rawPayload, channels = []) {
       .flatMap((block) => block.items || [])
 
     if (mediaItems.length > MAX_MEDIA_ITEMS) {
-      errors.push(`A campanha suporta no máximo ${MAX_MEDIA_ITEMS} mídias por WhatsApp.`)
+      errors.push(`A campanha suporta no maximo ${MAX_MEDIA_ITEMS} midias por WhatsApp.`)
     }
 
     for (const media of mediaItems) {
       if (!isValidHttpUrl(media.url)) {
-        errors.push(`A mídia "${media.id}" precisa usar uma URL pública válida.`)
+        errors.push(`A midia "${media.id}" precisa usar uma URL publica valida.`)
       }
     }
 
@@ -220,8 +220,89 @@ async function postEvolutionMessage(fetchImpl, url, apiKey, body) {
   }
 }
 
+async function postEvolutionMedia(fetchImpl, url, apiKey, body) {
+  const response = await fetchImpl(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      apikey: apiKey,
+    },
+    body: JSON.stringify(body),
+  })
+
+  if (!response.ok) {
+    throw new Error(await response.text())
+  }
+}
+
 function resolveMediaCaption(caption, contact) {
   return safeTrim(resolveTemplate(caption || '', contact))
+}
+
+function inferFileNameFromUrl(url) {
+  try {
+    const parsed = new URL(String(url || '').trim())
+    const pathname = parsed.pathname || ''
+    return safeTrim(decodeURIComponent(pathname.split('/').pop() || ''))
+  } catch {
+    return ''
+  }
+}
+
+function sanitizeFileName(fileName, fallbackBase = 'arquivo') {
+  const safeName = safeTrim(fileName)
+    .replace(/[<>:"/\\|?*\x00-\x1F]+/g, '-')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  return safeName || fallbackBase
+}
+
+function inferMimeType(media) {
+  const explicitMime = safeTrim(media?.mimeType).toLowerCase()
+  if (explicitMime) return explicitMime
+
+  const fileName = `${safeTrim(media?.assetName)} ${inferFileNameFromUrl(media?.url || '')}`.toLowerCase()
+
+  if (fileName.endsWith('.pdf')) return 'application/pdf'
+  if (fileName.endsWith('.pptx')) return 'application/vnd.openxmlformats-officedocument.presentationml.presentation'
+  if (fileName.endsWith('.ppt')) return 'application/vnd.ms-powerpoint'
+  if (fileName.endsWith('.wav')) return 'audio/wav'
+  if (fileName.endsWith('.mp4')) return 'video/mp4'
+  if (fileName.endsWith('.png')) return 'image/png'
+  if (fileName.endsWith('.webp')) return 'image/webp'
+  if (fileName.endsWith('.jpg') || fileName.endsWith('.jpeg')) return 'image/jpeg'
+
+  return media?.mediaType === 'document' ? 'application/octet-stream' : 'image/jpeg'
+}
+
+function resolveMediaFileName(media) {
+  const fromAsset = safeTrim(media?.assetName)
+  if (fromAsset) {
+    return sanitizeFileName(fromAsset, media?.mediaType === 'document' ? 'documento' : 'imagem')
+  }
+
+  const fromUrl = inferFileNameFromUrl(media?.url || '')
+  if (fromUrl) {
+    return sanitizeFileName(fromUrl, media?.mediaType === 'document' ? 'documento' : 'imagem')
+  }
+
+  const fallbackExt = media?.mediaType === 'document' ? '.pdf' : '.jpg'
+  return sanitizeFileName(`${media?.id || 'arquivo'}${fallbackExt}`, 'arquivo')
+}
+
+function buildMediaCaption({ messageText, mediaCaption, attachMessage }) {
+  const parts = []
+
+  if (attachMessage && safeTrim(messageText)) {
+    parts.push(safeTrim(messageText))
+  }
+
+  if (safeTrim(mediaCaption)) {
+    parts.push(safeTrim(mediaCaption))
+  }
+
+  return parts.join('\n\n').trim()
 }
 
 function resolveSharedContact(sharedContact, contact) {
@@ -249,7 +330,7 @@ export async function executeWhatsappCampaignDelivery({
 }) {
   const evolutionNumber = toEvolutionNumber(contact.phone)
   if (!evolutionNumber) {
-    throw new Error('Contato sem telefone válido para envio no formato Evolution.')
+    throw new Error('Contato sem telefone valido para envio no formato Evolution.')
   }
 
   const plan = buildCampaignDeliveryPlan(campaign, { messageOverride })
@@ -265,7 +346,9 @@ export async function executeWhatsappCampaignDelivery({
     errors: [],
   }
 
-  if (messageText) {
+  const attachMainTextToFirstMedia = Boolean(messageText && plan.mediaItems.length > 0)
+
+  if (messageText && !attachMainTextToFirstMedia) {
     await postEvolutionMessage(
       fetchImpl,
       `${evolutionUrl}/message/sendText/${evolutionInstance}`,
@@ -279,30 +362,44 @@ export async function executeWhatsappCampaignDelivery({
     result.sentText = true
   }
 
-  for (const media of plan.mediaItems) {
+  for (const [index, media] of plan.mediaItems.entries()) {
     const resolvedUrl = safeTrim(resolveTemplate(media.url, contact))
     if (!isValidHttpUrl(resolvedUrl)) {
       result.mediaFailed += 1
-      result.errors.push(`Mídia inválida ignorada: ${media.id}`)
+      result.errors.push(`Midia invalida ignorada: ${media.id}`)
       continue
     }
 
     try {
-      await postEvolutionMessage(
+      const attachMessage = attachMainTextToFirstMedia && index === 0
+      const caption = buildMediaCaption({
+        messageText,
+        mediaCaption: resolveMediaCaption(media.caption, contact),
+        attachMessage,
+      })
+
+      await postEvolutionMedia(
         fetchImpl,
         `${evolutionUrl}/message/sendMedia/${evolutionInstance}`,
         evolutionApiKey,
         {
           number: evolutionNumber,
-          media: resolvedUrl,
-          mediatype: media.mediaType,
-          caption: resolveMediaCaption(media.caption, contact),
+          mediaMessage: {
+            mediaType: media.mediaType,
+            fileName: resolveMediaFileName(media),
+            caption,
+            mimetype: inferMimeType(media),
+            media: resolvedUrl,
+          },
         }
       )
       result.mediaSent += 1
+      if (attachMessage) {
+        result.sentText = true
+      }
     } catch (error) {
       result.mediaFailed += 1
-      result.errors.push(`Falha ao enviar mídia ${media.id}: ${error?.message || 'erro desconhecido'}`)
+      result.errors.push(`Falha ao enviar midia ${media.id}: ${error?.message || 'erro desconhecido'}`)
     }
   }
 
@@ -311,12 +408,12 @@ export async function executeWhatsappCampaignDelivery({
 
     if (!resolvedSharedContact) {
       result.contactFailed = true
-      result.errors.push('Contato compartilhado inválido ou incompleto.')
+      result.errors.push('Contato compartilhado invalido ou incompleto.')
     } else {
       try {
         const contactNumber = toEvolutionNumber(resolvedSharedContact.phone)
         if (!contactNumber) {
-          throw new Error('Telefone do contato compartilhado está inválido.')
+          throw new Error('Telefone do contato compartilhado esta invalido.')
         }
 
         await postEvolutionMessage(
