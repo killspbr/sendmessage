@@ -312,7 +312,7 @@ function canUseMessageAsFirstMediaCaption(media) {
 }
 
 async function resolveMediaBody(fetchImpl, media, resolvedUrl) {
-  if (media.sourceType !== 'asset') {
+  if (media.sourceType !== 'asset' || media.mediaType === 'document') {
     return resolvedUrl
   }
 
