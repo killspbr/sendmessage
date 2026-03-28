@@ -290,6 +290,10 @@ function buildMediaCaption({ messageText, mediaCaption, attachMessage }) {
   return parts.join('\n\n').trim()
 }
 
+function canUseMessageAsFirstMediaCaption(media) {
+  return media?.mediaType === 'image'
+}
+
 async function resolveMediaBody(fetchImpl, media, resolvedUrl) {
   if (media.sourceType !== 'asset') {
     return resolvedUrl
@@ -458,6 +462,9 @@ export async function executeWhatsappCampaignDelivery({
   }
 
   const [firstMedia, ...remainingMedia] = plan.mediaItems
+  const useMessageAsFirstMediaCaption = Boolean(
+    messageText && firstMedia && canUseMessageAsFirstMediaCaption(firstMedia)
+  )
 
   const sendMediaItem = async (media, options = {}) => {
     const resolvedUrl = safeTrim(resolveTemplate(media.url, contact))
@@ -496,10 +503,10 @@ export async function executeWhatsappCampaignDelivery({
   }
 
   if (firstMedia) {
-    await sendMediaItem(firstMedia, { attachMessage: false })
+    await sendMediaItem(firstMedia, { attachMessage: useMessageAsFirstMediaCaption })
   }
 
-  if (messageText) {
+  if (messageText && !useMessageAsFirstMediaCaption) {
     await postEvolution(
       fetchImpl,
       `${evolutionUrl}/message/sendText/${evolutionInstance}`,
