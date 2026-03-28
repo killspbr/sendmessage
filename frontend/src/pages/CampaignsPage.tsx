@@ -101,6 +101,48 @@ function getLocalDateInputValue(date = new Date()) {
   return `${year}-${month}-${day}`
 }
 
+function getHistoryTime(entry: ContactSendHistoryItem) {
+  const time = entry.runAtIso ? new Date(entry.runAtIso).getTime() : new Date(entry.runAt).getTime()
+  return Number.isNaN(time) ? 0 : time
+}
+
+function getDeliveryStatusMeta(entry: ContactSendHistoryItem) {
+  if (entry.status === 207 || entry.providerStatus === 'partial') {
+    return {
+      label: 'Parcial',
+      className: 'bg-amber-50 text-amber-700 border border-amber-200',
+      title: entry.errorDetail || 'O envio principal saiu, mas houve falha em parte da entrega composta.',
+    }
+  }
+
+  if (entry.ok) {
+    return {
+      label: 'Enviado',
+      className: 'bg-emerald-50 text-emerald-700 border border-emerald-200',
+      title: 'Entrega concluída sem erros registrados.',
+    }
+  }
+
+  return {
+    label: 'Erro',
+    className: 'bg-rose-50 text-rose-700 border border-rose-200',
+    title: entry.errorDetail || 'Falha no envio.',
+  }
+}
+
+function buildDeliveryDetailParts(entry: ContactSendHistoryItem) {
+  const summary = entry.deliverySummary
+  if (!summary) return []
+
+  const parts: string[] = []
+  if (summary.sentText) parts.push('Texto')
+  if (summary.mediaSent > 0) parts.push(`Mídia ${summary.mediaSent}`)
+  if (summary.mediaFailed > 0) parts.push(`Falha mídia ${summary.mediaFailed}`)
+  if (summary.contactSent) parts.push('Contato')
+  if (summary.contactFailed) parts.push('Falha contato')
+  return parts
+}
+
 export function CampaignsPage({
   campaigns,
   lists,
@@ -1033,7 +1075,7 @@ export function CampaignsPage({
                         const allEntries = contactSendHistory
                           .filter((h) => h.campaignId === camp.id)
                           .slice()
-                          .sort((a, b) => b.runAt.localeCompare(a.runAt))
+                          .sort((a, b) => getHistoryTime(b) - getHistoryTime(a))
 
                         let entries = allEntries
 
@@ -1046,7 +1088,7 @@ export function CampaignsPage({
                             <p className="text-slate-400 text-[10px]">Nenhum envio registrado para esta campanha.</p>
                           )
                         }
-                        const successCount = entries.filter((e) => e.ok).length
+                        const successCount = entries.filter((e) => e.ok && e.status < 300).length
                         const errorCount = entries.filter((e) => !e.ok).length
 
                         const handleExportCsv = (e: React.MouseEvent<HTMLButtonElement>) => {
@@ -1058,7 +1100,14 @@ export function CampaignsPage({
                             'contato',
                             'telefone',
                             'canal',
+                            'status_entrega',
                             'status_ok',
+                            'texto_enviado',
+                            'midias_enviadas',
+                            'midias_com_falha',
+                            'contato_compartilhado',
+                            'contato_com_falha',
+                            'erro_detalhe',
                             'data_hora',
                           ]
 
@@ -1067,7 +1116,14 @@ export function CampaignsPage({
                             entry.contactName,
                             entry.phoneKey,
                             entry.channel,
+                            entry.providerStatus || (entry.ok ? 'sent' : 'error'),
                             entry.ok ? '1' : '0',
+                            entry.deliverySummary?.sentText ? '1' : '0',
+                            String(entry.deliverySummary?.mediaSent || 0),
+                            String(entry.deliverySummary?.mediaFailed || 0),
+                            entry.deliverySummary?.contactSent ? '1' : '0',
+                            entry.deliverySummary?.contactFailed ? '1' : '0',
+                            entry.errorDetail || '',
                             entry.runAt,
                           ])
 
@@ -1126,6 +1182,7 @@ export function CampaignsPage({
                                     <th className="py-1 pr-2">Telefone</th>
                                     <th className="py-1 pr-2">Canal</th>
                                     <th className="py-1 pr-2">Status</th>
+                                    <th className="py-1 pr-2">Entrega</th>
                                     <th className="py-1">Data/Hora</th>
                                   </tr>
                                 </thead>
@@ -1163,6 +1220,45 @@ export function CampaignsPage({
                                   ))}
                                 </tbody>
                               </table>
+                            </div>
+                            <div className="mt-3 grid gap-2">
+                              {entries
+                                .filter((entry) => entry.deliverySummary || entry.errorDetail)
+                                .slice(0, 8)
+                                .map((entry) => {
+                                  const statusMeta = getDeliveryStatusMeta(entry)
+                                  const deliveryParts = buildDeliveryDetailParts(entry)
+
+                                  return (
+                                    <div
+                                      key={`${entry.id}-detail`}
+                                      className="rounded-xl border border-slate-100 bg-slate-50/70 px-3 py-2"
+                                    >
+                                      <div className="flex flex-wrap items-center gap-2 text-[10px]">
+                                        <span className="font-semibold text-slate-700">{entry.contactName}</span>
+                                        <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-medium ${statusMeta.className}`}>
+                                          {statusMeta.label}
+                                        </span>
+                                        <span className="text-slate-400">{entry.runAt}</span>
+                                      </div>
+                                      <div className="mt-1 flex flex-wrap gap-1">
+                                        {deliveryParts.length > 0 ? deliveryParts.map((part) => (
+                                          <span
+                                            key={`${entry.id}-summary-${part}`}
+                                            className="px-1.5 py-0.5 rounded-full bg-white border border-slate-200 text-[9px] text-slate-600"
+                                          >
+                                            {part}
+                                          </span>
+                                        )) : (
+                                          <span className="text-[9px] text-slate-400">Sem detalhe estruturado</span>
+                                        )}
+                                      </div>
+                                      {entry.errorDetail ? (
+                                        <p className="mt-1 text-[9px] text-rose-600">{entry.errorDetail}</p>
+                                      ) : null}
+                                    </div>
+                                  )
+                                })}
                             </div>
                           </>
                         )

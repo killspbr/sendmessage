@@ -559,8 +559,8 @@ export function ContactsPage({
                         .filter((h) => normalizePhone(h.phoneKey) === phoneKey)
                         .slice()
                         .sort((a, b) => {
-                          const da = new Date(a.runAt).getTime()
-                          const db = new Date(b.runAt).getTime()
+                          const da = new Date(a.runAtIso || a.runAt).getTime()
+                          const db = new Date(b.runAtIso || b.runAt).getTime()
                           return db - da
                         })
 

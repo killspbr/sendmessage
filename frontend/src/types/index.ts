@@ -86,9 +86,18 @@ export type ContactSendHistoryItem = {
   status: number
   ok: boolean
   runAt: string
+  runAtIso?: string
   providerStatus?: string
   errorDetail?: string
   payloadRaw?: string
+  deliverySummary?: {
+    sentText: boolean
+    mediaSent: number
+    mediaFailed: number
+    contactSent: boolean
+    contactFailed: boolean
+    errors: string[]
+  }
 }
 
 export type ImportConflict = {

@@ -5,6 +5,7 @@ import { login, signup, forgotPassword, resetPassword, authenticateToken, checkA
 import { toEvolutionNumber } from './utils/messageUtils.js';
 import { getActiveGeminiKey, incrementKeyUsage, logGeminiUsage } from './services/aiService.js';
 import { executeWhatsappCampaignDelivery, validateCampaignDeliveryPayload } from './services/campaignDeliveryService.js';
+import { buildContactSendHistoryEntry, insertContactSendHistory, normalizeJsonbInput } from './services/sendHistoryService.js';
 
 process.env.TZ = process.env.SYSTEM_TIMEZONE || process.env.TZ || 'America/Sao_Paulo';
 
@@ -619,6 +620,66 @@ app.post('/api/schedules', authenticateToken, async (req, res) => {
 });
 
 // --- HISTÓRICO ---
+app.post('/api/history', authenticateToken, async (req, res) => {
+  try {
+    const {
+      campaign_id,
+      campaign_name,
+      contact_name,
+      phone_key,
+      channel,
+      ok,
+      status,
+      webhook_ok,
+      run_at,
+      provider_status,
+      error_detail,
+      payload_raw,
+      delivery_summary,
+    } = req.body;
+
+    const result = await query(
+      `INSERT INTO contact_send_history (
+        user_id,
+        campaign_id,
+        campaign_name,
+        contact_name,
+        phone_key,
+        channel,
+        ok,
+        status,
+        webhook_ok,
+        run_at,
+        provider_status,
+        error_detail,
+        payload_raw,
+        delivery_summary
+      ) VALUES (
+        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14
+      ) RETURNING *`,
+      [
+        req.user.id,
+        campaign_id,
+        campaign_name || null,
+        contact_name || '',
+        phone_key || '',
+        channel || 'whatsapp',
+        Boolean(ok),
+        Number(status || 0),
+        webhook_ok ?? Boolean(ok),
+        run_at || new Date().toISOString(),
+        provider_status || null,
+        error_detail || null,
+        normalizeJsonbInput(payload_raw),
+        normalizeJsonbInput(delivery_summary),
+      ]
+    );
+    return res.status(201).json(result.rows[0]);
+  } catch (error) {
+    return res.status(500).json({ error: 'Erro ao salvar histÃ³rico de contato' });
+  }
+});
+
 app.get('/api/history', authenticateToken, async (req, res) => {
   try {
     const result = await query(
@@ -633,10 +694,56 @@ app.get('/api/history', authenticateToken, async (req, res) => {
 
 app.post('/api/history', authenticateToken, async (req, res) => {
   try {
-    const { campaign_id, contact_name, phone_key, channel, ok, status, webhook_ok, run_at } = req.body;
+    const {
+      campaign_id,
+      campaign_name,
+      contact_name,
+      phone_key,
+      channel,
+      ok,
+      status,
+      webhook_ok,
+      run_at,
+      provider_status,
+      error_detail,
+      payload_raw,
+      delivery_summary,
+    } = req.body;
     const result = await query(
-      'INSERT INTO contact_send_history (user_id, campaign_id, contact_name, phone_key, channel, ok, status, webhook_ok, run_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *',
-      [req.user.id, campaign_id, contact_name, phone_key, channel, ok, status, webhook_ok, run_at || new Date().toISOString()]
+      `INSERT INTO contact_send_history (
+        user_id,
+        campaign_id,
+        campaign_name,
+        contact_name,
+        phone_key,
+        channel,
+        ok,
+        status,
+        webhook_ok,
+        run_at,
+        provider_status,
+        error_detail,
+        payload_raw,
+        delivery_summary
+      ) VALUES (
+        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14
+      ) RETURNING *`,
+      [
+        req.user.id,
+        campaign_id,
+        campaign_name || null,
+        contact_name,
+        phone_key,
+        channel,
+        ok,
+        status,
+        webhook_ok,
+        run_at || new Date().toISOString(),
+        provider_status || null,
+        error_detail || null,
+        normalizeJsonbInput(payload_raw),
+        normalizeJsonbInput(delivery_summary),
+      ]
     );
     res.status(201).json(result.rows[0]);
   } catch (error) {
@@ -987,6 +1094,154 @@ app.post('/api/campaigns/:id/send', authenticateToken, async (req, res) => {
       return res.status(400).json({ error: 'campaignId é obrigatório.' });
     }
 
+    const campaignResult = await query(
+      'SELECT * FROM campaigns WHERE id = $1 AND user_id = $2',
+      [campaignId, req.user.id]
+    );
+    const campaign = campaignResult.rows[0];
+
+    if (!campaign) {
+      return res.status(404).json({ error: 'Campanha não encontrada.' });
+    }
+
+    const listResult = await query(
+      'SELECT id, name FROM lists WHERE user_id = $1 AND name = $2',
+      [req.user.id, campaign.list_name]
+    );
+    const list = listResult.rows[0];
+
+    if (!list) {
+      return res.status(400).json({ error: 'Lista da campanha não encontrada.' });
+    }
+
+    const channels = Array.isArray(campaign.channels) ? campaign.channels : [];
+    const { errors: payloadErrors } = validateCampaignDeliveryPayload(campaign.delivery_payload, channels);
+    if (payloadErrors.length > 0) {
+      return res.status(400).json({ error: payloadErrors[0] });
+    }
+
+    const contactsResult = await query(
+      'SELECT id, name, phone, email, category, cep, address, city, rating FROM contacts WHERE user_id = $1 AND list_id = $2',
+      [req.user.id, list.id]
+    );
+    const contacts = contactsResult.rows;
+
+    if (contacts.length === 0) {
+      return res.status(400).json({ error: 'Lista não possui contatos para envio.' });
+    }
+
+    const profileResult = await query(
+      'SELECT webhook_whatsapp_url, webhook_email_url, evolution_url, evolution_apikey, evolution_instance FROM user_profiles WHERE id = $1',
+      [req.user.id]
+    );
+    const userProfile = profileResult.rows[0];
+    const globalSettingsResult = await query('SELECT * FROM app_settings LIMIT 1');
+    const globalSettings = globalSettingsResult.rows[0] || {};
+
+    const evolutionUrl = (userProfile?.evolution_url || globalSettings.evolution_api_url || '').trim();
+    const evolutionApiKey = (userProfile?.evolution_apikey || globalSettings.evolution_api_key || '').trim();
+    const evolutionInstance = (userProfile?.evolution_instance || globalSettings.evolution_shared_instance || '').trim();
+    const webhookUrlEmail = userProfile?.webhook_email_url || globalSettings.global_webhook_email_url || process.env.WEBHOOK_EMAIL || '';
+
+    const effectiveChannels = channels.filter((ch) => {
+      if (ch === 'whatsapp') {
+        return !!evolutionUrl && !!evolutionApiKey && !!evolutionInstance;
+      }
+      return !!webhookUrlEmail.trim();
+    });
+
+    if (effectiveChannels.length === 0) {
+      return res.status(400).json({
+        error:
+          'Nenhum serviço de envio configurado. Verifique as configurações da Evolution API para WhatsApp ou Webhook para Email.',
+      });
+    }
+
+    const intervalMin = campaign.interval_min_seconds ?? 30;
+    const intervalMax = campaign.interval_max_seconds ?? 90;
+    let errors = 0;
+    const items = [];
+
+    for (const contact of contacts) {
+      for (const channel of effectiveChannels) {
+        if (channel === 'whatsapp') {
+          const evolutionNumber = toEvolutionNumber(contact.phone);
+          if (!evolutionNumber) {
+            const invalidPhoneEntry = buildContactSendHistoryEntry({
+              userId: req.user.id,
+              campaign,
+              contact,
+              channel,
+              error: new Error('Contato sem telefone válido para envio no formato Evolution.'),
+            });
+            await insertContactSendHistory(query, invalidPhoneEntry);
+            items.push(invalidPhoneEntry);
+            errors++;
+            continue;
+          }
+
+          try {
+            const deliveryResult = await executeWhatsappCampaignDelivery({
+              evolutionUrl,
+              evolutionApiKey,
+              evolutionInstance,
+              campaign,
+              contact,
+            });
+
+            const historyEntry = buildContactSendHistoryEntry({
+              userId: req.user.id,
+              campaign,
+              contact,
+              channel,
+              deliveryResult,
+            });
+
+            await insertContactSendHistory(query, historyEntry);
+            items.push(historyEntry);
+
+            if (historyEntry.status !== 200) {
+              errors++;
+            }
+          } catch (sendError) {
+            console.error(`[Evolution] Falha na requisição para ${evolutionNumber}:`, sendError?.message || sendError);
+            const historyEntry = buildContactSendHistoryEntry({
+              userId: req.user.id,
+              campaign,
+              contact,
+              channel,
+              error: sendError,
+            });
+            await insertContactSendHistory(query, historyEntry);
+            items.push(historyEntry);
+            errors++;
+          }
+        }
+
+        if (channel === 'email') {
+          console.warn(`[Email] Canal email não suportado nesta versão. Contato: ${contact.name}`);
+        }
+      }
+
+      const delaySeconds =
+        intervalMin + Math.floor(Math.random() * Math.max(1, intervalMax - intervalMin + 1));
+      await new Promise((resolve) => setTimeout(resolve, delaySeconds * 1000));
+    }
+
+    return res.json({ ok: true, campaignId, contactsCount: contacts.length, errors, items });
+  } catch (error) {
+    console.error('Erro em /api/campaigns/:id/send [structured-history]:', error);
+    return res.status(500).json({ error: 'Falha ao enviar campanha.', details: error.message });
+  }
+});
+
+app.post('/api/campaigns/:id/send', authenticateToken, async (req, res) => {
+  try {
+    const campaignId = req.params.id;
+    if (!campaignId) {
+      return res.status(400).json({ error: 'campaignId é obrigatório.' });
+    }
+
     // 1) Buscar campanha
     const campaignResult = await query(
       'SELECT * FROM campaigns WHERE id = $1 AND user_id = $2',
@@ -1162,6 +1417,7 @@ app.post('/api/campaigns/:id/send', authenticateToken, async (req, res) => {
     const messageText = htmlToText(messageHtml);
 
     let errors = 0;
+    const items = [];
 
     for (let i = 0; i < contacts.length; i++) {
       const contact = contacts[i];
@@ -2353,6 +2609,11 @@ async function runMigrations() {
       `CREATE INDEX IF NOT EXISTS idx_mq_schedule_status ON message_queue(schedule_id, status)`,
       `ALTER TABLE message_queue ADD COLUMN IF NOT EXISTS processing_started_at TIMESTAMP WITH TIME ZONE`,
       `ALTER TABLE message_queue ADD COLUMN IF NOT EXISTS recovered_at TIMESTAMP WITH TIME ZONE`,
+      `ALTER TABLE contact_send_history ADD COLUMN IF NOT EXISTS provider_status TEXT`,
+      `ALTER TABLE contact_send_history ADD COLUMN IF NOT EXISTS error_detail TEXT`,
+      `ALTER TABLE contact_send_history ADD COLUMN IF NOT EXISTS payload_raw JSONB`,
+      `ALTER TABLE contact_send_history ADD COLUMN IF NOT EXISTS delivery_summary JSONB`,
+      `CREATE INDEX IF NOT EXISTS idx_contact_send_history_campaign_run_at ON contact_send_history(campaign_id, run_at DESC)`,
   ];
 
   for (const sql of migrations) {

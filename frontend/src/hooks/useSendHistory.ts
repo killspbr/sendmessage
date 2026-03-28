@@ -35,18 +35,56 @@ export function useSendHistory({ effectiveUserId }: UseSendHistoryOptions): UseS
             const data = await apiFetch('/api/history')
 
             if (data) {
-                const history: ContactSendHistoryItem[] = data.map((row: any) => ({
-                    id: row.id,
-                    contactId: 0,
-                    campaignId: row.campaign_id,
-                    campaignName: row.campaign_name,
-                    contactName: row.contact_name,
-                    phoneKey: row.phone_key,
-                    channel: row.channel as 'whatsapp' | 'email',
-                    ok: row.ok,
-                    status: row.status || 0,
-                    runAt: row.run_at ? new Date(row.run_at).toLocaleString('pt-BR') : '',
-                }))
+                const history: ContactSendHistoryItem[] = data
+                    .map((row: any) => {
+                        const runAtIso = row.run_at ? new Date(row.run_at).toISOString() : ''
+                        const deliverySummaryRaw = row.delivery_summary
+                        const deliverySummary =
+                            deliverySummaryRaw && typeof deliverySummaryRaw === 'object'
+                                ? {
+                                    sentText: Boolean(deliverySummaryRaw.sentText),
+                                    mediaSent: Number(deliverySummaryRaw.mediaSent || 0),
+                                    mediaFailed: Number(deliverySummaryRaw.mediaFailed || 0),
+                                    contactSent: Boolean(deliverySummaryRaw.contactSent),
+                                    contactFailed: Boolean(deliverySummaryRaw.contactFailed),
+                                    errors: Array.isArray(deliverySummaryRaw.errors)
+                                        ? deliverySummaryRaw.errors.map((item: unknown) => String(item))
+                                        : [],
+                                }
+                                : undefined
+
+                        let payloadRaw: string | undefined
+                        if (row.payload_raw != null) {
+                            try {
+                                payloadRaw = JSON.stringify(row.payload_raw, null, 2)
+                            } catch {
+                                payloadRaw = String(row.payload_raw)
+                            }
+                        }
+
+                        return {
+                            id: row.id,
+                            contactId: 0,
+                            campaignId: row.campaign_id,
+                            campaignName: row.campaign_name,
+                            contactName: row.contact_name,
+                            phoneKey: row.phone_key,
+                            channel: row.channel as 'whatsapp' | 'email',
+                            ok: row.ok,
+                            status: row.status || 0,
+                            runAt: row.run_at ? new Date(row.run_at).toLocaleString('pt-BR') : '',
+                            runAtIso,
+                            providerStatus: row.provider_status || undefined,
+                            errorDetail: row.error_detail || undefined,
+                            payloadRaw,
+                            deliverySummary,
+                        }
+                    })
+                    .sort((a: ContactSendHistoryItem, b: ContactSendHistoryItem) => {
+                        const dateA = a.runAtIso ? new Date(a.runAtIso).getTime() : 0
+                        const dateB = b.runAtIso ? new Date(b.runAtIso).getTime() : 0
+                        return dateB - dateA
+                    })
 
                 setContactSendHistory(history)
 

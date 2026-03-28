@@ -28,7 +28,7 @@ export function ReportsPage({ campaigns, contactSendHistory }: ReportsPageProps)
 
       if (!start && !end) return true
 
-      const d = parseDate(entry.runAt)
+      const d = parseDate(entry.runAtIso || entry.runAt)
       if (!d) return true
 
       if (start && d < start) return false
@@ -139,6 +139,13 @@ export function ReportsPage({ campaigns, contactSendHistory }: ReportsPageProps)
       'canal',
       'status_http',
       'status_ok',
+      'status_entrega',
+      'texto_enviado',
+      'midias_enviadas',
+      'midias_com_falha',
+      'contato_compartilhado',
+      'contato_com_falha',
+      'erro_detalhe',
       'data_hora',
     ]
 
@@ -149,6 +156,13 @@ export function ReportsPage({ campaigns, contactSendHistory }: ReportsPageProps)
       entry.channel,
       String(entry.status || 0),
       entry.ok ? '1' : '0',
+      entry.providerStatus || '',
+      entry.deliverySummary?.sentText ? '1' : '0',
+      String(entry.deliverySummary?.mediaSent || 0),
+      String(entry.deliverySummary?.mediaFailed || 0),
+      entry.deliverySummary?.contactSent ? '1' : '0',
+      entry.deliverySummary?.contactFailed ? '1' : '0',
+      entry.errorDetail || '',
       entry.runAt,
     ])
 

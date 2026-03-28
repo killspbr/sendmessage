@@ -114,6 +114,10 @@ CREATE TABLE IF NOT EXISTS contact_send_history (
     ok BOOLEAN DEFAULT false,
     status INTEGER,
     webhook_ok BOOLEAN DEFAULT false,
+    provider_status TEXT,
+    error_detail TEXT,
+    payload_raw JSONB,
+    delivery_summary JSONB,
     run_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );

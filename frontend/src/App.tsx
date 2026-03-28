@@ -810,11 +810,16 @@ function App() {
 
   const saveSendHistory = async (entry: {
     campaignId: string
+    campaignName?: string
     contactName: string
     phoneKey: string
     channel: CampaignChannel
     ok: boolean
     status?: number
+    providerStatus?: string
+    errorDetail?: string
+    payloadRaw?: string
+    deliverySummary?: ContactSendHistoryItem['deliverySummary']
   }) => {
     if (!currentUser) return
 
@@ -823,11 +828,16 @@ function App() {
         method: 'POST',
         body: JSON.stringify({
           campaign_id: entry.campaignId,
+          campaign_name: entry.campaignName,
           contact_name: entry.contactName,
           phone_key: entry.phoneKey,
           channel: entry.channel,
           ok: entry.ok,
           status: entry.status,
+          provider_status: entry.providerStatus,
+          error_detail: entry.errorDetail,
+          payload_raw: entry.payloadRaw,
+          delivery_summary: entry.deliverySummary,
           run_at: new Date().toISOString(),
         })
       })
@@ -1329,15 +1339,16 @@ function App() {
             return next.slice(0, 1000)
           })
 
-          // Salva no backend
-          saveSendHistory({
-            campaignId: camp.id,
-            contactName: contact.name,
-            phoneKey: phoneKey,
-            channel,
-            ok: backendOk,
-            status: backendStatus,
-          })
+            // Salva no backend
+            saveSendHistory({
+              campaignId: camp.id,
+              campaignName: camp.name,
+              contactName: contact.name,
+              phoneKey: phoneKey,
+              channel,
+              ok: backendOk,
+              status: backendStatus,
+            })
 
           if (!backendOk) {
             errorCount++
@@ -2514,6 +2525,10 @@ function App() {
                   ok: item.ok ?? false,
                   status: item.status ?? 0,
                   webhook_ok: item.webhookOk ?? true,
+                  provider_status: item.providerStatus ?? null,
+                  error_detail: item.errorDetail ?? null,
+                  payload_raw: item.payloadRaw ?? null,
+                  delivery_summary: item.deliverySummary ?? null,
                   run_at: item.runAt ? new Date(item.runAt).toISOString() : new Date().toISOString(),
                 })
               })

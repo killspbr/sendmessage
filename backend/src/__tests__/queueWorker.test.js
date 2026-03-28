@@ -18,6 +18,7 @@ function createState(overrides = {}) {
     contacts: [],
     lists: [],
     queue: [],
+    history: [],
     reputation: [],
     logs: [],
     userProfiles: [],
@@ -129,6 +130,28 @@ function createQueryMock(state) {
         details: params[1],
       })
       return { rows: [] }
+    }
+
+    if (sql.startsWith('INSERT INTO contact_send_history')) {
+      const item = {
+        id: `history-${state.history.length + 1}`,
+        user_id: params[0],
+        campaign_id: params[1],
+        campaign_name: params[2],
+        contact_name: params[3],
+        phone_key: params[4],
+        channel: params[5],
+        ok: params[6],
+        status: params[7],
+        webhook_ok: params[8],
+        run_at: params[9],
+        provider_status: params[10],
+        error_detail: params[11],
+        payload_raw: params[12],
+        delivery_summary: params[13],
+      }
+      state.history.push(item)
+      return { rows: [clone(item)] }
     }
 
     if (sql.includes("WITH due_schedules AS ( SELECT id FROM campaign_schedule WHERE status = 'agendado'")) {

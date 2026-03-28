@@ -1,6 +1,7 @@
 import 'dotenv/config'
 import { query } from './db.js'
 import { executeWhatsappCampaignDelivery } from './services/campaignDeliveryService.js'
+import { buildContactSendHistoryEntry, insertContactSendHistory } from './services/sendHistoryService.js'
 
 process.env.TZ = process.env.SYSTEM_TIMEZONE || process.env.TZ || 'America/Sao_Paulo'
 
@@ -604,12 +605,19 @@ export async function runWorker() {
     const { evolutionUrl, evolutionApiKey, evolutionInstance } = evolutionConfig
 
     if (evolutionUrl && evolutionInstance && evolutionApiKey) {
+      let campaign = null
       try {
         const campaignResult = await queueWorkerDeps.query('SELECT * FROM campaigns WHERE id = $1 LIMIT 1', [msg.campaign_id])
-        const campaign = campaignResult.rows[0]
+        campaign = campaignResult.rows[0]
 
         if (!campaign) {
           throw new Error('Campanha do item de fila n?o foi encontrada.')
+        }
+
+        const contact = {
+          id: msg.contact_id,
+          name: msg.nome,
+          phone: msg.telefone,
         }
 
         const deliveryResult = await executeWhatsappCampaignDelivery({
@@ -618,11 +626,7 @@ export async function runWorker() {
           evolutionApiKey,
           evolutionInstance,
           campaign,
-          contact: {
-            id: msg.contact_id,
-            name: msg.nome,
-            phone: msg.telefone,
-          },
+          contact,
           messageOverride: msg.mensagem,
         })
 
@@ -634,17 +638,58 @@ export async function runWorker() {
             msg.id,
           ]
         )
+
+        await insertContactSendHistory(
+          queueWorkerDeps.query,
+          buildContactSendHistoryEntry({
+            userId: msg.user_id,
+            campaign,
+            contact,
+            channel: 'whatsapp',
+            deliveryResult,
+          })
+        )
       } catch (err) {
         console.error(`[Worker] Erro no envio (${msg.telefone}):`, err.message)
         await queueWorkerDeps.query(
           'UPDATE message_queue SET status = $1, erro = $2, tentativas = tentativas + 1, processing_started_at = NULL WHERE id = $3',
           ['falhou', err.message, msg.id]
         )
+
+        await insertContactSendHistory(
+          queueWorkerDeps.query,
+          buildContactSendHistoryEntry({
+            userId: msg.user_id,
+            campaign: campaign || { id: msg.campaign_id, name: null },
+            contact: {
+              id: msg.contact_id,
+              name: msg.nome,
+              phone: msg.telefone,
+            },
+            channel: 'whatsapp',
+            error: err,
+          })
+        )
       }
     } else {
       await queueWorkerDeps.query(
         'UPDATE message_queue SET status = $1, erro = $2, processing_started_at = NULL WHERE id = $3',
         ['falhou', 'Evolution API n?o configurada para este perfil.', msg.id]
+      )
+
+      await insertContactSendHistory(
+        queueWorkerDeps.query,
+        buildContactSendHistoryEntry({
+          userId: msg.user_id,
+          campaign: { id: msg.campaign_id, name: null },
+          contact: {
+            id: msg.contact_id,
+            name: msg.nome,
+            phone: msg.telefone,
+          },
+          channel: 'whatsapp',
+          error: new Error('Evolution API não configurada para este perfil.'),
+        })
       )
     }
 
