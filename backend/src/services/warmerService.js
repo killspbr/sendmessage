@@ -1,4 +1,5 @@
 import { query } from '../db.js'
+import { getActiveGeminiKey, incrementKeyUsage } from './aiService.js'
 
 const WARMER_MESSAGES = [
   "Bom dia! Tudo bem?",
@@ -81,6 +82,80 @@ async function sendText(evolutionUrl, apiKey, instanceName, toPhone, text) {
   );
 }
 
+async function fetchRecentLogs(warmerId) {
+  const result = await query(`
+    SELECT from_phone, content_summary 
+    FROM warmer_logs 
+    WHERE warmer_id = $1 
+    ORDER BY sent_at DESC 
+    LIMIT 5
+  `, [warmerId]);
+  
+  const historyLines = result.rows.reverse().map(row => {
+    return `[${row.from_phone}]: ${row.content_summary}`;
+  });
+  
+  if (historyLines.length === 0) {
+    return "Nenhum histórico anterior.";
+  }
+  return historyLines.join('\n');
+}
+
+async function generateDynamicMessage(history, myPhone, toPhone) {
+  // Vamos usar a chave do banco da nossa engine do backend
+  const keyObj = await getActiveGeminiKey();
+  if (!keyObj || !keyObj.api_key) {
+    throw new Error('Sem chave Gemini disponível');
+  }
+
+  const systemInstruction = `Aja e comunique-se como um brasileiro comum usando o WhatsApp.
+Você é a pessoa do número de telefone [${myPhone}] conversando com [${toPhone}].
+Regras obrigatórias:
+1. Responda em até 140 caracteres no máximo. Seja MUITO curto (uma ou duas frases curtas).
+2. É um chat orgânico: use gírias, contrações e abreviações comuns do brasil (vc, tbm, suave, po, mano, etc).
+3. Ocasionalmente (uns 20% das vezes) erre alguma digitação ou falte pontuação, mantendo total informalidade.
+4. Use no máximo um emoji por vez.
+5. Baseie-se no 'Histórico da conversa' (fornecido no prompt) para continuar o contexto ou emendar um novo assunto caso as mensagens anteriores já tenham esgotado o assunto. Nunca reproduza as tags [Numero], apenas o texto.`;
+
+  const prompt = `Histórico da conversa:\n${history}\n\nEscreva sua próxima mensagem sendo [${myPhone}]:`;
+
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${keyObj.api_key}`;
+  
+  const body = {
+    contents: [{ parts: [{ text: prompt }] }],
+    systemInstruction: { parts: [{ text: systemInstruction }] },
+    generationConfig: {
+      temperature: 0.9,
+      maxOutputTokens: 60,
+    }
+  };
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(errorText.substring(0, 100));
+  }
+
+  const data = await response.json();
+  const generatedText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+  
+  await incrementKeyUsage(keyObj.id, 'warmer', 'Generated Warmer Msg', null, null, 'global-pool', keyObj.nome);
+
+  if (!generatedText) {
+    throw new Error('Falha ao processar resposta da Inteligência Artificial');
+  }
+
+  // Remove marcações caso o gemini ache que ele deva responder prefixado com "[numero]:"
+  let cleanText = generatedText.replace(new RegExp(`^\\[?${myPhone}\\]?:\\s*`, 'i'), '');
+  cleanText = cleanText.replace(/^[\"\'\*]+|[\"\'\*]+$/g, ''); // limpa aspas vazias nas bordas
+  return cleanText.trim();
+}
+
 export async function runWarmer() {
   try {
     const { url: evoUrl, apiKey: evoKey } = await getGlobalEvolutionConfig();
@@ -137,17 +212,29 @@ export async function runWarmer() {
       // Definir direção (A -> B ou B -> A)
       const directionAtoB = Math.random() > 0.5;
       const fromInstance = directionAtoB ? warmer.instance_a_id : warmer.instance_b_id;
+      const fromPhone = directionAtoB ? warmer.phone_a : warmer.phone_b;
       const toPhone = directionAtoB ? warmer.phone_b : warmer.phone_a;
       
-      const messageContent = getRandomMessage();
+      let messageContent = '';
+
+      try {
+        const historyText = await fetchRecentLogs(warmer.id);
+        messageContent = await generateDynamicMessage(historyText, fromPhone, toPhone);
+        const countMsgs = historyText === 'Nenhum histórico anterior.' ? 0 : historyText.split('\n').length;
+        console.log(`[Warmer] AI Generated: "${messageContent}" (based on ${countMsgs} logs)`);
+      } catch (aiError) {
+        console.warn(`[Warmer] Fallback activado (Erro Gemini):`, aiError.message);
+        messageContent = getRandomMessage();
+      }
 
       try {
         console.log(`[Warmer] Iniciando warming de ${fromInstance} para ${toPhone}`);
         // Log "Sending presence..."
         await sendPresence(evoUrl, evoKey, fromInstance, toPhone, 'composing');
         
-        // Wait human delay (2 to 6 seconds)
-        const typingDelay = Math.floor(Math.random() * 4000) + 2000;
+        // Wait human delay (2 to 5 seconds base + 30ms per generated character)
+        const delayBase = Math.floor(Math.random() * 3000) + 2000;
+        const typingDelay = Math.min(8000, delayBase + (messageContent.length * 30));
         await wait(typingDelay);
 
         // Send Text
