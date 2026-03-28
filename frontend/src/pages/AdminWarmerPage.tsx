@@ -28,6 +28,7 @@ export function AdminWarmerPage({ can }: { can?: (code: string) => boolean }) {
   const [logs, setLogs] = useState<any[]>([])
   const [loadingLogs, setLoadingLogs] = useState(false)
   const [forcingId, setForcingId] = useState<string | null>(null)
+  const [manualLoading, setManualLoading] = useState<string | null>(null)
 
   // Formulário
   const [isCreating, setIsCreating] = useState(false)
@@ -77,6 +78,27 @@ export function AdminWarmerPage({ can }: { can?: (code: string) => boolean }) {
       alert('Erro ao forçar disparo: ' + e.message)
     } finally {
       setForcingId(null)
+    }
+  }
+
+  const handleManualSend = async (id: string, side: 'a' | 'b') => {
+    const loadingKey = `${id}-${side}`
+    try {
+      setManualLoading(loadingKey)
+      const res = await apiFetch(`/api/admin/warmer/${id}/manual`, {
+        method: 'POST',
+        body: JSON.stringify({ side })
+      })
+      if (res?.success === false) {
+        alert('❌ Falha na Evolution: ' + (res.error || 'Erro desconhecido'))
+      } else {
+        alert(`✅ Chip ${side.toUpperCase()} enviou:\n\n"${res.message}"`)
+        loadWarmers(true)
+      }
+    } catch (e: any) {
+      alert('❌ Erro de comunicação: ' + e.message)
+    } finally {
+      setManualLoading(null)
     }
   }
 
@@ -346,10 +368,32 @@ export function AdminWarmerPage({ can }: { can?: (code: string) => boolean }) {
                   </div>
 
                   <div className="space-y-4">
-                    <div className="flex justify-between text-xs text-slate-500 border-b border-slate-100 pb-3">
-                      <div><span className="font-medium text-slate-700">{warmer.phone_a}</span></div>
-                      <span>💬</span>
-                      <div><span className="font-medium text-slate-700">{warmer.phone_b}</span></div>
+                    <div className="flex justify-between items-center text-xs text-slate-500 border-b border-slate-100 pb-3">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium text-slate-700">{warmer.phone_a}</span>
+                        <button 
+                          onClick={() => handleManualSend(warmer.id, 'a')} 
+                          disabled={manualLoading === `${warmer.id}-a`}
+                          className={`p-1.5 rounded-lg border transition ${manualLoading === `${warmer.id}-a` ? 'bg-slate-50 text-slate-400 border-slate-200' : 'bg-indigo-50 text-indigo-600 border-indigo-100 hover:bg-indigo-100'}`}
+                          title="Enviar Mensagem Manual do Chip A"
+                        >
+                          {manualLoading === `${warmer.id}-a` ? <span className="animate-spin text-[10px] inline-block">⏳</span> : '✈️'}
+                        </button>
+                      </div>
+
+                      <div className="text-slate-300">↔️</div>
+
+                      <div className="flex items-center gap-2">
+                        <button 
+                          onClick={() => handleManualSend(warmer.id, 'b')} 
+                          disabled={manualLoading === `${warmer.id}-b`}
+                          className={`p-1.5 rounded-lg border transition ${manualLoading === `${warmer.id}-b` ? 'bg-slate-50 text-slate-400 border-slate-200' : 'bg-emerald-50 text-emerald-600 border-emerald-100 hover:bg-emerald-100'}`}
+                          title="Enviar Mensagem Manual do Chip B"
+                        >
+                          {manualLoading === `${warmer.id}-b` ? <span className="animate-spin text-[10px] inline-block">⏳</span> : '✈️'}
+                        </button>
+                        <span className="font-medium text-slate-700">{warmer.phone_b}</span>
+                      </div>
                     </div>
                     
                     <div>

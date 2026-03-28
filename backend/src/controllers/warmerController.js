@@ -153,3 +153,29 @@ export async function updateWarmer(req, res) {
     res.status(500).json({ error: 'Erro ao atualizar maturação', details: error.message });
   }
 }
+export async function sendManualMessage(req, res) {
+  try {
+    const { id } = req.params;
+    const { side } = req.body; // 'a' ou 'b'
+    
+    const { performManualSend } = await import('../services/warmerService.js');
+    console.log(`[ManualSend] Rota evocada para Maturador ${id}, Lado ${side?.toUpperCase()}`);
+    
+    const result = await performManualSend(id, side);
+    
+    if (result?.success === false) {
+      return res.json({ 
+        success: false, 
+        error: result.error || 'Erro na Evolution API' 
+      });
+    }
+
+    res.json({ success: true, message: result.message });
+  } catch (error) {
+    console.error('[ManualSend Error]', error.message);
+    res.status(500).json({ 
+      error: 'Falha durante o envio manual corporativo', 
+      message: error.message 
+    });
+  }
+}

@@ -407,3 +407,60 @@ export async function forceRunWarmer(warmerId) {
   const warmer = result.rows[0];
   return await executeWarmerInteraction(warmer, evoUrl, evoKey, 0, 0, true);
 }
+
+export async function performManualSend(warmerId, fromSide = 'a') {
+  const { url: evoUrl, apiKey: evoKey } = await getGlobalEvolutionConfig();
+  if (!evoUrl || !evoKey) {
+    throw new Error('Evolution API não configurada globalmente.');
+  }
+
+  const result = await query(`
+    SELECT id, instance_a_id, instance_b_id, phone_a, phone_b 
+    FROM warmer_configs 
+    WHERE id = $1
+  `, [warmerId]);
+
+  if (result.rows.length === 0) {
+    throw new Error('Maturação não encontrada');
+  }
+
+  const warmer = result.rows[0];
+  const fromInstance = fromSide === 'a' ? warmer.instance_a_id : warmer.instance_b_id;
+  const fromPhone = fromSide === 'a' ? warmer.phone_a : warmer.phone_b;
+  const toPhone = fromSide === 'a' ? warmer.phone_b : warmer.phone_a;
+
+  console.log(`[ManualSend] 📤 Enviando de Chip ${fromSide.toUpperCase()} (${fromInstance}) -> (${toPhone})`);
+
+  let messageContent = '';
+  try {
+     const historyText = await fetchRecentLogs(warmerId);
+     messageContent = await generateDynamicMessage(historyText, fromPhone, toPhone);
+     console.log(`[ManualSend] IA Message: "${messageContent}"`);
+  } catch (aiErr) {
+     console.warn(`[ManualSend] IA Falhou (usando pool local):`, aiErr.message);
+     messageContent = getRandomMessage();
+  }
+
+  // Envio real
+  try {
+    const resPresence = await sendPresence(evoUrl, evoKey, fromInstance, toPhone, 'composing');
+    if (resPresence?.success === false) return { success: false, error: resPresence.error };
+    
+    await wait(1500); // Sensação tátil
+
+    const resText = await sendText(evoUrl, evoKey, fromInstance, toPhone, messageContent);
+    if (resText?.success === false) return { success: false, error: resText.error };
+
+    // Record Log
+    await query(`
+       INSERT INTO warmer_logs (warmer_id, from_phone, to_phone, message_type, content_summary)
+       VALUES ($1, $2, $3, $4, $5)
+    `, [warmerId, fromInstance, toPhone, 'text', messageContent]);
+
+    console.log(`[ManualSend] ✅ Sucesso!`);
+    return { success: true, message: messageContent };
+  } catch (err) {
+    console.error('[ManualSend] Crash no Envio:', err.message);
+    throw new Error(`Erro Fatal: ${err.message}`);
+  }
+}
