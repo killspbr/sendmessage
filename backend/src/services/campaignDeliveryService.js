@@ -32,6 +32,7 @@ function normalizeMediaItem(item, index) {
   const mediaType = safeTrim(item?.mediaType || 'image').toLowerCase()
   const url = safeTrim(item?.url)
   const caption = safeTrim(item?.caption)
+  const sourceType = safeTrim(item?.sourceType || 'url').toLowerCase()
 
   if (!url || !ALLOWED_MEDIA_TYPES.has(mediaType)) {
     return null
@@ -39,10 +40,14 @@ function normalizeMediaItem(item, index) {
 
   return {
     id: safeTrim(item?.id) || `media-${index + 1}`,
-    sourceType: 'url',
+    sourceType: sourceType === 'asset' ? 'asset' : 'url',
     mediaType,
     url,
     caption,
+    assetId: safeTrim(item?.assetId),
+    assetName: safeTrim(item?.assetName),
+    mimeType: safeTrim(item?.mimeType),
+    sizeBytes: Number(item?.sizeBytes || 0) || undefined,
   }
 }
 

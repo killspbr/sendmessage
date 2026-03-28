@@ -1,11 +1,28 @@
 import express from 'express';
 import cors from 'cors';
+import multer from 'multer';
 import { query } from './db.js';
 import { login, signup, forgotPassword, resetPassword, authenticateToken, checkAdmin, resetUserPasswordToDefault, invalidateUserSessions, invalidateAllSessions } from './auth.js';
 import { toEvolutionNumber } from './utils/messageUtils.js';
 import { getActiveGeminiKey, incrementKeyUsage, logGeminiUsage } from './services/aiService.js';
 import { executeWhatsappCampaignDelivery, validateCampaignDeliveryPayload } from './services/campaignDeliveryService.js';
 import { buildContactSendHistoryEntry, insertContactSendHistory, normalizeJsonbInput } from './services/sendHistoryService.js';
+import {
+  MAX_FILE_SIZE_BYTES,
+  DEFAULT_DAILY_MESSAGE_LIMIT,
+  DEFAULT_MONTHLY_MESSAGE_LIMIT,
+  DEFAULT_GLOBAL_GEMINI_DAILY_LIMIT,
+  DEFAULT_USER_UPLOAD_QUOTA_BYTES,
+  ensureUploadStorageRoot,
+  ensureUserUploadDir,
+  buildStoredFileName,
+  buildStoredFilePath,
+  buildPublicFileToken,
+  formatUploadFileResponse,
+  getUploadUsageBytes,
+  resolveFileRule,
+  safeUnlink,
+} from './services/uploadService.js';
 
 process.env.TZ = process.env.SYSTEM_TIMEZONE || process.env.TZ || 'America/Sao_Paulo';
 
@@ -13,6 +30,8 @@ const app = express();
 const port = process.env.PORT || 4000;
 const SYSTEM_TIMEZONE = process.env.SYSTEM_TIMEZONE || 'America/Sao_Paulo';
 const SYSTEM_TIMEZONE_LABEL = 'GMT-3 (America/Sao_Paulo)';
+
+ensureUploadStorageRoot();
 
 const allowedOrigins = [
   'https://sendmessage-frontend.pages.dev',
@@ -115,6 +134,127 @@ async function isAdminUser(userId) {
 
   return result.rows.length > 0;
 }
+
+function buildRequestBaseUrl(req) {
+  const forwardedProto = req.headers['x-forwarded-proto'];
+  const forwardedHost = req.headers['x-forwarded-host'];
+  const protocol = forwardedProto || req.protocol || 'https';
+  const host = forwardedHost || req.get('host');
+  return `${protocol}://${host}`;
+}
+
+async function getEffectiveLimitSnapshot(userId) {
+  const [isAdmin, settingsResult, profileResult, sentTodayResult, sentMonthResult, geminiUsageResult, uploadUsageBytes] =
+    await Promise.all([
+      isAdminUser(userId),
+      query(
+        `SELECT
+           default_daily_message_limit,
+           default_monthly_message_limit,
+           default_upload_quota_bytes,
+           global_gemini_daily_limit
+         FROM app_settings
+         ORDER BY id DESC
+         LIMIT 1`
+      ),
+      query(
+        `SELECT
+           use_global_ai,
+           daily_message_limit,
+           monthly_message_limit,
+           upload_quota_bytes
+         FROM user_profiles
+         WHERE id = $1
+         LIMIT 1`,
+        [userId]
+      ),
+      query(
+        `SELECT COUNT(*)::int AS total
+         FROM contact_send_history
+         WHERE user_id = $1
+           AND channel = 'whatsapp'
+           AND ok = true
+           AND run_at >= CURRENT_DATE`,
+        [userId]
+      ),
+      query(
+        `SELECT COUNT(*)::int AS total
+         FROM contact_send_history
+         WHERE user_id = $1
+           AND channel = 'whatsapp'
+           AND ok = true
+           AND date_trunc('month', run_at) = date_trunc('month', CURRENT_DATE)`,
+        [userId]
+      ),
+      query(
+        `SELECT COUNT(*)::int AS total
+         FROM gemini_api_usage_logs
+         WHERE source = 'global-pool'
+           AND data_solicitacao >= CURRENT_DATE`
+      ),
+      getUploadUsageBytes(query, userId),
+    ]);
+
+  const settings = settingsResult.rows[0] || {};
+  const profile = profileResult.rows[0] || {};
+  const uploadLimit = isAdmin
+    ? null
+    : Number(profile.upload_quota_bytes || settings.default_upload_quota_bytes || DEFAULT_USER_UPLOAD_QUOTA_BYTES);
+
+  return {
+    isAdmin,
+    dailyMessages: {
+      used: Number(sentTodayResult.rows[0]?.total || 0),
+      limit: Number(profile.daily_message_limit || settings.default_daily_message_limit || DEFAULT_DAILY_MESSAGE_LIMIT),
+    },
+    monthlyMessages: {
+      used: Number(sentMonthResult.rows[0]?.total || 0),
+      limit: Number(profile.monthly_message_limit || settings.default_monthly_message_limit || DEFAULT_MONTHLY_MESSAGE_LIMIT),
+    },
+    geminiGlobal: {
+      usingGlobalPool: profile.use_global_ai ?? true,
+      usedToday: Number(geminiUsageResult.rows[0]?.total || 0),
+      limit: Number(settings.global_gemini_daily_limit || DEFAULT_GLOBAL_GEMINI_DAILY_LIMIT),
+    },
+    uploads: {
+      usedBytes: Number(uploadUsageBytes || 0),
+      limitBytes: uploadLimit,
+      unlimited: isAdmin,
+    },
+  };
+}
+
+const uploadStorage = multer.diskStorage({
+  destination: (req, _file, cb) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        return cb(new Error('Usuário não autenticado para upload.'), '');
+      }
+      const userDir = ensureUserUploadDir(userId);
+      cb(null, userDir);
+    } catch (error) {
+      cb(error, '');
+    }
+  },
+  filename: (_req, file, cb) => {
+    cb(null, buildStoredFileName(file.originalname));
+  },
+});
+
+const uploadMiddleware = multer({
+  storage: uploadStorage,
+  limits: {
+    fileSize: MAX_FILE_SIZE_BYTES,
+  },
+  fileFilter: (_req, file, cb) => {
+    const rule = resolveFileRule(file.mimetype, file.originalname);
+    if (!rule) {
+      return cb(new Error('Tipo de arquivo não permitido. Envie imagem, PDF, PPTX, WAV ou MP4.'));
+    }
+    cb(null, true);
+  },
+});
 
 function parseCampaignChannels(channels) {
   if (Array.isArray(channels)) return channels;
@@ -300,6 +440,162 @@ app.get('/api/profile/full', authenticateToken, async (req, res) => {
     });
   } catch (error) {
     res.status(500).json({ error: 'Erro ao buscar perfil completo' });
+  }
+});
+
+app.get('/api/uploads/public/:token/:storedName', async (req, res) => {
+  try {
+    const { token, storedName } = req.params;
+    const result = await query(
+      `SELECT *
+       FROM user_uploaded_files
+       WHERE public_token = $1
+         AND stored_name = $2
+         AND deleted_at IS NULL
+       LIMIT 1`,
+      [token, storedName]
+    );
+
+    const file = result.rows[0];
+    if (!file) {
+      return res.status(404).send('Arquivo não encontrado.');
+    }
+
+    res.setHeader('Content-Type', file.mime_type);
+    return res.sendFile(file.storage_path);
+  } catch (error) {
+    return res.status(500).send('Falha ao abrir arquivo.');
+  }
+});
+
+app.get('/api/profile/limits', authenticateToken, async (req, res) => {
+  try {
+    const limits = await getEffectiveLimitSnapshot(req.user.id);
+    return res.json(limits);
+  } catch (error) {
+    return res.status(500).json({ error: 'Erro ao carregar limites do perfil.' });
+  }
+});
+
+app.get('/api/files', authenticateToken, async (req, res) => {
+  try {
+    const baseUrl = buildRequestBaseUrl(req);
+    const result = await query(
+      `SELECT *
+       FROM user_uploaded_files
+       WHERE user_id = $1
+         AND deleted_at IS NULL
+       ORDER BY created_at DESC`,
+      [req.user.id]
+    );
+
+    return res.json(result.rows.map((file) => formatUploadFileResponse(baseUrl, file)));
+  } catch (error) {
+    return res.status(500).json({ error: 'Erro ao listar arquivos do usuário.' });
+  }
+});
+
+app.post('/api/files/upload', authenticateToken, async (req, res) => {
+  uploadMiddleware.array('files', 10)(req, res, async (uploadError) => {
+    if (uploadError) {
+      const status = uploadError?.code === 'LIMIT_FILE_SIZE' ? 400 : 400;
+      const errorMessage =
+        uploadError?.code === 'LIMIT_FILE_SIZE'
+          ? 'Cada arquivo deve ter no máximo 20 MB.'
+          : uploadError?.message || 'Falha no upload.';
+      return res.status(status).json({ error: errorMessage });
+    }
+
+    try {
+      const uploadedFiles = Array.isArray(req.files) ? req.files : [];
+      if (uploadedFiles.length === 0) {
+        return res.status(400).json({ error: 'Selecione ao menos um arquivo para upload.' });
+      }
+
+      const baseUrl = buildRequestBaseUrl(req);
+      const limits = await getEffectiveLimitSnapshot(req.user.id);
+      const currentUsage = Number(limits.uploads.usedBytes || 0);
+      const batchSize = uploadedFiles.reduce((sum, file) => sum + Number(file.size || 0), 0);
+
+      if (!limits.uploads.unlimited && limits.uploads.limitBytes != null && currentUsage + batchSize > limits.uploads.limitBytes) {
+        uploadedFiles.forEach((file) => safeUnlink(file.path));
+        return res.status(400).json({ error: 'O upload excede o limite disponível da sua conta.' });
+      }
+
+      const created = [];
+      for (const file of uploadedFiles) {
+        const rule = resolveFileRule(file.mimetype, file.originalname);
+        if (!rule) {
+          safeUnlink(file.path);
+          continue;
+        }
+
+        const insert = await query(
+          `INSERT INTO user_uploaded_files (
+            user_id,
+            original_name,
+            stored_name,
+            mime_type,
+            extension,
+            media_type,
+            size_bytes,
+            storage_path,
+            public_token
+          ) VALUES (
+            $1, $2, $3, $4, $5, $6, $7, $8, $9
+          ) RETURNING *`,
+          [
+            req.user.id,
+            file.originalname,
+            file.filename,
+            file.mimetype,
+            file.originalname.slice(file.originalname.lastIndexOf('.')).toLowerCase(),
+            rule.mediaType,
+            Number(file.size || 0),
+            file.path || buildStoredFilePath(req.user.id, file.filename),
+            buildPublicFileToken(),
+          ]
+        );
+
+        created.push(formatUploadFileResponse(baseUrl, insert.rows[0]));
+      }
+
+      return res.status(201).json({
+        items: created,
+        limits: await getEffectiveLimitSnapshot(req.user.id),
+      });
+    } catch (error) {
+      const uploadedFiles = Array.isArray(req.files) ? req.files : [];
+      uploadedFiles.forEach((file) => safeUnlink(file.path));
+      return res.status(500).json({ error: 'Erro ao salvar upload no servidor.' });
+    }
+  });
+});
+
+app.delete('/api/files/:id', authenticateToken, async (req, res) => {
+  try {
+    const result = await query(
+      `UPDATE user_uploaded_files
+       SET deleted_at = CURRENT_TIMESTAMP
+       WHERE id = $1
+         AND user_id = $2
+         AND deleted_at IS NULL
+       RETURNING *`,
+      [req.params.id, req.user.id]
+    );
+
+    const file = result.rows[0];
+    if (!file) {
+      return res.status(404).json({ error: 'Arquivo não encontrado.' });
+    }
+
+    safeUnlink(file.storage_path);
+    return res.json({
+      ok: true,
+      limits: await getEffectiveLimitSnapshot(req.user.id),
+    });
+  } catch (error) {
+    return res.status(500).json({ error: 'Erro ao remover arquivo.' });
   }
 });
 
@@ -2470,6 +2766,9 @@ async function runMigrations() {
     `ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS gemini_max_tokens INTEGER DEFAULT 1024`,
     `ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS send_interval_min INTEGER DEFAULT 30`,
     `ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS send_interval_max INTEGER DEFAULT 90`,
+    `ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS daily_message_limit INTEGER`,
+    `ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS monthly_message_limit INTEGER`,
+    `ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS upload_quota_bytes BIGINT`,
     // app_settings: garantir que a tabela exista mesmo que nunca tenha sido criada
     `CREATE TABLE IF NOT EXISTS app_settings (
       id SERIAL PRIMARY KEY,
@@ -2481,6 +2780,10 @@ async function runMigrations() {
       gemini_api_version TEXT DEFAULT 'v1',
       gemini_temperature NUMERIC(3,2) DEFAULT 0.7,
       gemini_max_tokens INTEGER DEFAULT 1024,
+      default_daily_message_limit INTEGER DEFAULT 300,
+      default_monthly_message_limit INTEGER DEFAULT 9000,
+      default_upload_quota_bytes BIGINT DEFAULT 104857600,
+      global_gemini_daily_limit INTEGER DEFAULT 5000,
       send_interval_min INTEGER DEFAULT 30,
       send_interval_max INTEGER DEFAULT 90,
       updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
@@ -2614,6 +2917,25 @@ async function runMigrations() {
       `ALTER TABLE contact_send_history ADD COLUMN IF NOT EXISTS payload_raw JSONB`,
       `ALTER TABLE contact_send_history ADD COLUMN IF NOT EXISTS delivery_summary JSONB`,
       `CREATE INDEX IF NOT EXISTS idx_contact_send_history_campaign_run_at ON contact_send_history(campaign_id, run_at DESC)`,
+      `ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS default_daily_message_limit INTEGER DEFAULT 300`,
+      `ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS default_monthly_message_limit INTEGER DEFAULT 9000`,
+      `ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS default_upload_quota_bytes BIGINT DEFAULT 104857600`,
+      `ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS global_gemini_daily_limit INTEGER DEFAULT 5000`,
+      `CREATE TABLE IF NOT EXISTS user_uploaded_files (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        original_name TEXT NOT NULL,
+        stored_name TEXT NOT NULL,
+        mime_type TEXT NOT NULL,
+        extension TEXT NOT NULL,
+        media_type TEXT NOT NULL,
+        size_bytes BIGINT NOT NULL,
+        storage_path TEXT NOT NULL,
+        public_token TEXT NOT NULL UNIQUE,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        deleted_at TIMESTAMP WITH TIME ZONE
+      )`,
+      `CREATE INDEX IF NOT EXISTS idx_user_uploaded_files_user_created_at ON user_uploaded_files(user_id, created_at DESC)`,
   ];
 
   for (const sql of migrations) {

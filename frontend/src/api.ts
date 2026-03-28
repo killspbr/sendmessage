@@ -9,12 +9,16 @@ const API_URL = import.meta.env.VITE_API_URL ||
 
 export async function apiFetch(endpoint: string, options: RequestInit = {}) {
     const token = localStorage.getItem('auth_token');
+    const isFormData = typeof FormData !== 'undefined' && options.body instanceof FormData;
 
     const headers = {
-        'Content-Type': 'application/json',
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
         ...((options.headers as any) || {}),
     };
+
+    if (!isFormData && !(headers as any)['Content-Type']) {
+        (headers as any)['Content-Type'] = 'application/json';
+    }
 
     const response = await fetch(`${API_URL}${endpoint}`, {
         ...options,

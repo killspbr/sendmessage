@@ -1,4 +1,6 @@
 import React from 'react'
+import { apiFetch } from '../api'
+import type { UploadedUserFile, UserLimitSnapshot } from '../types'
 
 type UserSettingsPageProps = {
   effectiveUserId: string | null
@@ -27,6 +29,30 @@ type UserSettingsPageProps = {
     evolutionApiKey?: string | null
     evolutionInstance?: string | null
   }) => Promise<void>
+}
+
+function formatBytes(bytes: number | null | undefined) {
+  if (bytes == null) return 'Ilimitado'
+  if (bytes === 0) return '0 B'
+
+  const units = ['B', 'KB', 'MB', 'GB']
+  let value = bytes
+  let unitIndex = 0
+
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024
+    unitIndex += 1
+  }
+
+  return `${value.toFixed(value >= 10 || unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`
+}
+
+function getMetricTone(used: number, limit: number | null) {
+  if (limit == null || limit <= 0) return 'text-emerald-700 border-emerald-200 bg-emerald-50'
+  const ratio = used / limit
+  if (ratio >= 1) return 'text-rose-700 border-rose-200 bg-rose-50'
+  if (ratio >= 0.8) return 'text-amber-700 border-amber-200 bg-amber-50'
+  return 'text-emerald-700 border-emerald-200 bg-emerald-50'
 }
 
 function SectionCard({
@@ -75,6 +101,52 @@ export function UserSettingsPage({
   onSave,
 }: UserSettingsPageProps) {
   const [tokenCopied, setTokenCopied] = React.useState(false)
+  const [limits, setLimits] = React.useState<UserLimitSnapshot | null>(null)
+  const [files, setFiles] = React.useState<UploadedUserFile[]>([])
+  const [filesLoading, setFilesLoading] = React.useState(false)
+  const [limitsLoading, setLimitsLoading] = React.useState(false)
+  const [uploading, setUploading] = React.useState(false)
+  const [uploadMessage, setUploadMessage] = React.useState<string | null>(null)
+  const fileInputRef = React.useRef<HTMLInputElement | null>(null)
+
+  const loadLimits = React.useCallback(async () => {
+    if (!effectiveUserId) {
+      setLimits(null)
+      return
+    }
+
+    setLimitsLoading(true)
+    try {
+      const data = await apiFetch('/api/profile/limits')
+      setLimits(data)
+    } catch (error) {
+      setUploadMessage('Não foi possível carregar os limites do perfil.')
+    } finally {
+      setLimitsLoading(false)
+    }
+  }, [effectiveUserId])
+
+  const loadFiles = React.useCallback(async () => {
+    if (!effectiveUserId) {
+      setFiles([])
+      return
+    }
+
+    setFilesLoading(true)
+    try {
+      const data = await apiFetch('/api/files')
+      setFiles(Array.isArray(data) ? data : [])
+    } catch (error) {
+      setUploadMessage('Não foi possível carregar os arquivos do servidor.')
+    } finally {
+      setFilesLoading(false)
+    }
+  }, [effectiveUserId])
+
+  React.useEffect(() => {
+    void loadLimits()
+    void loadFiles()
+  }, [loadFiles, loadLimits])
 
   const copyToken = () => {
     const token = localStorage.getItem('auth_token') || ''
@@ -98,6 +170,62 @@ export function UserSettingsPage({
     })
   }
 
+  const handleUploadFiles = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const selectedFiles = Array.from(event.target.files || [])
+    if (selectedFiles.length === 0) return
+
+    setUploading(true)
+    setUploadMessage(null)
+
+    try {
+      const form = new FormData()
+      selectedFiles.forEach((file) => form.append('files', file))
+
+      const response = await apiFetch('/api/files/upload', {
+        method: 'POST',
+        body: form,
+      })
+
+      setFiles((prev) => {
+        const incoming = Array.isArray(response?.items) ? response.items : []
+        const next = [...incoming, ...prev]
+        const seen = new Set<string>()
+        return next.filter((item) => {
+          if (!item?.id || seen.has(item.id)) return false
+          seen.add(item.id)
+          return true
+        })
+      })
+
+      if (response?.limits) {
+        setLimits(response.limits)
+      } else {
+        void loadLimits()
+      }
+
+      setUploadMessage(`${selectedFiles.length} arquivo(s) enviado(s) com sucesso.`)
+      event.target.value = ''
+    } catch (error: any) {
+      setUploadMessage(error?.message || 'Falha ao enviar arquivos.')
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  const handleDeleteFile = async (fileId: string) => {
+    try {
+      const response = await apiFetch(`/api/files/${fileId}`, { method: 'DELETE' })
+      setFiles((prev) => prev.filter((file) => file.id !== fileId))
+      if (response?.limits) {
+        setLimits(response.limits)
+      } else {
+        void loadLimits()
+      }
+    } catch (error: any) {
+      setUploadMessage(error?.message || 'Falha ao remover o arquivo.')
+    }
+  }
+
   return (
     <section className="mx-auto flex max-w-5xl flex-col gap-6">
       <div className="rounded-[28px] border border-slate-200 bg-gradient-to-br from-slate-950 via-slate-900 to-emerald-950 p-6 text-white shadow-xl shadow-slate-300/40">
@@ -119,6 +247,131 @@ export function UserSettingsPage({
 
       <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
         <div className="flex flex-col gap-6">
+          <SectionCard
+            title="Meus limites"
+            description="Acompanhe o consumo da conta em mensagens, Gemini global e espaço ocupado com uploads."
+            accent="bg-violet-500"
+          >
+            {limitsLoading ? (
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-500">
+                Carregando limites...
+              </div>
+            ) : limits ? (
+              <div className="grid gap-3">
+                <div className={`rounded-2xl border px-4 py-3 ${getMetricTone(limits.dailyMessages.used, limits.dailyMessages.limit)}`}>
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.18em]">Mensagens diárias</div>
+                  <div className="mt-1 text-sm font-medium">{limits.dailyMessages.used} / {limits.dailyMessages.limit ?? 'Ilimitado'}</div>
+                </div>
+                <div className={`rounded-2xl border px-4 py-3 ${getMetricTone(limits.monthlyMessages.used, limits.monthlyMessages.limit)}`}>
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.18em]">Mensagens mensais</div>
+                  <div className="mt-1 text-sm font-medium">{limits.monthlyMessages.used} / {limits.monthlyMessages.limit ?? 'Ilimitado'}</div>
+                </div>
+                <div className={`rounded-2xl border px-4 py-3 ${getMetricTone(limits.geminiGlobal.usedToday, limits.geminiGlobal.limit)}`}>
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.18em]">Gemini global</div>
+                  <div className="mt-1 text-sm font-medium">{limits.geminiGlobal.usedToday} / {limits.geminiGlobal.limit ?? 'Pool compartilhado'}</div>
+                  <p className="mt-1 text-xs opacity-80">
+                    {limits.geminiGlobal.usingGlobalPool ? 'Sua conta está usando o pool global do sistema.' : 'Sua conta usa chave própria; o pool global segue visível para referência.'}
+                  </p>
+                </div>
+                <div className={`rounded-2xl border px-4 py-3 ${getMetricTone(limits.uploads.usedBytes, limits.uploads.limitBytes)}`}>
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.18em]">Espaço de upload</div>
+                  <div className="mt-1 text-sm font-medium">
+                    {formatBytes(limits.uploads.usedBytes)} / {limits.uploads.unlimited ? 'Ilimitado' : formatBytes(limits.uploads.limitBytes)}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-500">
+                Nenhum limite disponível no momento.
+              </div>
+            )}
+          </SectionCard>
+
+          <SectionCard
+            title="Meus arquivos"
+            description="Envie e gerencie imagens, PDF, PPTX, WAV e MP4 para reutilizar nas campanhas."
+            accent="bg-fuchsia-500"
+          >
+            <div className="space-y-4">
+              <div className="flex flex-wrap items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={uploading}
+                  className="h-11 rounded-2xl bg-slate-900 px-4 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
+                >
+                  {uploading ? 'Enviando...' : 'Enviar arquivos'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    void loadFiles()
+                    void loadLimits()
+                  }}
+                  className="h-11 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                >
+                  Atualizar lista
+                </button>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  multiple
+                  accept=".jpg,.jpeg,.png,.webp,.pdf,.ppt,.pptx,.wav,.mp4"
+                  className="hidden"
+                  onChange={handleUploadFiles}
+                />
+              </div>
+
+              {uploadMessage ? (
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+                  {uploadMessage}
+                </div>
+              ) : null}
+
+              {filesLoading ? (
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-500">
+                  Carregando arquivos...
+                </div>
+              ) : files.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-500">
+                  Você ainda não enviou arquivos para o servidor.
+                </div>
+              ) : (
+                <div className="grid gap-3">
+                  {files.map((file) => (
+                    <div key={file.id} className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                      <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                        <div className="min-w-0">
+                          <div className="truncate text-sm font-semibold text-slate-800">{file.originalName}</div>
+                          <div className="mt-1 text-xs text-slate-500">
+                            {file.mimeType} • {formatBytes(file.sizeBytes)} • {new Date(file.createdAt).toLocaleString('pt-BR')}
+                          </div>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          <a
+                            href={file.publicUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100"
+                          >
+                            {file.canInline ? 'Visualizar' : 'Abrir'}
+                          </a>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteFile(file.id)}
+                            className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700 hover:bg-rose-100"
+                          >
+                            Excluir
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </SectionCard>
+
           <SectionCard
             title="Meus dados"
             description="Esses dados podem ser usados no sistema e pelos administradores para suporte operacional."

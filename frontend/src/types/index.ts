@@ -26,10 +26,14 @@ export type CampaignMediaType = 'image' | 'document'
 
 export type CampaignMediaItem = {
   id: string
-  sourceType: 'url'
+  sourceType: 'url' | 'asset'
   mediaType: CampaignMediaType
   url: string
   caption: string
+  assetId?: string
+  assetName?: string
+  mimeType?: string
+  sizeBytes?: number
 }
 
 export type CampaignSharedContact = {
@@ -144,6 +148,40 @@ export type SupabaseCampaignRow = {
   interval_min_seconds: number | null
   interval_max_seconds: number | null
   delivery_payload: CampaignDeliveryPayload | null
+}
+
+export type UploadedUserFile = {
+  id: string
+  originalName: string
+  storedName: string
+  mimeType: string
+  extension: string
+  sizeBytes: number
+  mediaType: CampaignMediaType
+  createdAt: string
+  canInline: boolean
+  publicUrl: string
+}
+
+export type UserLimitMetric = {
+  used: number
+  limit: number | null
+}
+
+export type UserLimitSnapshot = {
+  isAdmin: boolean
+  dailyMessages: UserLimitMetric
+  monthlyMessages: UserLimitMetric
+  geminiGlobal: {
+    usingGlobalPool: boolean
+    usedToday: number
+    limit: number | null
+  }
+  uploads: {
+    usedBytes: number
+    limitBytes: number | null
+    unlimited: boolean
+  }
 }
 
 export type SupabaseListRow = {

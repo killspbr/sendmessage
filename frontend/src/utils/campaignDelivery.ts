@@ -26,10 +26,14 @@ function normalizeMediaItems(items: CampaignMediaItem[]) {
   return items
     .map((item) => ({
       id: String(item.id || '').trim() || `media-${Math.random().toString(36).slice(2, 8)}`,
-      sourceType: 'url' as const,
+      sourceType: item.sourceType === 'asset' ? ('asset' as const) : ('url' as const),
       mediaType: (item.mediaType === 'document' ? 'document' : 'image') as CampaignMediaItem['mediaType'],
       url: String(item.url || '').trim(),
       caption: String(item.caption || '').trim(),
+      assetId: item.assetId ? String(item.assetId) : undefined,
+      assetName: item.assetName ? String(item.assetName) : undefined,
+      mimeType: item.mimeType ? String(item.mimeType) : undefined,
+      sizeBytes: typeof item.sizeBytes === 'number' ? item.sizeBytes : undefined,
     }))
     .filter((item) => item.url)
 }
@@ -99,10 +103,14 @@ export function extractCampaignDeliveryState(campaign: Campaign): {
     .flatMap((block) => block.items || [])
     .map<CampaignMediaItem>((item) => ({
       id: item.id,
-      sourceType: 'url' as const,
+      sourceType: item.sourceType === 'asset' ? ('asset' as const) : ('url' as const),
       mediaType: item.mediaType === 'document' ? 'document' : 'image',
       url: item.url || '',
       caption: item.caption || '',
+      assetId: item.assetId,
+      assetName: item.assetName,
+      mimeType: item.mimeType,
+      sizeBytes: item.sizeBytes,
     }))
 
   const contactBlock = blocks.find(
