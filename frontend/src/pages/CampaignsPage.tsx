@@ -89,6 +89,13 @@ type CampaignsPageProps = {
   }) => Promise<string | null>
 }
 
+function getLocalDateInputValue(date = new Date()) {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
 export function CampaignsPage({
   campaigns,
   lists,
@@ -159,7 +166,7 @@ export function CampaignsPage({
   const [showScheduleModal, setShowScheduleModal] = useState<string | null>(null)
   const [scheduleError, setScheduleError] = useState<string | null>(null)
   const [schedConfig, setSchedConfig] = useState({
-    data_inicio: now.toISOString().slice(0, 10),
+    data_inicio: getLocalDateInputValue(now),
     hora_inicio: now.toTimeString().slice(0, 5),
     intervalo_minimo: 30,
     intervalo_maximo: 90,
@@ -188,7 +195,7 @@ export function CampaignsPage({
     const nextNow = new Date()
     setSchedConfig((prev) => ({
       ...prev,
-      data_inicio: prev.data_inicio || nextNow.toISOString().slice(0, 10),
+      data_inicio: prev.data_inicio || getLocalDateInputValue(nextNow),
       hora_inicio: prev.hora_inicio || nextNow.toTimeString().slice(0, 5),
     }))
     setScheduleError(null)

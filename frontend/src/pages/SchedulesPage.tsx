@@ -98,16 +98,19 @@ function formatScheduleStart(dateValue?: string | null, timeValue?: string | nul
 }
 
 function formatServerClock(clock?: ServerClock | null) {
-    if (!clock?.server_time) return '-'
+    if (!clock?.server_date || !clock?.server_time_only) return '-'
 
-    return new Date(clock.server_time).toLocaleString('pt-BR', {
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-    })
+    const [year, month, day] = String(clock.server_date).slice(0, 10).split('-')
+    const time = String(clock.server_time_only).slice(0, 8)
+    if (!year || !month || !day || !time) return '-'
+
+    return `${day}/${month}/${year}, ${time}`
+}
+
+function getServerNow(clock?: ServerClock | null) {
+    if (!clock?.server_date || !clock?.server_time_only) return null
+    const parsed = new Date(`${String(clock.server_date).slice(0, 10)}T${String(clock.server_time_only).slice(0, 8)}`)
+    return Number.isNaN(parsed.getTime()) ? null : parsed
 }
 
 function getScheduleStatusLabel(status: string) {
@@ -121,7 +124,7 @@ function getScheduleStatusLabel(status: string) {
     return status
 }
 
-function getScheduleHealth(schedule: ProfSchedule, serverTime?: string | null) {
+function getScheduleHealth(schedule: ProfSchedule, serverClock?: ServerClock | null) {
     const pending = Number(schedule.pending_count || 0)
     const processing = Number(schedule.processing_count || 0)
     const sent = Number(schedule.sent_count || 0)
@@ -143,7 +146,7 @@ function getScheduleHealth(schedule: ProfSchedule, serverTime?: string | null) {
     }
 
     const plannedStart = parseScheduleDateTime(schedule.data_inicio, schedule.hora_inicio)
-    const serverNow = serverTime ? new Date(serverTime) : null
+    const serverNow = getServerNow(serverClock)
     const scheduleDue = Boolean(
         plannedStart &&
         serverNow &&
@@ -354,7 +357,7 @@ export function SchedulesPage({ effectiveUserId }: SchedulesPageProps) {
                         </div>
                     ) : (
                         schedules.map((s) => {
-                            const health = getScheduleHealth(s, serverClock?.server_time)
+                            const health = getScheduleHealth(s, serverClock)
                             const total = Number(s.pending_count || 0) + Number(s.processing_count || 0) + Number(s.sent_count || 0) + Number(s.failed_count || 0)
                             return (
                                 <div key={s.id} className="bg-white rounded-3xl p-8 border border-slate-100 shadow-sm">

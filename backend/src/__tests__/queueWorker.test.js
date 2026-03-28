@@ -52,6 +52,17 @@ function createQueryMock(state) {
       return { rows }
     }
 
+    if (sql.includes("FROM campaign_schedule cs WHERE cs.status = 'preparando'")) {
+      const rows = state.schedules
+        .filter((s) => s.status === 'preparando')
+        .map((s) => ({
+          id: s.id,
+          campaign_id: s.campaign_id,
+          has_queue: state.queue.some((q) => q.schedule_id === s.id),
+        }))
+      return { rows }
+    }
+
     if (
       sql.includes("SELECT COUNT(*)::int AS total FROM message_queue WHERE user_id = $1 AND status = 'enviado' AND data_envio >= CURRENT_DATE") ||
       sql.includes("SELECT count(*) FROM message_queue WHERE user_id = $1 AND status = 'enviado' AND data_envio >= CURRENT_DATE")
@@ -60,12 +71,41 @@ function createQueryMock(state) {
       return { rows: [{ total, count: String(total) }] }
     }
 
-    if (sql.startsWith('UPDATE campaign_schedule SET status = $1, pause_reason = NULL, pause_details = NULL WHERE id = $2')) {
+    if (sql.startsWith('UPDATE campaign_schedule SET status = $1, pause_reason = NULL, pause_details = NULL, scheduler_claimed_at = NULL WHERE id = $2')) {
       const schedule = state.schedules.find((s) => s.id === params[1])
       if (schedule) {
         schedule.status = params[0]
         schedule.pause_reason = null
         schedule.pause_details = null
+        schedule.scheduler_claimed_at = null
+      }
+      return { rows: [] }
+    }
+
+    if (sql.startsWith("UPDATE campaign_schedule SET status = 'erro', pause_details = $1, scheduler_claimed_at = NULL WHERE id = $2")) {
+      const schedule = state.schedules.find((s) => s.id === params[1])
+      if (schedule) {
+        schedule.status = 'erro'
+        schedule.pause_details = params[0]
+        schedule.scheduler_claimed_at = null
+      }
+      return { rows: [] }
+    }
+
+    if (sql.startsWith("UPDATE campaign_schedule SET status = 'agendado', scheduler_claimed_at = NULL WHERE id = $1")) {
+      const schedule = state.schedules.find((s) => s.id === params[0])
+      if (schedule) {
+        schedule.status = 'agendado'
+        schedule.scheduler_claimed_at = null
+      }
+      return { rows: [] }
+    }
+
+    if (sql.startsWith("UPDATE campaign_schedule SET status = 'em_execucao', scheduler_claimed_at = NULL WHERE id = $1")) {
+      const schedule = state.schedules.find((s) => s.id === params[0])
+      if (schedule) {
+        schedule.status = 'em_execucao'
+        schedule.scheduler_claimed_at = null
       }
       return { rows: [] }
     }
@@ -96,6 +136,7 @@ function createQueryMock(state) {
         .filter((s) => s.status === 'agendado')
         .map((s) => {
           s.status = 'preparando'
+          s.scheduler_claimed_at = state.now.toISOString()
           return clone(s)
         })
       return { rows: dueSchedules }
@@ -265,6 +306,7 @@ function createQueryMock(state) {
         schedule.pause_reason = null
         schedule.pause_details = null
         schedule.resumed_at = state.now.toISOString()
+        schedule.scheduler_claimed_at = null
       }
       return { rows: [] }
     }
@@ -282,7 +324,7 @@ function createQueryMock(state) {
       return { rows: [] }
     }
 
-    throw new Error(`SQL não mockado: ${sql}`)
+    throw new Error(`SQL nÃ£o mockado: ${sql}`)
   }
 }
 
@@ -291,9 +333,9 @@ test.afterEach(() => {
   resetQueueWorkerRuntimeForTests()
 })
 
-test('scheduler gera fila para campanha agendada com contatos elegíveis', async () => {
+test('scheduler gera fila para campanha agendada com contatos elegÃ­veis', async () => {
   const state = createState({
-    campaigns: [{ id: 'camp-1', channels: '["whatsapp"]', list_name: 'Lista A', variations: '[]', message: 'Olá', status: 'agendada' }],
+    campaigns: [{ id: 'camp-1', channels: '["whatsapp"]', list_name: 'Lista A', variations: '[]', message: 'OlÃ¡', status: 'agendada' }],
     schedules: [{ id: 1, campaign_id: 'camp-1', user_id: 'user-1', status: 'agendado', limite_diario: 300 }],
     lists: [{ id: 'list-1', user_id: 'user-1', name: 'Lista A' }],
     contacts: [
@@ -310,7 +352,7 @@ test('scheduler gera fila para campanha agendada com contatos elegíveis', async
   assert.equal(state.logs.some((log) => log.event === 'queue_created'), true)
 })
 
-test('scheduler não conclui agendamento em execução sem fila criada', async () => {
+test('scheduler nÃ£o conclui agendamento em execuÃ§Ã£o sem fila criada', async () => {
   const state = createState({
     campaigns: [{ id: 'camp-1', status: 'agendada' }],
     schedules: [{ id: 1, campaign_id: 'camp-1', user_id: 'user-1', status: 'em_execucao', limite_diario: 300 }],
@@ -322,10 +364,22 @@ test('scheduler não conclui agendamento em execução sem fila criada', async (
   assert.equal(state.schedules[0].status, 'em_execucao')
 })
 
-test('worker envia mensagem com sucesso sem chamar integrações reais', async () => {
+test('scheduler reencola agendamento preso em preparando sem fila', async () => {
+  const state = createState({
+    schedules: [{ id: 1, campaign_id: 'camp-1', user_id: 'user-1', status: 'preparando', limite_diario: 300, scheduler_claimed_at: '2026-03-27T09:00:00.000Z' }],
+  })
+
+  setQueueWorkerDepsForTests({ query: createQueryMock(state) })
+  await runScheduler()
+
+  assert.notEqual(state.schedules[0].status, 'preparando')
+  assert.equal(state.logs.some((log) => log.event === 'schedule_requeued'), true)
+})
+
+test('worker envia mensagem com sucesso sem chamar integraÃ§Ãµes reais', async () => {
   const state = createState({
     schedules: [{ id: 1, campaign_id: 'camp-1', user_id: 'user-1', status: 'em_execucao', limite_diario: 300, mensagens_por_lote: 45, tempo_pausa_lote: 15, intervalo_minimo: 1, intervalo_maximo: 1 }],
-    queue: [{ id: 1, schedule_id: 1, campaign_id: 'camp-1', user_id: 'user-1', telefone: '11999999999', nome: 'Contato 1', mensagem: '<p>Olá {name}</p>', status: 'pendente', tentativas: 0 }],
+    queue: [{ id: 1, schedule_id: 1, campaign_id: 'camp-1', user_id: 'user-1', telefone: '11999999999', nome: 'Contato 1', mensagem: '<p>OlÃ¡ {name}</p>', status: 'pendente', tentativas: 0 }],
     userProfiles: [{ id: 'user-1', evolution_url: 'https://evolution.test', evolution_apikey: 'token', evolution_instance: 'instancia' }],
     reputation: [{ user_id: 'user-1', level: 'AQUECENDO' }],
   })
@@ -347,12 +401,12 @@ test('worker envia mensagem com sucesso sem chamar integrações reais', async (
   assert.equal(state.logs.some((log) => log.event === 'envio_sucesso'), true)
 })
 
-test('worker pausa agendamentos quando atinge limite diário', async () => {
+test('worker pausa agendamentos quando atinge limite diÃ¡rio', async () => {
   const state = createState({
     schedules: [{ id: 1, campaign_id: 'camp-1', user_id: 'user-1', status: 'em_execucao', limite_diario: 1, mensagens_por_lote: 45, tempo_pausa_lote: 15, intervalo_minimo: 1, intervalo_maximo: 1 }],
     queue: [
-      { id: 1, schedule_id: 1, campaign_id: 'camp-1', user_id: 'user-1', telefone: '11999999999', nome: 'Contato 1', mensagem: 'Olá', status: 'pendente', tentativas: 0 },
-      { id: 2, schedule_id: 1, campaign_id: 'camp-1', user_id: 'user-1', telefone: '11888888888', nome: 'Contato 2', mensagem: 'Olá', status: 'enviado', tentativas: 0, data_envio: '2026-03-27T08:00:00Z' },
+      { id: 1, schedule_id: 1, campaign_id: 'camp-1', user_id: 'user-1', telefone: '11999999999', nome: 'Contato 1', mensagem: 'OlÃ¡', status: 'pendente', tentativas: 0 },
+      { id: 2, schedule_id: 1, campaign_id: 'camp-1', user_id: 'user-1', telefone: '11888888888', nome: 'Contato 2', mensagem: 'OlÃ¡', status: 'enviado', tentativas: 0, data_envio: '2026-03-27T08:00:00Z' },
     ],
     reputation: [{ user_id: 'user-1', level: 'NOVO' }],
   })
@@ -365,7 +419,7 @@ test('worker pausa agendamentos quando atinge limite diário', async () => {
   assert.equal(state.queue[0].status, 'pendente')
 })
 
-test('scheduler não retoma pausa por limite diário no mesmo dia, mas retoma no dia seguinte', async () => {
+test('scheduler nÃ£o retoma pausa por limite diÃ¡rio no mesmo dia, mas retoma no dia seguinte', async () => {
   const sameDayState = createState({
     schedules: [{ id: 1, campaign_id: 'camp-1', user_id: 'user-1', status: 'pausado', limite_diario: 300, pause_reason: 'daily_limit', paused_at: '2026-03-27T07:00:00.000Z' }],
     queue: [{ id: 1, schedule_id: 1, campaign_id: 'camp-1', user_id: 'user-1', status: 'pendente' }],
@@ -383,11 +437,11 @@ test('scheduler não retoma pausa por limite diário no mesmo dia, mas retoma no
   assert.equal(nextDayState.schedules[0].status, 'em_execucao')
 })
 
-test('worker pausa por reputação crítica e só volta a pendente sem enviar', async () => {
+test('worker pausa por reputaÃ§Ã£o crÃ­tica e sÃ³ volta a pendente sem enviar', async () => {
   const state = createState({
     schedules: [{ id: 1, campaign_id: 'camp-1', user_id: 'user-1', status: 'em_execucao', limite_diario: 300, mensagens_por_lote: 45, tempo_pausa_lote: 15, intervalo_minimo: 1, intervalo_maximo: 1 }],
-    queue: [{ id: 1, schedule_id: 1, campaign_id: 'camp-1', user_id: 'user-1', telefone: '11999999999', nome: 'Contato 1', mensagem: 'Olá', status: 'pendente', tentativas: 0 }],
-    reputation: [{ user_id: 'user-1', level: 'CRÍTICO' }],
+    queue: [{ id: 1, schedule_id: 1, campaign_id: 'camp-1', user_id: 'user-1', telefone: '11999999999', nome: 'Contato 1', mensagem: 'OlÃ¡', status: 'pendente', tentativas: 0 }],
+    reputation: [{ user_id: 'user-1', level: 'CRÃTICO' }],
   })
 
   setQueueWorkerDepsForTests({ query: createQueryMock(state), sleepImpl: async () => {} })
@@ -402,7 +456,7 @@ test('worker pausa por reputação crítica e só volta a pendente sem enviar', 
 test('worker interrompe envio se o agendamento for cancelado durante o processamento', async () => {
   const state = createState({
     schedules: [{ id: 1, campaign_id: 'camp-1', user_id: 'user-1', status: 'em_execucao', limite_diario: 300, mensagens_por_lote: 45, tempo_pausa_lote: 15, intervalo_minimo: 1, intervalo_maximo: 1 }],
-    queue: [{ id: 1, schedule_id: 1, campaign_id: 'camp-1', user_id: 'user-1', telefone: '11999999999', nome: 'Contato 1', mensagem: '<p>Olá</p>', status: 'pendente', tentativas: 0 }],
+    queue: [{ id: 1, schedule_id: 1, campaign_id: 'camp-1', user_id: 'user-1', telefone: '11999999999', nome: 'Contato 1', mensagem: '<p>OlÃ¡</p>', status: 'pendente', tentativas: 0 }],
     userProfiles: [{ id: 'user-1', evolution_url: 'https://evolution.test', evolution_apikey: 'token', evolution_instance: 'instancia' }],
     reputation: [{ user_id: 'user-1', level: 'AQUECENDO' }],
   })
