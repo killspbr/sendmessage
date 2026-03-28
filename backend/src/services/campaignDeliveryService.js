@@ -205,22 +205,7 @@ export function buildCampaignDeliveryPlan(campaign, options = {}) {
   }
 }
 
-async function postEvolutionMessage(fetchImpl, url, apiKey, body) {
-  const response = await fetchImpl(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      apikey: apiKey,
-    },
-    body: JSON.stringify(body),
-  })
-
-  if (!response.ok) {
-    throw new Error(await response.text())
-  }
-}
-
-async function postEvolutionMedia(fetchImpl, url, apiKey, body) {
+async function postEvolution(fetchImpl, url, apiKey, body) {
   const response = await fetchImpl(url, {
     method: 'POST',
     headers: {
@@ -305,6 +290,73 @@ function buildMediaCaption({ messageText, mediaCaption, attachMessage }) {
   return parts.join('\n\n').trim()
 }
 
+async function resolveMediaBody(fetchImpl, media, resolvedUrl) {
+  if (media.sourceType !== 'asset') {
+    return resolvedUrl
+  }
+
+  const response = await fetchImpl(resolvedUrl)
+  if (!response.ok) {
+    throw new Error(`Falha ao carregar o arquivo do servidor: ${await response.text()}`)
+  }
+
+  const arrayBuffer = await response.arrayBuffer()
+  return Buffer.from(arrayBuffer).toString('base64')
+}
+
+async function sendEvolutionMedia({
+  fetchImpl,
+  evolutionUrl,
+  evolutionApiKey,
+  evolutionInstance,
+  number,
+  media,
+  resolvedUrl,
+  caption,
+}) {
+  const mediaBody = await resolveMediaBody(fetchImpl, media, resolvedUrl)
+  const fileName = resolveMediaFileName(media)
+  const mimeType = inferMimeType(media)
+
+  try {
+    await postEvolution(
+      fetchImpl,
+      `${evolutionUrl}/message/sendMedia/${evolutionInstance}`,
+      evolutionApiKey,
+      {
+        number,
+        mediaMessage: {
+          mediaType: media.mediaType,
+          fileName,
+          caption,
+          mimetype: mimeType,
+          media: mediaBody,
+        },
+      }
+    )
+    return
+  } catch (error) {
+    const message = String(error?.message || '')
+    if (!message.includes('"mediatype"')) {
+      throw error
+    }
+  }
+
+  await postEvolution(
+    fetchImpl,
+    `${evolutionUrl}/message/sendMedia/${evolutionInstance}`,
+    evolutionApiKey,
+    {
+      number,
+      mediatype: media.mediaType,
+      mimetype: mimeType,
+      fileName,
+      caption,
+      media: mediaBody,
+    }
+  )
+}
+
 function resolveSharedContact(sharedContact, contact) {
   if (!sharedContact) return null
 
@@ -317,6 +369,57 @@ function resolveSharedContact(sharedContact, contact) {
   if (!fullName || !phone) return null
 
   return { fullName, phone, company, email, url }
+}
+
+async function sendEvolutionContact({
+  fetchImpl,
+  evolutionUrl,
+  evolutionApiKey,
+  evolutionInstance,
+  number,
+  sharedContact,
+}) {
+  const contactNumber = toEvolutionNumber(sharedContact.phone)
+  if (!contactNumber) {
+    throw new Error('Telefone do contato compartilhado esta invalido.')
+  }
+
+  const payloadContact = {
+    wuid: `${contactNumber}@s.whatsapp.net`,
+    phoneNumber: contactNumber,
+    fullName: sharedContact.fullName,
+    organization: sharedContact.company || undefined,
+    email: sharedContact.email || undefined,
+    url: sharedContact.url || undefined,
+  }
+
+  try {
+    await postEvolution(
+      fetchImpl,
+      `${evolutionUrl}/message/sendContact/${evolutionInstance}`,
+      evolutionApiKey,
+      {
+        number,
+        contactMessage: [payloadContact],
+      }
+    )
+    return
+  } catch (error) {
+    const message = String(error?.message || '')
+    if (!message.includes('"contact"')) {
+      throw error
+    }
+  }
+
+  await postEvolution(
+    fetchImpl,
+    `${evolutionUrl}/message/sendContact/${evolutionInstance}`,
+    evolutionApiKey,
+    {
+      number,
+      contact: [payloadContact],
+    }
+  )
 }
 
 export async function executeWhatsappCampaignDelivery({
@@ -349,7 +452,7 @@ export async function executeWhatsappCampaignDelivery({
   const attachMainTextToFirstMedia = Boolean(messageText && plan.mediaItems.length > 0)
 
   if (messageText && !attachMainTextToFirstMedia) {
-    await postEvolutionMessage(
+    await postEvolution(
       fetchImpl,
       `${evolutionUrl}/message/sendText/${evolutionInstance}`,
       evolutionApiKey,
@@ -378,21 +481,17 @@ export async function executeWhatsappCampaignDelivery({
         attachMessage,
       })
 
-      await postEvolutionMedia(
+      await sendEvolutionMedia({
         fetchImpl,
-        `${evolutionUrl}/message/sendMedia/${evolutionInstance}`,
+        evolutionUrl,
         evolutionApiKey,
-        {
-          number: evolutionNumber,
-          mediaMessage: {
-            mediaType: media.mediaType,
-            fileName: resolveMediaFileName(media),
-            caption,
-            mimetype: inferMimeType(media),
-            media: resolvedUrl,
-          },
-        }
-      )
+        evolutionInstance,
+        number: evolutionNumber,
+        media,
+        resolvedUrl,
+        caption,
+      })
+
       result.mediaSent += 1
       if (attachMessage) {
         result.sentText = true
@@ -411,29 +510,14 @@ export async function executeWhatsappCampaignDelivery({
       result.errors.push('Contato compartilhado invalido ou incompleto.')
     } else {
       try {
-        const contactNumber = toEvolutionNumber(resolvedSharedContact.phone)
-        if (!contactNumber) {
-          throw new Error('Telefone do contato compartilhado esta invalido.')
-        }
-
-        await postEvolutionMessage(
+        await sendEvolutionContact({
           fetchImpl,
-          `${evolutionUrl}/message/sendContact/${evolutionInstance}`,
+          evolutionUrl,
           evolutionApiKey,
-          {
-            number: evolutionNumber,
-            contactMessage: [
-              {
-                wuid: `${contactNumber}@s.whatsapp.net`,
-                phoneNumber: contactNumber,
-                fullName: resolvedSharedContact.fullName,
-                organization: resolvedSharedContact.company || undefined,
-                email: resolvedSharedContact.email || undefined,
-                url: resolvedSharedContact.url || undefined,
-              },
-            ],
-          }
-        )
+          evolutionInstance,
+          number: evolutionNumber,
+          sharedContact: resolvedSharedContact,
+        })
         result.contactSent = true
       } catch (error) {
         result.contactFailed = true
