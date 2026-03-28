@@ -325,6 +325,11 @@ async function sendEvolutionMedia({
       evolutionApiKey,
       {
         number,
+        mediatype: media.mediaType,
+        mimetype: mimeType,
+        fileName,
+        caption,
+        media: mediaBody,
         mediaMessage: {
           mediaType: media.mediaType,
           fileName,
@@ -337,7 +342,7 @@ async function sendEvolutionMedia({
     return
   } catch (error) {
     const message = String(error?.message || '')
-    if (!message.includes('"mediatype"')) {
+    if (!message.includes('"mediaMessage"')) {
       throw error
     }
   }
@@ -348,11 +353,6 @@ async function sendEvolutionMedia({
     evolutionApiKey,
     {
       number,
-      mediatype: media.mediaType,
-      mimetype: mimeType,
-      fileName,
-      caption,
-      media: mediaBody,
       mediaMessage: {
         mediaType: media.mediaType,
         fileName,
@@ -407,13 +407,14 @@ async function sendEvolutionContact({
       evolutionApiKey,
       {
         number,
+        contact: [payloadContact],
         contactMessage: [payloadContact],
       }
     )
     return
   } catch (error) {
     const message = String(error?.message || '')
-    if (!message.includes('"contact"')) {
+    if (!message.includes('"contactMessage"')) {
       throw error
     }
   }
@@ -424,7 +425,6 @@ async function sendEvolutionContact({
     evolutionApiKey,
     {
       number,
-      contact: [payloadContact],
       contactMessage: [payloadContact],
     }
   )
@@ -457,36 +457,21 @@ export async function executeWhatsappCampaignDelivery({
     errors: [],
   }
 
-  const attachMainTextToFirstMedia = Boolean(messageText && plan.mediaItems.length > 0)
+  const [firstMedia, ...remainingMedia] = plan.mediaItems
 
-  if (messageText && !attachMainTextToFirstMedia) {
-    await postEvolution(
-      fetchImpl,
-      `${evolutionUrl}/message/sendText/${evolutionInstance}`,
-      evolutionApiKey,
-      {
-        number: evolutionNumber,
-        text: messageText,
-        linkPreview: true,
-      }
-    )
-    result.sentText = true
-  }
-
-  for (const [index, media] of plan.mediaItems.entries()) {
+  const sendMediaItem = async (media, options = {}) => {
     const resolvedUrl = safeTrim(resolveTemplate(media.url, contact))
     if (!isValidHttpUrl(resolvedUrl)) {
       result.mediaFailed += 1
       result.errors.push(`Midia invalida ignorada: ${media.id}`)
-      continue
+      return
     }
 
     try {
-      const attachMessage = attachMainTextToFirstMedia && index === 0
       const caption = buildMediaCaption({
         messageText,
         mediaCaption: resolveMediaCaption(media.caption, contact),
-        attachMessage,
+        attachMessage: Boolean(options.attachMessage),
       })
 
       await sendEvolutionMedia({
@@ -501,13 +486,35 @@ export async function executeWhatsappCampaignDelivery({
       })
 
       result.mediaSent += 1
-      if (attachMessage) {
+      if (options.attachMessage) {
         result.sentText = true
       }
     } catch (error) {
       result.mediaFailed += 1
       result.errors.push(`Falha ao enviar midia ${media.id}: ${error?.message || 'erro desconhecido'}`)
     }
+  }
+
+  if (firstMedia) {
+    await sendMediaItem(firstMedia, { attachMessage: false })
+  }
+
+  if (messageText) {
+    await postEvolution(
+      fetchImpl,
+      `${evolutionUrl}/message/sendText/${evolutionInstance}`,
+      evolutionApiKey,
+      {
+        number: evolutionNumber,
+        text: messageText,
+        linkPreview: true,
+      }
+    )
+    result.sentText = true
+  }
+
+  for (const media of remainingMedia) {
+    await sendMediaItem(media, { attachMessage: false })
   }
 
   if (plan.sharedContact) {
