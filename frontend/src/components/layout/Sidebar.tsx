@@ -1,6 +1,6 @@
 import { useState } from 'react'
 
-export type SidebarPage = 'dashboard' | 'contacts' | 'campaigns' | 'schedules' | 'settings' | 'reports' | 'admin' | 'profile' | 'gemini-keys' | 'security'
+export type SidebarPage = 'dashboard' | 'contacts' | 'campaigns' | 'schedules' | 'settings' | 'reports' | 'admin' | 'warmer' | 'profile' | 'gemini-keys' | 'security'
 
 type SidebarProps = {
   currentPage: SidebarPage
@@ -179,6 +179,19 @@ export function Sidebar({ currentPage, onChangePage, can, userEmail, userName, o
           >
             <span className="h-6 w-6 rounded-lg bg-slate-900/80 flex items-center justify-center text-[11px] shrink-0">👤</span>
             <span className="inline text-xs">Usuários &amp; Grupos</span>
+          </button>
+        )}
+        {canViewAdmin && (
+          <button
+            className={`w-full flex items-center justify-start gap-2 px-3 py-2 rounded-xl text-xs font-medium transition ${currentPage === 'warmer'
+                ? 'bg-emerald-500/20 border border-emerald-400/50 text-slate-50 shadow-sm shadow-emerald-600/40'
+                : 'text-slate-400 hover:bg-slate-900/80 hover:text-slate-50'
+              }`}
+            onClick={() => handlePageChange('warmer')}
+            title="Maturador de Chips"
+          >
+            <span className="h-6 w-6 rounded-lg bg-slate-900/80 flex items-center justify-center text-[11px] shrink-0">🧬</span>
+            <span className="inline text-xs">Maturador</span>
           </button>
         )}
       </nav>

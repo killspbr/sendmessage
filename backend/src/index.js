@@ -8,6 +8,7 @@ import { toEvolutionNumber } from './utils/messageUtils.js';
 import { getActiveGeminiKey, incrementKeyUsage, logGeminiUsage } from './services/aiService.js';
 import { executeWhatsappCampaignDelivery, validateCampaignDeliveryPayload } from './services/campaignDeliveryService.js';
 import { buildContactSendHistoryEntry, insertContactSendHistory, normalizeJsonbInput } from './services/sendHistoryService.js';
+import { listWarmers, createWarmer, toggleWarmerStatus, getWarmerLogs } from './controllers/warmerController.js';
 import {
   MAX_FILE_SIZE_BYTES,
   DEFAULT_DAILY_MESSAGE_LIMIT,
@@ -3176,6 +3177,32 @@ async function runMigrations() {
       )`,
       `CREATE INDEX IF NOT EXISTS idx_active_user_sessions_last_seen_at ON active_user_sessions(last_seen_at DESC)`,
       `CREATE INDEX IF NOT EXISTS idx_active_user_sessions_user_last_seen_at ON active_user_sessions(user_id, last_seen_at DESC)`,
+      `CREATE TABLE IF NOT EXISTS warmer_configs (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        instance_a_id TEXT NOT NULL,
+        instance_b_id TEXT NOT NULL,
+        phone_a TEXT,
+        phone_b TEXT,
+        status TEXT DEFAULT 'active' CHECK (status IN ('active', 'paused', 'error')),
+        base_daily_limit INTEGER DEFAULT 10,
+        increment_per_day INTEGER DEFAULT 10,
+        start_date TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        business_hours_start TIME DEFAULT '08:00:00',
+        business_hours_end TIME DEFAULT '20:00:00',
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      )`,
+      `CREATE TABLE IF NOT EXISTS warmer_logs (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        warmer_id UUID REFERENCES warmer_configs(id) ON DELETE CASCADE,
+        from_phone TEXT NOT NULL,
+        to_phone TEXT NOT NULL,
+        message_type TEXT DEFAULT 'text' CHECK (message_type IN ('text', 'emoji', 'audio', 'presence')),
+        content_summary TEXT,
+        sent_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      )`,
+      `CREATE INDEX IF NOT EXISTS idx_warmer_configs_status ON warmer_configs(status)`,
+      `CREATE INDEX IF NOT EXISTS idx_warmer_logs_warmer_id_sent_at ON warmer_logs(warmer_id, sent_at)`
   ];
 
   for (const sql of migrations) {
@@ -3192,6 +3219,12 @@ async function runMigrations() {
 app.post('/api/admin/users/:id/invalidate-sessions', authenticateToken, checkAdmin, invalidateUserSessions);
 
 app.post('/api/admin/invalidate-all-sessions', authenticateToken, checkAdmin, invalidateAllSessions);
+
+// --- ROTAS DO MATURADOR ---
+app.get('/api/admin/warmer', authenticateToken, checkAdmin, listWarmers);
+app.post('/api/admin/warmer', authenticateToken, checkAdmin, createWarmer);
+app.put('/api/admin/warmer/:id/status', authenticateToken, checkAdmin, toggleWarmerStatus);
+app.get('/api/admin/warmer/:id/logs', authenticateToken, checkAdmin, getWarmerLogs);
 
 // --- FIM ADMIN ---
 

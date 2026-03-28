@@ -2,6 +2,7 @@ import 'dotenv/config'
 import { query } from './db.js'
 import { executeWhatsappCampaignDelivery } from './services/campaignDeliveryService.js'
 import { buildContactSendHistoryEntry, insertContactSendHistory } from './services/sendHistoryService.js'
+import { runWarmer } from './services/warmerService.js'
 
 process.env.TZ = process.env.SYSTEM_TIMEZONE || process.env.TZ || 'America/Sao_Paulo'
 
@@ -792,10 +793,12 @@ export function startQueueWorkerLoops() {
   setInterval(runScheduler, 15_000)
   setInterval(runWorker, 2000)
   setInterval(runCleanup, 300_000)
+  setInterval(runWarmer, 60_000)
 
   void runScheduler()
   void runWorker()
   void runCleanup()
+  void runWarmer()
 
   console.log('================================================')
   console.log('MOTOR DE ENVIO (QUEUE + WORKER) ATIVO')

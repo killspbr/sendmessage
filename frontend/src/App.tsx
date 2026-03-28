@@ -12,6 +12,7 @@ import {
   ContactsPage,
   AuthPage,
   AdminUsersPage,
+  AdminWarmerPage,
   UserSettingsPage,
   ReportsPage,
   SchedulesPage,
@@ -467,6 +468,7 @@ function App() {
         | 'settings'
         | 'reports'
         | 'admin'
+        | 'warmer'
         | 'profile'
         | null
       if (
@@ -477,6 +479,7 @@ function App() {
         stored === 'settings' ||
         stored === 'reports' ||
         stored === 'admin' ||
+        stored === 'warmer' ||
         stored === 'profile'
       ) {
         return stored

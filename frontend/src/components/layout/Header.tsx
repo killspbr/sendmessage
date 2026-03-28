@@ -1,6 +1,6 @@
 import React from 'react'
 
-export type HeaderPage = 'dashboard' | 'contacts' | 'campaigns' | 'schedules' | 'settings' | 'reports' | 'admin' | 'profile' | 'extract' | 'gemini-keys' | 'security'
+export type HeaderPage = 'dashboard' | 'contacts' | 'campaigns' | 'schedules' | 'settings' | 'reports' | 'admin' | 'warmer' | 'profile' | 'extract' | 'gemini-keys' | 'security'
 
 type HeaderProps = {
   currentPage: HeaderPage
@@ -25,8 +25,10 @@ export function Header({ currentPage, onImportCsv, onExportCsv, onToggleMobileMe
                 ? 'Relatórios'
                 : currentPage === 'admin'
                   ? 'Usuários & Grupos'
-                  : currentPage === 'profile'
-                    ? 'Meu perfil'
+                  : currentPage === 'warmer'
+                    ? 'Maturador de Chips'
+                    : currentPage === 'profile'
+                      ? 'Meu perfil'
                     : currentPage === 'extract'
                       ? 'Extrair contatos'
                       : currentPage === 'gemini-keys'
@@ -50,8 +52,10 @@ export function Header({ currentPage, onImportCsv, onExportCsv, onToggleMobileMe
                 ? 'Analise desempenho de envios por campanha e período.'
                 : currentPage === 'admin'
                   ? 'Controle quais usuários podem acessar o sistema, seus grupos e permissões.'
-                  : currentPage === 'profile'
-                    ? 'Ajuste suas preferências pessoais de IA e webhooks.'
+                  : currentPage === 'warmer'
+                    ? 'Sistema automático de aquecimento e conversação entre instâncias WhatsApp.'
+                    : currentPage === 'profile'
+                      ? 'Ajuste suas preferências pessoais de IA e webhooks.'
                     : currentPage === 'extract'
                       ? 'Extraia informações de imagens com Inteligência Artificial.'
                       : currentPage === 'gemini-keys'
