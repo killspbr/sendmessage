@@ -1,0 +1,22 @@
+{
+  "name": "sendmessage-cloudflare-backend",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "hono": "^4.9.7",
+    "jose": "^6.1.0",
+    "pg": "^8.16.3"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260315.0",
+    "@types/pg": "^8.15.5",
+    "typescript": "^5.8.3",
+    "wrangler": "^4.9.0"
+  }
+}
