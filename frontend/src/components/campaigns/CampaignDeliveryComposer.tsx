@@ -200,6 +200,7 @@ export function CampaignDeliveryComposer({
           ) : (
             mediaItems.map((item, index) => {
               const compatibleFiles = serverFiles.filter((file) => file.mediaType === item.mediaType)
+              const usingAssetLibrary = item.sourceType === 'asset'
 
               return (
                 <div key={item.id} className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
@@ -236,7 +237,50 @@ export function CampaignDeliveryComposer({
                       </select>
                     </label>
 
-                    <label className="flex flex-col gap-1">
+                    <div className="flex flex-col gap-1">
+                      <span className="text-[11px] font-medium text-slate-600">Origem</span>
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            updateMediaItem(item.id, {
+                              sourceType: 'url',
+                              assetId: undefined,
+                              assetName: undefined,
+                              mimeType: undefined,
+                              sizeBytes: undefined,
+                            })
+                          }
+                          className={`rounded-xl px-3 py-2 text-xs font-semibold transition ${
+                            !usingAssetLibrary
+                              ? 'bg-slate-900 text-white'
+                              : 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                          }`}
+                        >
+                          URL externa
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            updateMediaItem(item.id, {
+                              sourceType: 'asset',
+                              url: usingAssetLibrary ? item.url : '',
+                            })
+                          }
+                          className={`rounded-xl px-3 py-2 text-xs font-semibold transition ${
+                            usingAssetLibrary
+                              ? 'bg-slate-900 text-white'
+                              : 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                          }`}
+                        >
+                          Minha biblioteca
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {!usingAssetLibrary ? (
+                    <label className="mt-3 flex flex-col gap-1">
                       <span className="text-[11px] font-medium text-slate-600">URL publica</span>
                       <input
                         type="url"
@@ -255,91 +299,91 @@ export function CampaignDeliveryComposer({
                         className="h-9 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
                       />
                     </label>
-                  </div>
-
-                  <div className="mt-3 rounded-xl border border-slate-200 bg-white p-3">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div>
-                        <div className="text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">
-                          Biblioteca do servidor
-                        </div>
-                        <div className="mt-1 text-xs text-slate-500">
-                          Escolha um arquivo ja enviado ou faca upload direto daqui.
-                        </div>
-                      </div>
-
-                      <div className="flex flex-wrap gap-2">
-                        <button
-                          type="button"
-                          onClick={() => openUploadPicker(item.id)}
-                          disabled={uploadingForId === item.id}
-                          className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
-                        >
-                          {uploadingForId === item.id ? 'Enviando...' : 'Enviar para minha biblioteca'}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setPickerOpenForId((current) => (current === item.id ? null : item.id))
-                          }
-                          className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100"
-                        >
-                          {pickerOpenForId === item.id ? 'Fechar biblioteca' : 'Escolher dos meus arquivos'}
-                        </button>
-                      </div>
-                    </div>
-
-                    <div className="mt-2 text-[11px] text-slate-500">
-                      Tipos aceitos: imagem, PDF, PPT/PPTX, WAV e MP4. Limite de 20 MB por arquivo.
-                    </div>
-
-                    {libraryMessage ? (
-                      <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
-                        {libraryMessage}
-                      </div>
-                    ) : null}
-
-                    {item.sourceType === 'asset' && item.assetName ? (
-                      <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
-                        Arquivo selecionado: <span className="font-semibold">{item.assetName}</span>
-                      </div>
-                    ) : null}
-
-                    {pickerOpenForId === item.id ? (
-                      <div className="mt-3 space-y-2">
-                        {filesLoading ? (
-                          <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-xs text-slate-500">
-                            Carregando arquivos...
+                  ) : (
+                    <div className="mt-3 rounded-xl border border-slate-200 bg-white p-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div>
+                          <div className="text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">
+                            Biblioteca do servidor
                           </div>
-                        ) : compatibleFiles.length === 0 ? (
-                          <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-3 py-3 text-xs text-slate-500">
-                            Nenhum arquivo compativel encontrado para este tipo.
+                          <div className="mt-1 text-xs text-slate-500">
+                            Escolha um arquivo ja enviado ou faca upload direto daqui.
                           </div>
-                        ) : (
-                          compatibleFiles.map((file) => (
-                            <button
-                              key={file.id}
-                              type="button"
-                              onClick={() => pickServerFile(item.id, file)}
-                              className="flex w-full items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-left transition hover:border-emerald-200 hover:bg-emerald-50"
-                            >
-                              <div className="min-w-0">
-                                <div className="truncate text-sm font-semibold text-slate-800">
-                                  {file.originalName}
-                                </div>
-                                <div className="mt-1 truncate text-xs text-slate-500">
-                                  {file.mimeType}
-                                </div>
-                              </div>
-                              <span className="ml-3 rounded-full bg-slate-900 px-2.5 py-1 text-[11px] font-semibold text-white">
-                                Usar arquivo
-                              </span>
-                            </button>
-                          ))
-                        )}
+                        </div>
+
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={() => openUploadPicker(item.id)}
+                            disabled={uploadingForId === item.id}
+                            className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            {uploadingForId === item.id ? 'Enviando...' : 'Enviar para minha biblioteca'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setPickerOpenForId((current) => (current === item.id ? null : item.id))
+                            }
+                            className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100"
+                          >
+                            {pickerOpenForId === item.id ? 'Fechar biblioteca' : item.assetName ? 'Trocar arquivo' : 'Escolher dos meus arquivos'}
+                          </button>
+                        </div>
                       </div>
-                    ) : null}
-                  </div>
+
+                      <div className="mt-2 text-[11px] text-slate-500">
+                        Tipos aceitos: imagem, PDF, PPT/PPTX, WAV e MP4. Limite de 20 MB por arquivo.
+                      </div>
+
+                      {libraryMessage ? (
+                        <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                          {libraryMessage}
+                        </div>
+                      ) : null}
+
+                      {item.assetName ? (
+                        <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
+                          Arquivo selecionado: <span className="font-semibold">{item.assetName}</span>
+                        </div>
+                      ) : null}
+
+                      {pickerOpenForId === item.id ? (
+                        <div className="mt-3 space-y-2">
+                          {filesLoading ? (
+                            <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-xs text-slate-500">
+                              Carregando arquivos...
+                            </div>
+                          ) : compatibleFiles.length === 0 ? (
+                            <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-3 py-3 text-xs text-slate-500">
+                              Nenhum arquivo compativel encontrado para este tipo.
+                            </div>
+                          ) : (
+                            compatibleFiles.map((file) => (
+                              <button
+                                key={file.id}
+                                type="button"
+                                onClick={() => pickServerFile(item.id, file)}
+                                className="flex w-full items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-left transition hover:border-emerald-200 hover:bg-emerald-50"
+                              >
+                                <div className="min-w-0">
+                                  <div className="truncate text-sm font-semibold text-slate-800">
+                                    {file.originalName}
+                                  </div>
+                                  <div className="mt-1 truncate text-xs text-slate-500">
+                                    {file.mimeType}
+                                  </div>
+                                </div>
+                                <span className="ml-3 rounded-full bg-slate-900 px-2.5 py-1 text-[11px] font-semibold text-white">
+                                  Usar arquivo
+                                </span>
+                              </button>
+                            ))
+                          )}
+                        </div>
+                      ) : null}
+                    </div>
+                  )}
 
                   <label className="mt-3 flex flex-col gap-1">
                     <span className="text-[11px] font-medium text-slate-600">Legenda opcional</span>
