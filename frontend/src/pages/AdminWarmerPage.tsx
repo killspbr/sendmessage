@@ -135,8 +135,8 @@ export function AdminWarmerPage({ can }: { can?: (code: string) => boolean }) {
         phone_b: warmer.phone_b,
         base_daily_limit: warmer.base_daily_limit,
         increment_per_day: warmer.increment_per_day,
-        business_hours_start: warmer.business_hours_start,
-        business_hours_end: warmer.business_hours_end || ''
+        business_hours_start: warmer.business_hours_start?.substring(0,5) || '08:00',
+        business_hours_end: warmer.business_hours_end?.substring(0,5) || '20:00'
      })
      setEditingId(warmer.id)
      setIsCreating(true)
