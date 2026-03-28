@@ -15,20 +15,33 @@ export const DEFAULT_GLOBAL_GEMINI_DAILY_LIMIT = 5000
 export const STORAGE_ROOT = path.resolve(__dirname, '..', '..', 'storage', 'uploads')
 
 export const ALLOWED_FILE_RULES = [
-  { mime: 'image/jpeg', extensions: ['.jpg', '.jpeg'], mediaType: 'image' },
-  { mime: 'image/png', extensions: ['.png'], mediaType: 'image' },
-  { mime: 'image/webp', extensions: ['.webp'], mediaType: 'image' },
-  { mime: 'application/pdf', extensions: ['.pdf'], mediaType: 'document' },
+  { mimes: ['image/jpeg', 'image/pjpeg'], extensions: ['.jpg', '.jpeg'], mediaType: 'image' },
+  { mimes: ['image/png'], extensions: ['.png'], mediaType: 'image' },
+  { mimes: ['image/webp'], extensions: ['.webp'], mediaType: 'image' },
+  { mimes: ['application/pdf'], extensions: ['.pdf'], mediaType: 'document' },
   {
-    mime: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    mimes: [
+      'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      'application/octet-stream',
+    ],
     extensions: ['.pptx'],
     mediaType: 'document',
   },
-  { mime: 'application/vnd.ms-powerpoint', extensions: ['.ppt'], mediaType: 'document' },
-  { mime: 'audio/wav', extensions: ['.wav'], mediaType: 'document' },
-  { mime: 'audio/x-wav', extensions: ['.wav'], mediaType: 'document' },
-  { mime: 'audio/wave', extensions: ['.wav'], mediaType: 'document' },
-  { mime: 'video/mp4', extensions: ['.mp4'], mediaType: 'document' },
+  {
+    mimes: ['application/vnd.ms-powerpoint', 'application/octet-stream'],
+    extensions: ['.ppt'],
+    mediaType: 'document',
+  },
+  {
+    mimes: ['audio/wav', 'audio/x-wav', 'audio/wave', 'audio/vnd.wave', 'application/octet-stream'],
+    extensions: ['.wav'],
+    mediaType: 'document',
+  },
+  {
+    mimes: ['video/mp4', 'application/octet-stream'],
+    extensions: ['.mp4'],
+    mediaType: 'document',
+  },
 ]
 
 export function ensureUploadStorageRoot() {
@@ -50,7 +63,15 @@ export function getFileExtension(name) {
 
 export function resolveFileRule(mimeType, originalName) {
   const extension = getFileExtension(originalName)
-  return ALLOWED_FILE_RULES.find((rule) => rule.mime === mimeType && rule.extensions.includes(extension)) || null
+  const normalizedMime = String(mimeType || '').toLowerCase()
+
+  return (
+    ALLOWED_FILE_RULES.find((rule) => {
+      if (!rule.extensions.includes(extension)) return false
+      if (!normalizedMime) return true
+      return rule.mimes.includes(normalizedMime) || normalizedMime === 'application/octet-stream'
+    }) || null
+  )
 }
 
 export function isAllowedUpload(mimeType, originalName) {

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { apiFetch } from '../../api'
 import type {
   CampaignChannel,
@@ -27,6 +27,10 @@ export function CampaignDeliveryComposer({
   const [serverFiles, setServerFiles] = useState<UploadedUserFile[]>([])
   const [filesLoading, setFilesLoading] = useState(false)
   const [pickerOpenForId, setPickerOpenForId] = useState<string | null>(null)
+  const [uploadingForId, setUploadingForId] = useState<string | null>(null)
+  const [libraryMessage, setLibraryMessage] = useState<string | null>(null)
+  const uploadItemIdRef = useRef<string | null>(null)
+  const uploadInputRef = useRef<HTMLInputElement | null>(null)
 
   useEffect(() => {
     let mounted = true
@@ -70,6 +74,18 @@ export function CampaignDeliveryComposer({
     onChangeMediaItems(mediaItems.filter((item) => item.id !== id))
   }
 
+  const mergeFiles = (incoming: UploadedUserFile[]) => {
+    setServerFiles((prev) => {
+      const next = [...incoming, ...prev]
+      const seen = new Set<string>()
+      return next.filter((item) => {
+        if (!item?.id || seen.has(item.id)) return false
+        seen.add(item.id)
+        return true
+      })
+    })
+  }
+
   const pickServerFile = (itemId: string, file: UploadedUserFile) => {
     updateMediaItem(itemId, {
       sourceType: 'asset',
@@ -83,6 +99,63 @@ export function CampaignDeliveryComposer({
     setPickerOpenForId(null)
   }
 
+  const openUploadPicker = (itemId: string) => {
+    uploadItemIdRef.current = itemId
+    setLibraryMessage(null)
+    uploadInputRef.current?.click()
+  }
+
+  const handleUploadFiles = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const selectedFiles = Array.from(event.target.files || [])
+    const targetItemId = uploadItemIdRef.current
+    event.target.value = ''
+
+    if (!targetItemId || selectedFiles.length === 0) {
+      return
+    }
+
+    setUploadingForId(targetItemId)
+    setLibraryMessage(null)
+
+    try {
+      const form = new FormData()
+      selectedFiles.forEach((file) => form.append('files', file))
+
+      const response = await apiFetch('/api/files/upload', {
+        method: 'POST',
+        body: form,
+      })
+
+      const incoming = Array.isArray(response?.items) ? response.items : []
+      mergeFiles(incoming)
+
+      const firstUploaded = incoming[0]
+      if (firstUploaded) {
+        updateMediaItem(targetItemId, {
+          sourceType: 'asset',
+          mediaType: firstUploaded.mediaType,
+          url: firstUploaded.publicUrl,
+          assetId: firstUploaded.id,
+          assetName: firstUploaded.originalName,
+          mimeType: firstUploaded.mimeType,
+          sizeBytes: firstUploaded.sizeBytes,
+        })
+      }
+
+      setPickerOpenForId(targetItemId)
+      setLibraryMessage(
+        incoming.length > 0
+          ? `${incoming.length} arquivo(s) enviado(s) para a sua biblioteca.`
+          : 'Upload concluido.'
+      )
+    } catch (error: any) {
+      setLibraryMessage(error?.message || 'Falha ao enviar o arquivo para a sua biblioteca.')
+    } finally {
+      setUploadingForId(null)
+      uploadItemIdRef.current = null
+    }
+  }
+
   const shared = sharedContact ?? createEmptySharedContact()
 
   if (!whatsappEnabled) {
@@ -92,6 +165,15 @@ export function CampaignDeliveryComposer({
   return (
     <div className="grid gap-4 xl:grid-cols-2">
       <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+        <input
+          ref={uploadInputRef}
+          type="file"
+          multiple
+          accept=".jpg,.jpeg,.png,.webp,.pdf,.ppt,.pptx,.wav,.mp4"
+          className="hidden"
+          onChange={handleUploadFiles}
+        />
+
         <div className="flex items-center justify-between gap-3">
           <div>
             <h3 className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
@@ -182,20 +264,40 @@ export function CampaignDeliveryComposer({
                           Biblioteca do servidor
                         </div>
                         <div className="mt-1 text-xs text-slate-500">
-                          Escolha um arquivo ja enviado na area Meus arquivos do perfil.
+                          Escolha um arquivo ja enviado ou faca upload direto daqui.
                         </div>
                       </div>
 
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setPickerOpenForId((current) => (current === item.id ? null : item.id))
-                        }
-                        className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100"
-                      >
-                        {pickerOpenForId === item.id ? 'Fechar biblioteca' : 'Escolher dos meus arquivos'}
-                      </button>
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => openUploadPicker(item.id)}
+                          disabled={uploadingForId === item.id}
+                          className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {uploadingForId === item.id ? 'Enviando...' : 'Enviar para minha biblioteca'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setPickerOpenForId((current) => (current === item.id ? null : item.id))
+                          }
+                          className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100"
+                        >
+                          {pickerOpenForId === item.id ? 'Fechar biblioteca' : 'Escolher dos meus arquivos'}
+                        </button>
+                      </div>
                     </div>
+
+                    <div className="mt-2 text-[11px] text-slate-500">
+                      Tipos aceitos: imagem, PDF, PPT/PPTX, WAV e MP4. Limite de 20 MB por arquivo.
+                    </div>
+
+                    {libraryMessage ? (
+                      <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                        {libraryMessage}
+                      </div>
+                    ) : null}
 
                     {item.sourceType === 'asset' && item.assetName ? (
                       <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
