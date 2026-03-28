@@ -139,13 +139,38 @@ async function isAdminUser(userId) {
 }
 
 async function cleanupExpiredPresenceSessions() {
+  await ensureActiveUserSessionsTable();
   await query(
     `DELETE FROM active_user_sessions
      WHERE last_seen_at < CURRENT_TIMESTAMP - INTERVAL '1 day'`
   );
 }
 
+async function ensureActiveUserSessionsTable() {
+  await query(`
+    CREATE TABLE IF NOT EXISTS active_user_sessions (
+      session_id TEXT PRIMARY KEY,
+      user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      current_page TEXT,
+      user_agent TEXT,
+      last_seen_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  await query(
+    `CREATE INDEX IF NOT EXISTS idx_active_user_sessions_last_seen_at
+     ON active_user_sessions(last_seen_at DESC)`
+  );
+
+  await query(
+    `CREATE INDEX IF NOT EXISTS idx_active_user_sessions_user_last_seen_at
+     ON active_user_sessions(user_id, last_seen_at DESC)`
+  );
+}
+
 async function upsertPresenceSession({ sessionId, userId, currentPage, userAgent }) {
+  await ensureActiveUserSessionsTable();
   await query(
     `INSERT INTO active_user_sessions (session_id, user_id, current_page, user_agent, last_seen_at)
      VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)
@@ -483,6 +508,8 @@ app.post('/api/auth/presence/logout', authenticateToken, async (req, res) => {
       return res.status(400).json({ error: 'sessionId é obrigatório.' });
     }
 
+    await ensureActiveUserSessionsTable();
+
     await query(
       `DELETE FROM active_user_sessions
        WHERE session_id = $1
@@ -499,6 +526,7 @@ app.post('/api/auth/presence/logout', authenticateToken, async (req, res) => {
 
 app.get('/api/admin/active-users', authenticateToken, checkAdmin, async (_req, res) => {
   try {
+    await ensureActiveUserSessionsTable();
     await cleanupExpiredPresenceSessions();
 
     const sessionsResult = await query(
