@@ -338,32 +338,40 @@ async function sendEvolutionMedia({
   const mediaBody = await resolveMediaBody(fetchImpl, media, resolvedUrl)
   const fileName = resolveMediaFileName(media)
   const mimeType = inferMimeType(media)
+  const legacyPayload = {
+    number,
+    mediatype: media.mediaType,
+    mimetype: mimeType,
+    fileName,
+    caption,
+    media: mediaBody,
+  }
+  const modernPayload = {
+    number,
+    mediaMessage: {
+      mediaType: media.mediaType,
+      fileName,
+      caption,
+      mimetype: mimeType,
+      media: mediaBody,
+    },
+  }
 
   try {
     await postEvolution(
       fetchImpl,
       `${evolutionUrl}/message/sendMedia/${evolutionInstance}`,
       evolutionApiKey,
-      {
-        number,
-        mediatype: media.mediaType,
-        mimetype: mimeType,
-        fileName,
-        caption,
-        media: mediaBody,
-        mediaMessage: {
-          mediaType: media.mediaType,
-          fileName,
-          caption,
-          mimetype: mimeType,
-          media: mediaBody,
-        },
-      }
+      legacyPayload
     )
     return
   } catch (error) {
     const message = String(error?.message || '')
-    if (!message.includes('"mediaMessage"')) {
+    if (
+      !message.includes('"mediaMessage"') &&
+      !message.includes('Maximum call stack size exceeded') &&
+      !message.includes('"mediaType"')
+    ) {
       throw error
     }
   }
@@ -372,16 +380,7 @@ async function sendEvolutionMedia({
     fetchImpl,
     `${evolutionUrl}/message/sendMedia/${evolutionInstance}`,
     evolutionApiKey,
-    {
-      number,
-      mediaMessage: {
-        mediaType: media.mediaType,
-        fileName,
-        caption,
-        mimetype: mimeType,
-        media: mediaBody,
-      },
-    }
+    modernPayload
   )
 }
 
@@ -451,13 +450,12 @@ async function sendEvolutionContact({
       {
         number,
         contact: [payloadContact],
-        contactMessage: [payloadContact],
       }
     )
     return
   } catch (error) {
     const message = String(error?.message || '')
-    if (!message.includes('"contactMessage"')) {
+    if (!message.includes('"contactMessage"') && !message.includes('"contact"')) {
       throw error
     }
   }
