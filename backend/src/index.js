@@ -2169,6 +2169,7 @@ async function runMigrations() {
       erro TEXT
     )`,
     `CREATE INDEX IF NOT EXISTS idx_mq_user_status ON message_queue(user_id, status)`,
+    `CREATE INDEX IF NOT EXISTS idx_mq_schedule_status ON message_queue(schedule_id, status)`,
     `CREATE TABLE IF NOT EXISTS gemini_api_keys (
       id SERIAL PRIMARY KEY,
       user_id UUID REFERENCES users(id) ON DELETE CASCADE,
@@ -2218,6 +2219,8 @@ async function runMigrations() {
     `ALTER TABLE campaign_schedule ADD COLUMN IF NOT EXISTS pause_details TEXT`,
     `ALTER TABLE campaign_schedule ADD COLUMN IF NOT EXISTS paused_at TIMESTAMP WITH TIME ZONE`,
     `ALTER TABLE campaign_schedule ADD COLUMN IF NOT EXISTS resumed_at TIMESTAMP WITH TIME ZONE`,
+    `ALTER TABLE message_queue ADD COLUMN IF NOT EXISTS schedule_id INTEGER REFERENCES campaign_schedule(id) ON DELETE CASCADE`,
+    `CREATE INDEX IF NOT EXISTS idx_mq_schedule_status ON message_queue(schedule_id, status)`,
     `ALTER TABLE message_queue ADD COLUMN IF NOT EXISTS processing_started_at TIMESTAMP WITH TIME ZONE`,
     `ALTER TABLE message_queue ADD COLUMN IF NOT EXISTS recovered_at TIMESTAMP WITH TIME ZONE`,
   ];
