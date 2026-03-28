@@ -51,7 +51,16 @@ async function postEvolution(url, apiKey, body) {
     body: JSON.stringify(body),
   })
   if (!response.ok) {
-    throw new Error(await response.text())
+    let errorText = await response.text();
+    try {
+       const json = JSON.parse(errorText);
+       if (json.response && json.response.message) {
+         errorText = Array.isArray(json.response.message) ? json.response.message[0] : typeof json.response.message === 'string' ? json.response.message : JSON.stringify(json.response.message);
+       } else if (json.error) {
+         errorText = json.error;
+       }
+    } catch(e) {}
+    throw new Error(errorText)
   }
 }
 

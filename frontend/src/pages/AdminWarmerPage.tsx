@@ -206,16 +206,18 @@ export function AdminWarmerPage({ can }: { can?: (code: string) => boolean }) {
               ) : logs.length === 0 ? (
                  <div className="text-center text-sm text-slate-500 p-10 bg-white/50 rounded-xl">Nenhuma mensagem registrada.</div>
               ) : (
-                logs.map(log => {
-                  // Opcional: Detectar a direção baseando-se no instance_a do warmer vs from_phone. 
-                  // Pra simplificar visualmente alternamos pela paridade pro mockup de demo se não tiver a config exata no escopo local
-                  const isSentByA = true; 
+                [...logs].reverse().map(log => {
+                  const warmer = warmers.find(w => w.id === logsModalId);
+                  const isSentByA = warmer ? log.from_phone === warmer.phone_a : true; 
                   return (
-                    <div key={log.id} className="flex flex-col mb-4">
-                       <span className="text-[10px] text-slate-500 mb-1 font-semibold">{log.from_phone}</span>
-                       <div className="w-fit max-w-[85%] p-3 rounded-2xl bg-white shadow-sm border border-slate-100 text-sm text-slate-800">
-                          {log.content_summary}
-                          <div className="text-[9px] text-slate-400 text-right mt-1.5">{new Date(log.sent_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</div>
+                    <div key={log.id} className={`flex flex-col mb-4 ${isSentByA ? 'items-end' : 'items-start'}`}>
+                       <span className={`text-[10px] text-slate-400 mb-0.5 font-medium ${isSentByA ? 'pr-1' : 'pl-1'}`}>{log.from_phone}</span>
+                       <div className={`w-fit min-w-[120px] max-w-[85%] px-3 pt-2 pb-1.5 shadow-sm text-[15px] leading-relaxed text-slate-800 ${isSentByA ? 'bg-[#dcf8c6] rounded-t-xl rounded-bl-xl rounded-br-sm' : 'bg-white rounded-t-xl rounded-br-xl rounded-bl-sm border border-slate-100'}`}>
+                          <span className="whitespace-pre-wrap font-sans">{log.content_summary}</span>
+                          <div className={`text-[10px] text-right mt-1 flex justify-end items-center gap-1 ${isSentByA ? 'text-emerald-700/60' : 'text-slate-400'}`}>
+                            <span>{new Date(log.sent_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                            {isSentByA && <span className="text-blue-500 text-[12px] leading-none mb-[2px]">✓✓</span>}
+                          </div>
                        </div>
                     </div>
                   )

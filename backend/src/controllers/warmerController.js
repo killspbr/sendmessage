@@ -103,6 +103,6 @@ export async function forceWarmerRun(req, res) {
     const logs = await forceRunWarmer(req.params.id);
     res.json({ success: true, ...logs });
   } catch (error) {
-    res.status(500).json({ error: 'Erro ao forçar disparo', details: error.message });
+    res.status(500).json({ message: error.message });
   }
 }
