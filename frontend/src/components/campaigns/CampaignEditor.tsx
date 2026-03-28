@@ -215,7 +215,12 @@ export function CampaignEditor({
                       {mediaItems.map((item, index) => (
                         <div key={item.id} className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
                           <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">
-                            {item.mediaType === 'document' ? 'Documento' : 'Imagem'} {index + 1}
+                            {item.mediaType === 'document'
+                              ? 'Documento'
+                              : item.mediaType === 'audio'
+                                ? 'Audio'
+                                : 'Imagem'}{' '}
+                            {index + 1}
                           </div>
                           <div className="mt-1 truncate text-xs text-slate-500">{item.url || 'URL pendente'}</div>
                           {item.caption && (

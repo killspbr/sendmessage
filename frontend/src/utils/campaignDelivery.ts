@@ -27,7 +27,9 @@ function normalizeMediaItems(items: CampaignMediaItem[]) {
     .map((item) => ({
       id: String(item.id || '').trim() || `media-${Math.random().toString(36).slice(2, 8)}`,
       sourceType: item.sourceType === 'asset' ? ('asset' as const) : ('url' as const),
-      mediaType: (item.mediaType === 'document' ? 'document' : 'image') as CampaignMediaItem['mediaType'],
+      mediaType: (
+        item.mediaType === 'document' || item.mediaType === 'audio' ? item.mediaType : 'image'
+      ) as CampaignMediaItem['mediaType'],
       url: String(item.url || '').trim(),
       caption: String(item.caption || '').trim(),
       assetId: item.assetId ? String(item.assetId) : undefined,
@@ -104,7 +106,8 @@ export function extractCampaignDeliveryState(campaign: Campaign): {
     .map<CampaignMediaItem>((item) => ({
       id: item.id,
       sourceType: item.sourceType === 'asset' ? ('asset' as const) : ('url' as const),
-      mediaType: item.mediaType === 'document' ? 'document' : 'image',
+      mediaType:
+        item.mediaType === 'document' || item.mediaType === 'audio' ? item.mediaType : 'image',
       url: item.url || '',
       caption: item.caption || '',
       assetId: item.assetId,

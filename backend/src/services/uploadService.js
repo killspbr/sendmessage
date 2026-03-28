@@ -6,7 +6,7 @@ import { fileURLToPath } from 'url'
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
-export const MAX_FILE_SIZE_BYTES = 20 * 1024 * 1024
+export const MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024
 export const DEFAULT_USER_UPLOAD_QUOTA_BYTES = 100 * 1024 * 1024
 export const DEFAULT_DAILY_MESSAGE_LIMIT = 300
 export const DEFAULT_MONTHLY_MESSAGE_LIMIT = 9000
@@ -35,7 +35,12 @@ export const ALLOWED_FILE_RULES = [
   {
     mimes: ['audio/wav', 'audio/x-wav', 'audio/wave', 'audio/vnd.wave', 'application/octet-stream'],
     extensions: ['.wav'],
-    mediaType: 'document',
+    mediaType: 'audio',
+  },
+  {
+    mimes: ['audio/mpeg', 'audio/mp3', 'audio/mpeg3', 'application/octet-stream'],
+    extensions: ['.mp3'],
+    mediaType: 'audio',
   },
   {
     mimes: ['video/mp4', 'application/octet-stream'],
@@ -123,6 +128,8 @@ export function canInlineInBrowser(mimeType) {
     String(mimeType || '').startsWith('image/') ||
     mimeType === 'application/pdf' ||
     mimeType === 'video/mp4' ||
+    mimeType === 'audio/mpeg' ||
+    mimeType === 'audio/mp3' ||
     mimeType === 'audio/wav' ||
     mimeType === 'audio/x-wav' ||
     mimeType === 'audio/wave'

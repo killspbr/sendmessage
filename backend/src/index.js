@@ -518,7 +518,7 @@ app.post('/api/files/upload', authenticateToken, async (req, res) => {
       const status = uploadError?.code === 'LIMIT_FILE_SIZE' ? 400 : 400;
       const errorMessage =
         uploadError?.code === 'LIMIT_FILE_SIZE'
-          ? 'Cada arquivo deve ter no máximo 20 MB.'
+          ? 'Cada arquivo deve ter no máximo 50 MB.'
           : uploadError?.message || 'Falha no upload.';
       return res.status(status).json({ error: errorMessage });
     }

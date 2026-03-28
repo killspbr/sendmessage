@@ -1,5 +1,5 @@
 import React from 'react'
-import { apiFetch } from '../api'
+import { apiFetch, apiUpload } from '../api'
 import type { UploadedUserFile, UserLimitSnapshot } from '../types'
 
 type UserSettingsPageProps = {
@@ -30,6 +30,8 @@ type UserSettingsPageProps = {
     evolutionInstance?: string | null
   }) => Promise<void>
 }
+
+const MAX_UPLOAD_SIZE_BYTES = 50 * 1024 * 1024
 
 function formatBytes(bytes: number | null | undefined) {
   if (bytes == null) return 'Ilimitado'
@@ -106,6 +108,7 @@ export function UserSettingsPage({
   const [filesLoading, setFilesLoading] = React.useState(false)
   const [limitsLoading, setLimitsLoading] = React.useState(false)
   const [uploading, setUploading] = React.useState(false)
+  const [uploadProgress, setUploadProgress] = React.useState(0)
   const [uploadMessage, setUploadMessage] = React.useState<string | null>(null)
   const fileInputRef = React.useRef<HTMLInputElement | null>(null)
 
@@ -174,53 +177,49 @@ export function UserSettingsPage({
     const selectedFiles = Array.from(event.target.files || [])
     if (selectedFiles.length === 0) return
 
+    const oversizedFile = selectedFiles.find((file) => file.size > MAX_UPLOAD_SIZE_BYTES)
+    if (oversizedFile) {
+      setUploadMessage(`O arquivo "${oversizedFile.name}" excede o limite de 50 MB e nao foi enviado.`)
+      event.target.value = ''
+      return
+    }
+
     setUploading(true)
+    setUploadProgress(0)
     setUploadMessage(null)
 
     try {
       const form = new FormData()
       selectedFiles.forEach((file) => form.append('files', file))
 
-      const response = await apiFetch('/api/files/upload', {
-        method: 'POST',
-        body: form,
+      const response = await apiUpload('/api/files/upload', form, {
+        onProgress: ({ percent }) => setUploadProgress(percent),
       })
 
-      setFiles((prev) => {
-        const incoming = Array.isArray(response?.items) ? response.items : []
-        const next = [...incoming, ...prev]
-        const seen = new Set<string>()
-        return next.filter((item) => {
-          if (!item?.id || seen.has(item.id)) return false
-          seen.add(item.id)
-          return true
-        })
-      })
+      setUploadProgress(100)
 
       if (response?.limits) {
         setLimits(response.limits)
-      } else {
-        void loadLimits()
       }
 
+      await Promise.all([loadFiles(), loadLimits()])
       setUploadMessage(`${selectedFiles.length} arquivo(s) enviado(s) com sucesso.`)
       event.target.value = ''
     } catch (error: any) {
       setUploadMessage(error?.message || 'Falha ao enviar arquivos.')
     } finally {
       setUploading(false)
+      setUploadProgress(0)
     }
   }
 
   const handleDeleteFile = async (fileId: string) => {
     try {
       const response = await apiFetch(`/api/files/${fileId}`, { method: 'DELETE' })
-      setFiles((prev) => prev.filter((file) => file.id !== fileId))
       if (response?.limits) {
         setLimits(response.limits)
-      } else {
-        void loadLimits()
       }
+      await Promise.all([loadFiles(), loadLimits()])
     } catch (error: any) {
       setUploadMessage(error?.message || 'Falha ao remover o arquivo.')
     }
@@ -289,7 +288,7 @@ export function UserSettingsPage({
 
           <SectionCard
             title="Meus arquivos"
-            description="Envie e gerencie imagens, PDF, PPTX, WAV e MP4 para reutilizar nas campanhas."
+            description="Envie e gerencie imagens, PDF, PPTX, WAV, MP3 e MP4 para reutilizar nas campanhas. Cada arquivo pode ter ate 50 MB."
             accent="bg-fuchsia-500"
           >
             <div className="space-y-4">
@@ -316,7 +315,7 @@ export function UserSettingsPage({
                   ref={fileInputRef}
                   type="file"
                   multiple
-                  accept=".jpg,.jpeg,.png,.webp,.pdf,.ppt,.pptx,.wav,.mp4"
+                  accept=".jpg,.jpeg,.png,.webp,.pdf,.ppt,.pptx,.wav,.mp3,.mp4"
                   className="hidden"
                   onChange={handleUploadFiles}
                 />
@@ -325,6 +324,21 @@ export function UserSettingsPage({
               {uploadMessage ? (
                 <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
                   {uploadMessage}
+                </div>
+              ) : null}
+
+              {uploading ? (
+                <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+                  <div className="flex items-center justify-between gap-3 text-xs font-semibold uppercase tracking-[0.16em] text-emerald-700">
+                    <span>Enviando arquivos</span>
+                    <span>{uploadProgress}%</span>
+                  </div>
+                  <div className="mt-3 h-2 overflow-hidden rounded-full bg-emerald-100">
+                    <div
+                      className="h-full rounded-full bg-emerald-500 transition-all duration-200"
+                      style={{ width: `${uploadProgress}%` }}
+                    />
+                  </div>
                 </div>
               ) : null}
 

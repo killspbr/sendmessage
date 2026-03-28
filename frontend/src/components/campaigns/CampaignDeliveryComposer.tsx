@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { apiFetch } from '../../api'
+import { apiFetch, apiUpload } from '../../api'
 import type {
   CampaignChannel,
   CampaignMediaItem,
@@ -16,6 +16,8 @@ type CampaignDeliveryComposerProps = {
   onChangeSharedContact: (contact: CampaignSharedContact | null) => void
 }
 
+const MAX_UPLOAD_SIZE_BYTES = 50 * 1024 * 1024
+
 export function CampaignDeliveryComposer({
   channels,
   mediaItems,
@@ -28,36 +30,37 @@ export function CampaignDeliveryComposer({
   const [filesLoading, setFilesLoading] = useState(false)
   const [pickerOpenForId, setPickerOpenForId] = useState<string | null>(null)
   const [uploadingForId, setUploadingForId] = useState<string | null>(null)
+  const [uploadProgressForId, setUploadProgressForId] = useState<string | null>(null)
+  const [uploadProgress, setUploadProgress] = useState(0)
   const [libraryMessage, setLibraryMessage] = useState<string | null>(null)
   const uploadItemIdRef = useRef<string | null>(null)
   const uploadInputRef = useRef<HTMLInputElement | null>(null)
 
+  const loadFiles = async () => {
+    if (!whatsappEnabled) {
+      setServerFiles([])
+      setFilesLoading(false)
+      return
+    }
+
+    setFilesLoading(true)
+    try {
+      const data = await apiFetch('/api/files')
+      setServerFiles(Array.isArray(data) ? data : [])
+    } catch {
+      setServerFiles([])
+    } finally {
+      setFilesLoading(false)
+    }
+  }
+
   useEffect(() => {
     let mounted = true
 
-    const loadFiles = async () => {
-      if (!whatsappEnabled) {
-        if (mounted) {
-          setServerFiles([])
-          setFilesLoading(false)
-        }
-        return
-      }
-
-      setFilesLoading(true)
-      try {
-        const data = await apiFetch('/api/files')
-        if (!mounted) return
-        setServerFiles(Array.isArray(data) ? data : [])
-      } catch {
-        if (!mounted) return
-        setServerFiles([])
-      } finally {
-        if (mounted) setFilesLoading(false)
-      }
-    }
-
-    void loadFiles()
+    void (async () => {
+      if (!mounted) return
+      await loadFiles()
+    })()
 
     return () => {
       mounted = false
@@ -72,18 +75,6 @@ export function CampaignDeliveryComposer({
 
   const removeMediaItem = (id: string) => {
     onChangeMediaItems(mediaItems.filter((item) => item.id !== id))
-  }
-
-  const mergeFiles = (incoming: UploadedUserFile[]) => {
-    setServerFiles((prev) => {
-      const next = [...incoming, ...prev]
-      const seen = new Set<string>()
-      return next.filter((item) => {
-        if (!item?.id || seen.has(item.id)) return false
-        seen.add(item.id)
-        return true
-      })
-    })
   }
 
   const pickServerFile = (itemId: string, file: UploadedUserFile) => {
@@ -114,21 +105,29 @@ export function CampaignDeliveryComposer({
       return
     }
 
+    const oversizedFile = selectedFiles.find((file) => file.size > MAX_UPLOAD_SIZE_BYTES)
+    if (oversizedFile) {
+      setLibraryMessage(`O arquivo "${oversizedFile.name}" excede o limite de 50 MB e nao foi enviado.`)
+      return
+    }
+
     setUploadingForId(targetItemId)
+    setUploadProgressForId(targetItemId)
+    setUploadProgress(0)
     setLibraryMessage(null)
 
     try {
       const form = new FormData()
       selectedFiles.forEach((file) => form.append('files', file))
 
-      const response = await apiFetch('/api/files/upload', {
-        method: 'POST',
-        body: form,
+      const response = await apiUpload('/api/files/upload', form, {
+        onProgress: ({ percent }) => setUploadProgress(percent),
       })
 
-      const incoming = Array.isArray(response?.items) ? response.items : []
-      mergeFiles(incoming)
+      setUploadProgress(100)
+      await loadFiles()
 
+      const incoming = Array.isArray(response?.items) ? response.items : []
       const firstUploaded = incoming[0]
       if (firstUploaded) {
         updateMediaItem(targetItemId, {
@@ -152,6 +151,8 @@ export function CampaignDeliveryComposer({
       setLibraryMessage(error?.message || 'Falha ao enviar o arquivo para a sua biblioteca.')
     } finally {
       setUploadingForId(null)
+      setUploadProgressForId(null)
+      setUploadProgress(0)
       uploadItemIdRef.current = null
     }
   }
@@ -169,7 +170,7 @@ export function CampaignDeliveryComposer({
           ref={uploadInputRef}
           type="file"
           multiple
-          accept=".jpg,.jpeg,.png,.webp,.pdf,.ppt,.pptx,.wav,.mp4"
+          accept=".jpg,.jpeg,.png,.webp,.pdf,.ppt,.pptx,.wav,.mp3,.mp4"
           className="hidden"
           onChange={handleUploadFiles}
         />
@@ -239,6 +240,7 @@ export function CampaignDeliveryComposer({
                       >
                         <option value="image">Imagem</option>
                         <option value="document">Documento</option>
+                        <option value="audio">Audio</option>
                       </select>
                     </label>
 
@@ -338,12 +340,27 @@ export function CampaignDeliveryComposer({
                       </div>
 
                       <div className="mt-2 text-[11px] text-slate-500">
-                        Tipos aceitos: imagem, PDF, PPT/PPTX, WAV e MP4. Limite de 20 MB por arquivo.
+                        Tipos aceitos: imagem, PDF, PPT/PPTX, WAV, MP3 e MP4. Limite de 50 MB por arquivo.
                       </div>
 
                       {libraryMessage ? (
                         <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
                           {libraryMessage}
+                        </div>
+                      ) : null}
+
+                      {uploadProgressForId === item.id ? (
+                        <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-3">
+                          <div className="flex items-center justify-between gap-3 text-[11px] font-semibold uppercase tracking-[0.16em] text-emerald-700">
+                            <span>Enviando para a biblioteca</span>
+                            <span>{uploadProgress}%</span>
+                          </div>
+                          <div className="mt-3 h-2 overflow-hidden rounded-full bg-emerald-100">
+                            <div
+                              className="h-full rounded-full bg-emerald-500 transition-all duration-200"
+                              style={{ width: `${uploadProgress}%` }}
+                            />
+                          </div>
                         </div>
                       ) : null}
 

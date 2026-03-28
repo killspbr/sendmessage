@@ -1,7 +1,7 @@
 import { extractImages, htmlToWhatsapp, resolveTemplate, toEvolutionNumber } from '../utils/messageUtils.js'
 
 const MAX_MEDIA_ITEMS = 5
-const ALLOWED_MEDIA_TYPES = new Set(['image', 'document'])
+const ALLOWED_MEDIA_TYPES = new Set(['image', 'document', 'audio'])
 
 function safeTrim(value) {
   return String(value || '').trim()
@@ -252,27 +252,44 @@ function inferMimeType(media) {
   if (fileName.endsWith('.pdf')) return 'application/pdf'
   if (fileName.endsWith('.pptx')) return 'application/vnd.openxmlformats-officedocument.presentationml.presentation'
   if (fileName.endsWith('.ppt')) return 'application/vnd.ms-powerpoint'
+  if (fileName.endsWith('.mp3')) return 'audio/mpeg'
   if (fileName.endsWith('.wav')) return 'audio/wav'
   if (fileName.endsWith('.mp4')) return 'video/mp4'
   if (fileName.endsWith('.png')) return 'image/png'
   if (fileName.endsWith('.webp')) return 'image/webp'
   if (fileName.endsWith('.jpg') || fileName.endsWith('.jpeg')) return 'image/jpeg'
 
+  if (media?.mediaType === 'audio') return 'audio/mpeg'
   return media?.mediaType === 'document' ? 'application/octet-stream' : 'image/jpeg'
 }
 
 function resolveMediaFileName(media) {
   const fromAsset = safeTrim(media?.assetName)
   if (fromAsset) {
-    return sanitizeFileName(fromAsset, media?.mediaType === 'document' ? 'documento' : 'imagem')
+    return sanitizeFileName(
+      fromAsset,
+      media?.mediaType === 'document'
+        ? 'documento'
+        : media?.mediaType === 'audio'
+          ? 'audio'
+          : 'imagem'
+    )
   }
 
   const fromUrl = inferFileNameFromUrl(media?.url || '')
   if (fromUrl) {
-    return sanitizeFileName(fromUrl, media?.mediaType === 'document' ? 'documento' : 'imagem')
+    return sanitizeFileName(
+      fromUrl,
+      media?.mediaType === 'document'
+        ? 'documento'
+        : media?.mediaType === 'audio'
+          ? 'audio'
+          : 'imagem'
+    )
   }
 
-  const fallbackExt = media?.mediaType === 'document' ? '.pdf' : '.jpg'
+  const fallbackExt =
+    media?.mediaType === 'document' ? '.pdf' : media?.mediaType === 'audio' ? '.mp3' : '.jpg'
   return sanitizeFileName(`${media?.id || 'arquivo'}${fallbackExt}`, 'arquivo')
 }
 
@@ -364,6 +381,28 @@ async function sendEvolutionMedia({
         mimetype: mimeType,
         media: mediaBody,
       },
+    }
+  )
+}
+
+async function sendEvolutionAudio({
+  fetchImpl,
+  evolutionUrl,
+  evolutionApiKey,
+  evolutionInstance,
+  number,
+  media,
+  resolvedUrl,
+}) {
+  const audioBody = await resolveMediaBody(fetchImpl, media, resolvedUrl)
+
+  await postEvolution(
+    fetchImpl,
+    `${evolutionUrl}/message/sendWhatsAppAudio/${evolutionInstance}`,
+    evolutionApiKey,
+    {
+      number,
+      audio: audioBody,
     }
   )
 }
@@ -475,22 +514,34 @@ export async function executeWhatsappCampaignDelivery({
     }
 
     try {
-      const caption = buildMediaCaption({
-        messageText,
-        mediaCaption: resolveMediaCaption(media.caption, contact),
-        attachMessage: Boolean(options.attachMessage),
-      })
+      if (media.mediaType === 'audio') {
+        await sendEvolutionAudio({
+          fetchImpl,
+          evolutionUrl,
+          evolutionApiKey,
+          evolutionInstance,
+          number: evolutionNumber,
+          media,
+          resolvedUrl,
+        })
+      } else {
+        const caption = buildMediaCaption({
+          messageText,
+          mediaCaption: resolveMediaCaption(media.caption, contact),
+          attachMessage: Boolean(options.attachMessage),
+        })
 
-      await sendEvolutionMedia({
-        fetchImpl,
-        evolutionUrl,
-        evolutionApiKey,
-        evolutionInstance,
-        number: evolutionNumber,
-        media,
-        resolvedUrl,
-        caption,
-      })
+        await sendEvolutionMedia({
+          fetchImpl,
+          evolutionUrl,
+          evolutionApiKey,
+          evolutionInstance,
+          number: evolutionNumber,
+          media,
+          resolvedUrl,
+          caption,
+        })
+      }
 
       result.mediaSent += 1
       if (options.attachMessage) {
