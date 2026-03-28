@@ -3,6 +3,8 @@ import { extractImages, htmlToWhatsapp, resolveTemplate, toEvolutionNumber } fro
 const MAX_MEDIA_ITEMS = 5
 const ALLOWED_MEDIA_TYPES = new Set(['image', 'document', 'audio'])
 const INTRA_CONTACT_DELAY_MS = 1000
+const EVOLUTION_MEDIA_RETRY_ATTEMPTS = 3
+const EVOLUTION_MEDIA_RETRY_DELAYS_MS = [1500, 3000]
 
 function safeTrim(value) {
   return String(value || '').trim()
@@ -221,6 +223,47 @@ async function postEvolution(fetchImpl, url, apiKey, body) {
   }
 }
 
+function isRetryableEvolutionTransportError(error) {
+  const message = String(error?.message || '').toLowerCase()
+  return (
+    message.includes('connection closed') ||
+    message.includes('socket hang up') ||
+    message.includes('econnreset') ||
+    message.includes('etimedout') ||
+    message.includes('fetch failed') ||
+    message.includes('und_err_socket')
+  )
+}
+
+async function postEvolutionWithRetry(fetchImpl, url, apiKey, body, options = {}) {
+  const attempts = Number(options.attempts || EVOLUTION_MEDIA_RETRY_ATTEMPTS)
+
+  let lastError = null
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    try {
+      await postEvolution(fetchImpl, url, apiKey, body)
+      return
+    } catch (error) {
+      lastError = error
+      const canRetry =
+        attempt < attempts &&
+        isRetryableEvolutionTransportError(error)
+
+      if (!canRetry) {
+        throw error
+      }
+
+      const delayMs =
+        EVOLUTION_MEDIA_RETRY_DELAYS_MS[Math.min(attempt - 1, EVOLUTION_MEDIA_RETRY_DELAYS_MS.length - 1)] ||
+        EVOLUTION_MEDIA_RETRY_DELAYS_MS[EVOLUTION_MEDIA_RETRY_DELAYS_MS.length - 1]
+
+      await wait(delayMs)
+    }
+  }
+
+  throw lastError
+}
+
 function resolveMediaCaption(caption, contact) {
   return safeTrim(resolveTemplate(caption || '', contact))
 }
@@ -363,7 +406,7 @@ async function sendEvolutionMedia({
   }
 
   try {
-    await postEvolution(
+    await postEvolutionWithRetry(
       fetchImpl,
       `${evolutionUrl}/message/sendMedia/${evolutionInstance}`,
       evolutionApiKey,
@@ -377,7 +420,7 @@ async function sendEvolutionMedia({
     }
   }
 
-  await postEvolution(
+  await postEvolutionWithRetry(
     fetchImpl,
     `${evolutionUrl}/message/sendMedia/${evolutionInstance}`,
     evolutionApiKey,
@@ -396,7 +439,7 @@ async function sendEvolutionAudio({
 }) {
   const audioBody = await resolveMediaBody(fetchImpl, media, resolvedUrl)
 
-  await postEvolution(
+  await postEvolutionWithRetry(
     fetchImpl,
     `${evolutionUrl}/message/sendWhatsAppAudio/${evolutionInstance}`,
     evolutionApiKey,
