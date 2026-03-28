@@ -2035,17 +2035,22 @@ function App() {
           })
         })
 
+        const savedContact = data?.data ?? data
+        if (!savedContact?.id) {
+          throw new Error('Resposta inválida ao atualizar contato.')
+        }
+
         const updatedContact: Contact = {
           id: existing.id,
-          supabaseId: data.id.toString(),
-          name: data.name ?? '',
-          phone: data.phone ?? '',
-          category: data.category ?? '',
-          email: data.email ?? '',
-          cep: data.cep ?? '',
-          address: data.address ?? undefined,
-          city: data.city ?? undefined,
-          rating: data.rating ?? '',
+          supabaseId: String(savedContact.id),
+          name: savedContact.name ?? '',
+          phone: savedContact.phone ?? '',
+          category: savedContact.category ?? '',
+          email: savedContact.email ?? '',
+          cep: savedContact.cep ?? '',
+          address: savedContact.address ?? undefined,
+          city: savedContact.city ?? undefined,
+          rating: savedContact.rating ?? '',
         }
 
         setContactsByList((prev) => ({
@@ -2069,18 +2074,23 @@ function App() {
           })
         })
 
+        const savedContact = data?.data ?? data
+        if (!savedContact?.id) {
+          throw new Error('Resposta inválida ao criar contato.')
+        }
+
         const maxId = current.reduce((max, c) => (c.id > max ? c.id : max), 0)
         const next: Contact = {
           id: maxId + 1,
-          supabaseId: data.id.toString(),
-          name: data.name ?? '',
-          phone: data.phone ?? '',
-          category: data.category ?? '',
-          email: data.email ?? '',
-          cep: data.cep ?? '',
-          address: data.address ?? undefined,
-          city: data.city ?? undefined,
-          rating: data.rating ?? '',
+          supabaseId: String(savedContact.id),
+          name: savedContact.name ?? '',
+          phone: savedContact.phone ?? '',
+          category: savedContact.category ?? '',
+          email: savedContact.email ?? '',
+          cep: savedContact.cep ?? '',
+          address: savedContact.address ?? undefined,
+          city: savedContact.city ?? undefined,
+          rating: savedContact.rating ?? '',
         }
         setContactsByList((prev) => ({
           ...prev,

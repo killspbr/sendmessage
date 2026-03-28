@@ -1708,6 +1708,15 @@ app.post('/api/campaigns/:id/send', authenticateToken, async (req, res) => {
       return images;
     };
 
+    const decodeHtmlEntities = (value) =>
+      String(value || '')
+        .replace(/&nbsp;/gi, ' ')
+        .replace(/&amp;/gi, '&')
+        .replace(/&quot;/gi, '"')
+        .replace(/&#39;|&apos;/gi, "'")
+        .replace(/&lt;/gi, '<')
+        .replace(/&gt;/gi, '>');
+
     const htmlToWhatsapp = (html) => {
       if (!html) return '';
 
@@ -1740,14 +1749,17 @@ app.post('/api/campaigns/:id/send', authenticateToken, async (req, res) => {
       text = text.replace(/<\/(p|div)>/gi, '\n');
 
       // remover demais tags e limpar
-      return text
+      return decodeHtmlEntities(text)
         .replace(/<[^>]+>/g, '')
+        .replace(/\r\n/g, '\n')
+        .replace(/\r/g, '\n')
+        .replace(/\u00a0/g, ' ')
         .replace(/\n{3,}/g, '\n\n')
         .trim();
     };
 
     const htmlToText = (html) =>
-      html
+      decodeHtmlEntities(html)
         .replace(/<br\s*\/?>/gi, '\n')
         .replace(/<\/p>/gi, '\n')
         .replace(/<[^>]+>/g, '')
