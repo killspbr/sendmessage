@@ -53,6 +53,7 @@ async function postEvolution(url, apiKey, body) {
       body: JSON.stringify(body),
     });
   } catch (fetchErr) {
+    // Erros de conexão (DNS, Timeout, etc) ainda disparam throw para o worker logar
     throw new Error(`Falha de conexão com a Evolution API: ${fetchErr.message}`);
   }
 
@@ -70,13 +71,21 @@ async function postEvolution(url, apiKey, body) {
          errorText = json.error;
        }
     } catch(e) {}
+
+    // Resiliência: Se for 404 ou erro de instância, retornamos success false em vez de throw
+    if (response.status === 404 || errorText.toLowerCase().includes('not found') || errorText.toLowerCase().includes('does not exist')) {
+      return { success: false, error: 'Instância desconectada ou inexistente na Evolution API' };
+    }
+
     throw new Error(errorText || `Erro HTTP ${response.status} da Evolution API`)
   }
+
+  return { success: true };
 }
 
 // Envio de presença (composing/recording)
 async function sendPresence(evolutionUrl, apiKey, instanceName, toPhone, type = 'composing') {
-  await postEvolution(
+  return await postEvolution(
     `${evolutionUrl}/chat/sendPresence/${instanceName}`,
     apiKey,
     {
@@ -89,7 +98,7 @@ async function sendPresence(evolutionUrl, apiKey, instanceName, toPhone, type = 
 
 // Envio de texto
 async function sendText(evolutionUrl, apiKey, instanceName, toPhone, text) {
-  await postEvolution(
+  return await postEvolution(
     `${evolutionUrl}/message/sendText/${instanceName}`,
     apiKey,
     {
@@ -326,7 +335,11 @@ export async function executeWarmerInteraction(warmer, evoUrl, evoKey, sentToday
 
   try {
     console.log(`[Warmer${isForced ? ' FOREGROUND' : ''}] Iniciando warming de ${fromInstance} para ${toPhone}`);
-    await sendPresence(evoUrl, evoKey, fromInstance, toPhone, 'composing');
+    const resPresence = await sendPresence(evoUrl, evoKey, fromInstance, toPhone, 'composing');
+    if (resPresence?.success === false) {
+       console.warn(`[Warmer${isForced ? ' FOREGROUND' : ''}] Pulando par ${warmer.id}: ${resPresence.error} (Instância: ${fromInstance})`);
+       return { success: false, message: resPresence.error };
+    }
     
     // Wait human delay
     const delayBase = Math.floor(Math.random() * 3000) + 2000;
@@ -335,7 +348,11 @@ export async function executeWarmerInteraction(warmer, evoUrl, evoKey, sentToday
     await wait(isForced ? Math.min(1500, typingDelay) : typingDelay);
 
     // Send Text
-    await sendText(evoUrl, evoKey, fromInstance, toPhone, messageContent);
+    const resText = await sendText(evoUrl, evoKey, fromInstance, toPhone, messageContent);
+    if (resText?.success === false) {
+       console.warn(`[Warmer${isForced ? ' FOREGROUND' : ''}] Pulando par ${warmer.id}: ${resText.error} (Instância: ${fromInstance})`);
+       return { success: false, message: resText.error };
+    }
 
     // Record Log
     if (!warmer.id) {

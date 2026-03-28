@@ -95,13 +95,61 @@ export async function getWarmerLogs(req, res) {
 export async function forceWarmerRun(req, res) {
   try {
     const { forceRunWarmer } = await import('../services/warmerService.js');
-    const logs = await forceRunWarmer(req.params.id);
-    res.json({ success: true, ...logs });
+    const result = await forceRunWarmer(req.params.id);
+    
+    // Se o service retornou sucesso: false (instância inexistente), 
+    // respondemos 200 p/ o front lidar de forma amigável
+    if (result?.success === false) {
+       return res.json(result);
+    }
+    
+    res.json({ success: true, ...result });
   } catch (error) {
     console.error('[ForceError]', error.message, error.stack);
     res.status(500).json({ 
       error: 'Erro ao forçar disparo', 
       message: error.message 
     });
+  }
+}
+
+export async function updateWarmer(req, res) {
+  try {
+    const { id } = req.params;
+    const {
+      instance_a_id,
+      instance_b_id,
+      phone_a,
+      phone_b,
+      base_daily_limit,
+      increment_per_day,
+      business_hours_start,
+      business_hours_end
+    } = req.body;
+
+    const result = await query(`
+      UPDATE warmer_configs SET
+        instance_a_id = $1,
+        instance_b_id = $2,
+        phone_a = $3,
+        phone_b = $4,
+        base_daily_limit = $5,
+        increment_per_day = $6,
+        business_hours_start = $7,
+        business_hours_end = $8,
+        updated_at = NOW()
+      WHERE id = $9
+      RETURNING *
+    `, [
+      instance_a_id, instance_b_id, phone_a, phone_b,
+      base_daily_limit, increment_per_day,
+      business_hours_start, business_hours_end,
+      id
+    ]);
+
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Maturação não encontrada' });
+    res.json(result.rows[0]);
+  } catch (error) {
+    res.status(500).json({ error: 'Erro ao atualizar maturação', details: error.message });
   }
 }

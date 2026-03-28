@@ -31,6 +31,7 @@ export function AdminWarmerPage({ can }: { can?: (code: string) => boolean }) {
 
   // Formulário
   const [isCreating, setIsCreating] = useState(false)
+  const [editingId, setEditingId] = useState<string | null>(null)
   const [form, setForm] = useState({
     instance_a_id: '',
     phone_a: '',
@@ -65,8 +66,12 @@ export function AdminWarmerPage({ can }: { can?: (code: string) => boolean }) {
   const handleForceRun = async (id: string) => {
     try {
       setForcingId(id)
-      await apiFetch(`/api/admin/warmer/${id}/force`, { method: 'POST' })
-      alert('Disparo evocado com sucesso! A mensagem foi testada.')
+      const res = await apiFetch(`/api/admin/warmer/${id}/force`, { method: 'POST' })
+      if (res?.success === false) {
+        alert('⚠️ Aviso: ' + (res.message || res.error || 'Erro na instância'))
+      } else {
+        alert('Disparo evocado com sucesso! A mensagem foi testada.')
+      }
       loadWarmers(true)
     } catch (e: any) {
       alert('Erro ao forçar disparo: ' + e.message)
@@ -89,21 +94,53 @@ export function AdminWarmerPage({ can }: { can?: (code: string) => boolean }) {
     }
   }
 
-  const handleCreate = async () => {
+  const handleSave = async () => {
     try {
       if (!form.instance_a_id || !form.instance_b_id || !form.phone_a || !form.phone_b) {
         alert('Preencha os nomes das instâncias e os telefones com DDI.')
         return
       }
-      await apiFetch('/api/admin/warmer', {
-        method: 'POST',
+
+      const method = editingId ? 'PUT' : 'POST'
+      const url = editingId ? `/api/admin/warmer/${editingId}` : '/api/admin/warmer'
+
+      await apiFetch(url, {
+        method,
         body: JSON.stringify(form)
       })
+      
       setIsCreating(false)
+      setEditingId(null)
       loadWarmers()
+      setForm({
+        instance_a_id: '',
+        phone_a: '',
+        instance_b_id: '',
+        phone_b: '',
+        base_daily_limit: 10,
+        increment_per_day: 10,
+        business_hours_start: '08:00',
+        business_hours_end: '20:00'
+      })
     } catch (e: any) {
-      alert(e.message || 'Erro ao criar rotina de maturação')
+      alert(e.message || 'Erro ao salvar maturação')
     }
+  }
+
+  const startEdit = (warmer: WarmerConfig) => {
+     setForm({
+        instance_a_id: warmer.instance_a_id,
+        phone_a: warmer.phone_a,
+        instance_b_id: warmer.instance_b_id,
+        phone_b: warmer.phone_b,
+        base_daily_limit: warmer.base_daily_limit,
+        increment_per_day: warmer.increment_per_day,
+        business_hours_start: warmer.business_hours_start,
+        business_hours_end: warmer.business_hours_end || ''
+     })
+     setEditingId(warmer.id)
+     setIsCreating(true)
+     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
   const handleToggleStatus = async (id: string, currentStatus: string) => {
@@ -137,7 +174,24 @@ export function AdminWarmerPage({ can }: { can?: (code: string) => boolean }) {
             </p>
           </div>
           <div>
-             <button onClick={() => setIsCreating(!isCreating)} className="rounded-2xl border border-white/20 bg-white/10 px-5 py-2.5 text-sm font-semibold transition hover:bg-white/20">
+             <button onClick={() => { 
+                if (isCreating) {
+                  setIsCreating(false);
+                  setEditingId(null);
+                  setForm({
+                    instance_a_id: '',
+                    phone_a: '',
+                    instance_b_id: '',
+                    phone_b: '',
+                    base_daily_limit: 10,
+                    increment_per_day: 10,
+                    business_hours_start: '08:00',
+                    business_hours_end: '20:00'
+                  });
+                } else {
+                  setIsCreating(true);
+                }
+             }} className="rounded-2xl border border-white/20 bg-white/10 px-5 py-2.5 text-sm font-semibold transition hover:bg-white/20">
               {isCreating ? 'Cancelar' : 'Nova Maturação +'}
             </button>
           </div>
@@ -147,7 +201,7 @@ export function AdminWarmerPage({ can }: { can?: (code: string) => boolean }) {
       {isCreating && (
         <div className="rounded-3xl border border-indigo-200 bg-indigo-50/50 p-6 shadow-sm">
           <h2 className="text-lg font-semibold text-slate-800 mb-4 flex items-center gap-2">
-            ⚙️ Configurar Interação
+            {editingId ? '✏️ Editar Interação' : '⚙️ Configurar Interação'}
           </h2>
           {/* Form Omitido para não ficar muito longo visualmente se minimizado */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -185,8 +239,8 @@ export function AdminWarmerPage({ can }: { can?: (code: string) => boolean }) {
             </div>
           </div>
           <div className="mt-6 flex justify-end">
-            <button onClick={handleCreate} className="rounded-2xl bg-indigo-600 px-6 py-3 text-sm font-semibold text-white transition hover:bg-indigo-700">
-              Iniciar Maturação
+            <button onClick={handleSave} className="rounded-2xl bg-indigo-600 px-6 py-3 text-sm font-semibold text-white transition hover:bg-indigo-700">
+              {editingId ? 'Salvar Alterações' : 'Iniciar Maturação'}
             </button>
           </div>
         </div>
@@ -276,6 +330,9 @@ export function AdminWarmerPage({ can }: { can?: (code: string) => boolean }) {
                     </div>
                     
                     <div className="flex gap-2">
+                      <button onClick={() => startEdit(warmer)} title="Editar Configuração" className="text-xs font-semibold px-3 py-1.5 rounded-full border border-slate-200 text-slate-600 hover:bg-slate-50 transition">
+                        ✏️
+                      </button>
                       <button onClick={() => openLogs(warmer.id)} title="Ver conversas" className="text-xs font-semibold px-3 py-1.5 rounded-full border border-indigo-200 text-indigo-600 hover:bg-indigo-50 transition">
                         💬
                       </button>
