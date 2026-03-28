@@ -179,6 +179,18 @@ async function syncCampaignStatusFromQueue(campaignId) {
   return nextStatus;
 }
 
+async function getServerClock() {
+  const result = await query(
+    `SELECT
+       NOW() AS server_time,
+       CURRENT_DATE AS server_date,
+       CURRENT_TIME AS server_time_only,
+       current_setting('TimeZone') AS timezone`
+  );
+
+  return result.rows[0] || null;
+}
+
 function normalizeGeminiModel(model) {
   const requestedModel = String(model || '').trim();
 
@@ -1577,7 +1589,8 @@ app.post('/api/admin/users/:id/notify', authenticateToken, checkAdmin, async (re
 app.get('/api/admin/gemini-keys', authenticateToken, checkAdmin, async (req, res) => {
   try {
     const result = await query('SELECT id, nome, status, ultimo_uso, requests_count, data_cadastro, observacoes FROM gemini_api_keys ORDER BY data_cadastro DESC');
-    res.json({ success: true, data: result.rows });
+    const server = await getServerClock();
+    res.json({ success: true, data: result.rows, server });
   } catch (error) {
     res.status(500).json({ success: false, error: 'Erro ao buscar chaves Gemini' });
   }
@@ -1900,10 +1913,26 @@ app.get('/api/schedules/professional', authenticateToken, async (req, res) => {
       params
     );
 
-    res.json({ success: true, data: resSched.rows });
+    const server = await getServerClock();
+    res.json({ success: true, data: resSched.rows, server });
   } catch (error) {
     console.error('[Schedules] Erro:', error);
     res.status(500).json({ success: false, error: 'Erro ao buscar agendamentos profissionais' });
+  }
+});
+
+app.post('/api/schedules/professional/refresh', authenticateToken, async (req, res) => {
+  try {
+    const { runScheduler, runWorker, runCleanup } = await import('./queueWorker.js');
+    await runScheduler();
+    await runWorker();
+    await runCleanup();
+
+    const server = await getServerClock();
+    res.json({ success: true, server });
+  } catch (error) {
+    console.error('[SchedulesRefresh] Erro:', error);
+    res.status(500).json({ success: false, error: 'Erro ao atualizar os agendamentos agora' });
   }
 });
 
@@ -2031,7 +2060,8 @@ app.get('/api/queue/professional', authenticateToken, async (req, res) => {
       params
     );
 
-    res.json({ success: true, data: resQueue.rows });
+    const server = await getServerClock();
+    res.json({ success: true, data: resQueue.rows, server });
   } catch (error) {
     console.error('[Queue] Erro:', error);
     res.status(500).json({ success: false, error: 'Erro ao buscar fila de mensagens' });

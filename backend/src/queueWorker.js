@@ -659,7 +659,7 @@ export async function runCleanup() {
 }
 
 export function startQueueWorkerLoops() {
-  setInterval(runScheduler, 60_000)
+  setInterval(runScheduler, 15_000)
   setInterval(runWorker, 2000)
   setInterval(runCleanup, 300_000)
 

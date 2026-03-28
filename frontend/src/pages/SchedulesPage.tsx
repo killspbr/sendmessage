@@ -51,6 +51,13 @@ type QueueItem = {
     }>
 }
 
+type ServerClock = {
+    server_time?: string | null
+    server_date?: string | null
+    server_time_only?: string | null
+    timezone?: string | null
+}
+
 type SchedulesPageProps = {
     campaigns: Campaign[]
     effectiveUserId: string | null
@@ -66,14 +73,54 @@ function formatDateTime(value?: string | null) {
     })
 }
 
+function parseScheduleDateTime(dateValue?: string | null, timeValue?: string | null) {
+    if (!dateValue || !timeValue) return null
+
+    const safeDate = String(dateValue).slice(0, 10)
+    const safeTime = String(timeValue).slice(0, 8)
+    const parsed = new Date(`${safeDate}T${safeTime}`)
+
+    if (Number.isNaN(parsed.getTime())) return null
+    return parsed
+}
+
+function formatScheduleStart(dateValue?: string | null, timeValue?: string | null) {
+    const parsed = parseScheduleDateTime(dateValue, timeValue)
+    if (!parsed) return '-'
+
+    return parsed.toLocaleString('pt-BR', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+    })
+}
+
+function formatServerClock(clock?: ServerClock | null) {
+    if (!clock?.server_time) return '-'
+
+    return new Date(clock.server_time).toLocaleString('pt-BR', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+    })
+}
+
 function getScheduleStatusLabel(status: string) {
     if (status === 'em_execucao') return 'Em execução'
     if (status === 'pausado') return 'Pausado'
     if (status === 'agendado') return 'Agendado'
+    if (status === 'concluido') return 'Concluído'
+    if (status === 'cancelado') return 'Cancelado'
+    if (status === 'erro') return 'Erro'
     return status
 }
 
-function getScheduleHealth(schedule: ProfSchedule) {
+function getScheduleHealth(schedule: ProfSchedule, serverTime?: string | null) {
     const pending = Number(schedule.pending_count || 0)
     const processing = Number(schedule.processing_count || 0)
     const sent = Number(schedule.sent_count || 0)
@@ -91,6 +138,23 @@ function getScheduleHealth(schedule: ProfSchedule) {
             label: pauseLabel,
             tone: 'amber',
             detail: schedule.pause_details || schedule.last_error || 'O agendamento está pausado e aguardando retomada.',
+        }
+    }
+
+    const plannedStart = parseScheduleDateTime(schedule.data_inicio, schedule.hora_inicio)
+    const serverNow = serverTime ? new Date(serverTime) : null
+    const scheduleDue = Boolean(
+        plannedStart &&
+        serverNow &&
+        !Number.isNaN(serverNow.getTime()) &&
+        plannedStart.getTime() <= serverNow.getTime()
+    )
+
+    if (schedule.status === 'agendado' && scheduleDue && pending === 0 && processing === 0 && sent === 0) {
+        return {
+            label: 'No horário e aguardando motor',
+            tone: 'amber',
+            detail: 'O horário já chegou no servidor. Use "Atualizar agora" para forçar uma nova rodada imediata do scheduler.',
         }
     }
 
@@ -138,7 +202,9 @@ export function SchedulesPage({ effectiveUserId }: SchedulesPageProps) {
     const [schedules, setSchedules] = useState<ProfSchedule[]>([])
     const [history, setHistory] = useState<ProfSchedule[]>([])
     const [queue, setQueue] = useState<QueueItem[]>([])
+    const [serverClock, setServerClock] = useState<ServerClock | null>(null)
     const [loading, setLoading] = useState(false)
+    const [refreshingNow, setRefreshingNow] = useState(false)
     const [viewMode, setViewMode] = useState<'schedules' | 'history' | 'queue'>('schedules')
     const [historyFilter, setHistoryFilter] = useState<'all' | 'concluido' | 'cancelado' | 'erro'>('all')
 
@@ -154,6 +220,7 @@ export function SchedulesPage({ effectiveUserId }: SchedulesPageProps) {
             setSchedules(Array.isArray(sData.data) ? sData.data : [])
             setHistory(Array.isArray(hData.data) ? hData.data : [])
             setQueue(Array.isArray(qData.data) ? qData.data : [])
+            setServerClock(sData.server || hData.server || qData.server || null)
         } catch (e) {
             console.error('Erro ao carregar dados de agendamento profissional', e)
         } finally {
@@ -163,7 +230,9 @@ export function SchedulesPage({ effectiveUserId }: SchedulesPageProps) {
 
     useEffect(() => {
         void loadData()
-        const interval = setInterval(loadData, 15000)
+        const interval = setInterval(() => {
+            void loadData()
+        }, 15000)
         return () => clearInterval(interval)
     }, [effectiveUserId, historyFilter])
 
@@ -188,30 +257,61 @@ export function SchedulesPage({ effectiveUserId }: SchedulesPageProps) {
         }
     }
 
+    const handleRefreshNow = async () => {
+        if (!effectiveUserId) return
+        setRefreshingNow(true)
+        try {
+            const res = await apiFetch('/api/schedules/professional/refresh', { method: 'POST' })
+            if (res?.server) setServerClock(res.server)
+            await loadData()
+        } catch (err) {
+            console.error('Erro ao forçar atualização:', err)
+        } finally {
+            setRefreshingNow(false)
+        }
+    }
+
     return (
         <div className="space-y-6 max-w-7xl mx-auto">
-            <div className="flex flex-wrap items-center gap-3">
-                <div className="flex bg-slate-100 p-1 rounded-2xl w-fit">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex flex-wrap items-center gap-3">
+                    <div className="flex bg-slate-100 p-1 rounded-2xl w-fit">
+                        <button
+                            onClick={() => setViewMode('schedules')}
+                            className={`px-6 py-2.5 rounded-xl text-sm font-bold transition-all ${viewMode === 'schedules' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                        >
+                            Agendamentos ativos
+                        </button>
+                        <button
+                            onClick={() => setViewMode('queue')}
+                            className={`px-6 py-2.5 rounded-xl text-sm font-bold transition-all ${viewMode === 'queue' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                        >
+                            Monitor de fila
+                        </button>
+                        <button
+                            onClick={() => setViewMode('history')}
+                            className={`px-6 py-2.5 rounded-xl text-sm font-bold transition-all ${viewMode === 'history' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                        >
+                            Histórico
+                        </button>
+                    </div>
+                    <span className="text-xs text-slate-400">{loading ? 'Atualizando dados...' : 'Atualização automática a cada 15s'}</span>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-3">
+                    <div className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-right shadow-sm">
+                        <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">Horário do servidor</div>
+                        <div className="mt-1 text-sm font-bold text-slate-800">{formatServerClock(serverClock)}</div>
+                        <div className="text-[11px] text-slate-400">{serverClock?.timezone || 'Timezone indisponível'}</div>
+                    </div>
                     <button
-                        onClick={() => setViewMode('schedules')}
-                        className={`px-6 py-2.5 rounded-xl text-sm font-bold transition-all ${viewMode === 'schedules' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                        onClick={() => void handleRefreshNow()}
+                        disabled={refreshingNow || loading}
+                        className="px-4 py-2.5 rounded-2xl bg-slate-900 text-white text-sm font-bold shadow-sm hover:bg-slate-800 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
                     >
-                        Agendamentos ativos
-                    </button>
-                    <button
-                        onClick={() => setViewMode('queue')}
-                        className={`px-6 py-2.5 rounded-xl text-sm font-bold transition-all ${viewMode === 'queue' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-                    >
-                        Monitor de fila
-                    </button>
-                    <button
-                        onClick={() => setViewMode('history')}
-                        className={`px-6 py-2.5 rounded-xl text-sm font-bold transition-all ${viewMode === 'history' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-                    >
-                        Histórico
+                        {refreshingNow ? 'Atualizando...' : 'Atualizar agora'}
                     </button>
                 </div>
-                <span className="text-xs text-slate-400">{loading ? 'Atualizando dados...' : 'Atualização automática a cada 15s'}</span>
             </div>
 
             <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
@@ -253,7 +353,7 @@ export function SchedulesPage({ effectiveUserId }: SchedulesPageProps) {
                         </div>
                     ) : (
                         schedules.map((s) => {
-                            const health = getScheduleHealth(s)
+                            const health = getScheduleHealth(s, serverClock?.server_time)
                             const total = Number(s.pending_count || 0) + Number(s.processing_count || 0) + Number(s.sent_count || 0) + Number(s.failed_count || 0)
                             return (
                                 <div key={s.id} className="bg-white rounded-3xl p-8 border border-slate-100 shadow-sm">
@@ -269,17 +369,17 @@ export function SchedulesPage({ effectiveUserId }: SchedulesPageProps) {
                                                 </span>
                                             </div>
 
-                                                <div className="flex flex-wrap items-center gap-4 text-xs font-medium text-slate-500">
-                                                    <span>Criado em {formatDateTime(s.data_criacao)}</span>
-                                                    <span>Início previsto: {s.data_inicio} {s.hora_inicio}</span>
-                                                    <span>Última atividade: {formatDateTime(s.last_queue_activity_at || s.last_event_at)}</span>
-                                                    {s.paused_at && s.status === 'pausado' && (
-                                                        <span>Pausado em {formatDateTime(s.paused_at)}</span>
-                                                    )}
-                                                    {s.resumed_at && s.status === 'em_execucao' && (
-                                                        <span>Retomado em {formatDateTime(s.resumed_at)}</span>
-                                                    )}
-                                                </div>
+                                            <div className="flex flex-wrap items-center gap-4 text-xs font-medium text-slate-500">
+                                                <span>Criado em {formatDateTime(s.data_criacao)}</span>
+                                                <span>Início previsto: {formatScheduleStart(s.data_inicio, s.hora_inicio)}</span>
+                                                <span>Última atividade: {formatDateTime(s.last_queue_activity_at || s.last_event_at)}</span>
+                                                {s.paused_at && s.status === 'pausado' && (
+                                                    <span>Pausado em {formatDateTime(s.paused_at)}</span>
+                                                )}
+                                                {s.resumed_at && s.status === 'em_execucao' && (
+                                                    <span>Retomado em {formatDateTime(s.resumed_at)}</span>
+                                                )}
+                                            </div>
 
                                             <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
                                                 <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">Leitura operacional</div>
