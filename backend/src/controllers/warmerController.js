@@ -91,3 +91,18 @@ export async function getWarmerLogs(req, res) {
     res.status(500).json({ error: 'Erro ao listar logs' });
   }
 }
+
+export async function forceWarmerRun(req, res) {
+  try {
+    const { warmerService } = await import('./warmerService.js').catch(e => {
+        // Fallback for circular or delayed imports depending on module setup
+        return import('../services/warmerService.js');
+    });
+    
+    const { forceRunWarmer } = await import('../services/warmerService.js');
+    const logs = await forceRunWarmer(req.params.id);
+    res.json({ success: true, ...logs });
+  } catch (error) {
+    res.status(500).json({ error: 'Erro ao forçar disparo', details: error.message });
+  }
+}

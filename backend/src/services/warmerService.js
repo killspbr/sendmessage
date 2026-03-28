@@ -271,48 +271,74 @@ export async function runWarmer() {
       }
 
       // Definir direção (A -> B ou B -> A)
-      const directionAtoB = Math.random() > 0.5;
-      const fromInstance = directionAtoB ? warmer.instance_a_id : warmer.instance_b_id;
-      const fromPhone = directionAtoB ? warmer.phone_a : warmer.phone_b;
-      const toPhone = directionAtoB ? warmer.phone_b : warmer.phone_a;
-      
-      let messageContent = '';
-
-      try {
-        const historyText = await fetchRecentLogs(warmer.id);
-        messageContent = await generateDynamicMessage(historyText, fromPhone, toPhone);
-        const countMsgs = historyText === 'Nenhum histórico anterior.' ? 0 : historyText.split('\n').length;
-        console.log(`[Warmer] AI Generated: "${messageContent}" (based on ${countMsgs} logs)`);
-      } catch (aiError) {
-        console.warn(`[Warmer] Fallback activado (Erro Gemini):`, aiError.message);
-        messageContent = getRandomMessage();
-      }
-
-      try {
-        console.log(`[Warmer] Iniciando warming de ${fromInstance} para ${toPhone}`);
-        // Log "Sending presence..."
-        await sendPresence(evoUrl, evoKey, fromInstance, toPhone, 'composing');
-        
-        // Wait human delay (2 to 5 seconds base + 30ms per generated character)
-        const delayBase = Math.floor(Math.random() * 3000) + 2000;
-        const typingDelay = Math.min(8000, delayBase + (messageContent.length * 30));
-        await wait(typingDelay);
-
-        // Send Text
-        await sendText(evoUrl, evoKey, fromInstance, toPhone, messageContent);
-
-        // Record Log
-        await query(`
-          INSERT INTO warmer_logs (warmer_id, from_phone, to_phone, message_type, content_summary)
-          VALUES ($1, $2, $3, $4, $5)
-        `, [warmer.id, fromInstance, toPhone, 'text', messageContent]);
-
-        console.log(`[Warmer] Sucesso (${sentToday + 1}/${limiteHoje} hoje)`);
-      } catch (err) {
-        console.error(`[Warmer] Erro ao enviar maturação para Warmer ID ${warmer.id}:`, err.message);
-      }
+      await executeWarmerInteraction(warmer, evoUrl, evoKey, sentToday, limiteHoje);
     }
   } catch (error) {
     console.error('[Warmer] Falha crítica na rotina do Worker:', error);
   }
+}
+
+export async function executeWarmerInteraction(warmer, evoUrl, evoKey, sentToday = 0, limiteHoje = 0, isForced = false) {
+  const directionAtoB = Math.random() > 0.5;
+  const fromInstance = directionAtoB ? warmer.instance_a_id : warmer.instance_b_id;
+  const fromPhone = directionAtoB ? warmer.phone_a : warmer.phone_b;
+  const toPhone = directionAtoB ? warmer.phone_b : warmer.phone_a;
+  
+  let messageContent = '';
+
+  try {
+    const historyText = await fetchRecentLogs(warmer.id);
+    messageContent = await generateDynamicMessage(historyText, fromPhone, toPhone);
+    const countMsgs = historyText === 'Nenhum histórico anterior.' ? 0 : historyText.split('\n').length;
+    console.log(`[Warmer${isForced ? ' FOREGROUND' : ''}] AI Generated: "${messageContent}" (based on ${countMsgs} logs)`);
+  } catch (aiError) {
+    console.warn(`[Warmer${isForced ? ' FOREGROUND' : ''}] Fallback activado (Erro Gemini):`, aiError.message);
+    messageContent = getRandomMessage();
+  }
+
+  try {
+    console.log(`[Warmer${isForced ? ' FOREGROUND' : ''}] Iniciando warming de ${fromInstance} para ${toPhone}`);
+    await sendPresence(evoUrl, evoKey, fromInstance, toPhone, 'composing');
+    
+    // Wait human delay
+    const delayBase = Math.floor(Math.random() * 3000) + 2000;
+    const typingDelay = Math.min(8000, delayBase + (messageContent.length * 30));
+    // Se for um trigger forçado do front, diminuir o delay de digitação p/ dar a sensação tátil mais rápida p/ admin
+    await wait(isForced ? Math.min(1500, typingDelay) : typingDelay);
+
+    // Send Text
+    await sendText(evoUrl, evoKey, fromInstance, toPhone, messageContent);
+
+    // Record Log
+    await query(`
+      INSERT INTO warmer_logs (warmer_id, from_phone, to_phone, message_type, content_summary)
+      VALUES ($1, $2, $3, $4, $5)
+    `, [warmer.id, fromInstance, toPhone, 'text', messageContent]);
+
+    console.log(`[Warmer${isForced ? ' FOREGROUND' : ''}] Sucesso ${isForced ? '(Disparo Manual)' : `(${sentToday + 1}/${limiteHoje} hoje)`}`);
+    return { success: true, message: messageContent, from: fromInstance, to: toPhone };
+  } catch (err) {
+    console.error(`[Warmer${isForced ? ' FOREGROUND' : ''}] Erro ao enviar maturação para Warmer ID ${warmer.id}:`, err.message);
+    throw err;
+  }
+}
+
+export async function forceRunWarmer(warmerId) {
+  const { url: evoUrl, apiKey: evoKey } = await getGlobalEvolutionConfig();
+  if (!evoUrl || !evoKey) {
+    throw new Error('Evolution API não configurada globalmente.');
+  }
+
+  const result = await query(`
+    SELECT id, instance_a_id, instance_b_id, phone_a, phone_b 
+    FROM warmer_configs 
+    WHERE id = $1
+  `, [warmerId]);
+
+  if (result.rows.length === 0) {
+    throw new Error('Maturação não encontrada');
+  }
+
+  const warmer = result.rows[0];
+  return await executeWarmerInteraction(warmer, evoUrl, evoKey, 0, 0, true);
 }

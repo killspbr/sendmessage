@@ -8,7 +8,7 @@ import { toEvolutionNumber } from './utils/messageUtils.js';
 import { getActiveGeminiKey, incrementKeyUsage, logGeminiUsage } from './services/aiService.js';
 import { executeWhatsappCampaignDelivery, validateCampaignDeliveryPayload } from './services/campaignDeliveryService.js';
 import { buildContactSendHistoryEntry, insertContactSendHistory, normalizeJsonbInput } from './services/sendHistoryService.js';
-import { listWarmers, createWarmer, toggleWarmerStatus, getWarmerLogs } from './controllers/warmerController.js';
+import { listWarmers, createWarmer, toggleWarmerStatus, getWarmerLogs, forceWarmerRun } from './controllers/warmerController.js';
 import {
   MAX_FILE_SIZE_BYTES,
   DEFAULT_DAILY_MESSAGE_LIMIT,
@@ -3229,6 +3229,7 @@ app.get('/api/admin/warmer', authenticateToken, checkAdmin, listWarmers);
 app.post('/api/admin/warmer', authenticateToken, checkAdmin, createWarmer);
 app.put('/api/admin/warmer/:id/status', authenticateToken, checkAdmin, toggleWarmerStatus);
 app.get('/api/admin/warmer/:id/logs', authenticateToken, checkAdmin, getWarmerLogs);
+app.post('/api/admin/warmer/:id/force', authenticateToken, checkAdmin, forceWarmerRun);
 
 // --- FIM ADMIN ---
 

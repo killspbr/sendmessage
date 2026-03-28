@@ -22,6 +22,12 @@ export function AdminWarmerPage({ can }: { can?: (code: string) => boolean }) {
   const [warmers, setWarmers] = useState<WarmerConfig[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  
+  // Dashboard states
+  const [logsModalId, setLogsModalId] = useState<string | null>(null)
+  const [logs, setLogs] = useState<any[]>([])
+  const [loadingLogs, setLoadingLogs] = useState(false)
+  const [forcingId, setForcingId] = useState<string | null>(null)
 
   // Formulário
   const [isCreating, setIsCreating] = useState(false)
@@ -38,19 +44,48 @@ export function AdminWarmerPage({ can }: { can?: (code: string) => boolean }) {
 
   useEffect(() => {
     loadWarmers()
+    const polling = setInterval(() => {
+      loadWarmers(true)
+    }, 10000)
+    return () => clearInterval(polling)
   }, [])
 
-  const loadWarmers = async () => {
+  const loadWarmers = async (silent = false) => {
     try {
-      setLoading(true)
+      if (!silent) setLoading(true)
       const data = await apiFetch('/api/admin/warmer')
-      console.log('[WarmerPage] Dados Carregados:', data)
       setWarmers(Array.isArray(data) ? data : [])
     } catch (e: any) {
-      console.error('[WarmerPage] Erro ao carregar:', e)
-      setError(e.message || 'Erro ao carregar dados do maturador')
+      if (!silent) setError(e.message || 'Erro ao carregar dados do maturador')
     } finally {
-      setLoading(false)
+      if (!silent) setLoading(false)
+    }
+  }
+
+  const handleForceRun = async (id: string) => {
+    try {
+      setForcingId(id)
+      await apiFetch(`/api/admin/warmer/${id}/force`, { method: 'POST' })
+      alert('Disparo evocado com sucesso! A mensagem foi testada.')
+      loadWarmers(true)
+    } catch (e: any) {
+      alert('Erro ao forçar disparo: ' + e.message)
+    } finally {
+      setForcingId(null)
+    }
+  }
+
+  const openLogs = async (id: string) => {
+    setLogsModalId(id)
+    setLoadingLogs(true)
+    setLogs([])
+    try {
+      const data = await apiFetch(`/api/admin/warmer/${id}/logs`)
+      setLogs(Array.isArray(data) ? data : [])
+    } catch (e: any) {
+      alert('Erro ao carregar logs: ' + e.message)
+    } finally {
+      setLoadingLogs(false)
     }
   }
 
@@ -114,6 +149,7 @@ export function AdminWarmerPage({ can }: { can?: (code: string) => boolean }) {
           <h2 className="text-lg font-semibold text-slate-800 mb-4 flex items-center gap-2">
             ⚙️ Configurar Interação
           </h2>
+          {/* Form Omitido para não ficar muito longo visualmente se minimizado */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="space-y-4">
               <div className="p-4 bg-white rounded-2xl border border-slate-200">
@@ -122,7 +158,6 @@ export function AdminWarmerPage({ can }: { can?: (code: string) => boolean }) {
                 <input type="text" placeholder="Telefone do Chip A (ex: 551199999999)" value={form.phone_a} onChange={e=>setForm({...form, phone_a: e.target.value})} className="w-full text-sm p-3 rounded-xl bg-slate-50 border border-slate-200 outline-none focus:border-indigo-500" />
               </div>
             </div>
-            
             <div className="space-y-4">
                <div className="p-4 bg-white rounded-2xl border border-slate-200">
                 <h3 className="font-medium text-slate-700 mb-3 border-b pb-2">Instância B</h3>
@@ -130,7 +165,6 @@ export function AdminWarmerPage({ can }: { can?: (code: string) => boolean }) {
                 <input type="text" placeholder="Telefone do Chip B (ex: 551188888888)" value={form.phone_b} onChange={e=>setForm({...form, phone_b: e.target.value})} className="w-full text-sm p-3 rounded-xl bg-slate-50 border border-slate-200 outline-none focus:border-indigo-500" />
               </div>
             </div>
-
             <div className="md:col-span-2 p-4 bg-white rounded-2xl border border-slate-200 grid grid-cols-2 md:grid-cols-4 gap-4">
               <div>
                 <label className="text-xs font-semibold text-slate-600">Mensagens Dia 1</label>
@@ -154,6 +188,40 @@ export function AdminWarmerPage({ can }: { can?: (code: string) => boolean }) {
             <button onClick={handleCreate} className="rounded-2xl bg-indigo-600 px-6 py-3 text-sm font-semibold text-white transition hover:bg-indigo-700">
               Iniciar Maturação
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Logs */}
+      {logsModalId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4">
+          <div className="w-full max-w-xl bg-slate-50 border border-slate-200 rounded-3xl shadow-xl flex flex-col max-h-[85vh]">
+            <div className="p-4 border-b border-slate-200 flex justify-between items-center bg-white rounded-t-3xl">
+              <h2 className="font-semibold text-slate-800 flex items-center gap-2">💬 Histórico de Interação</h2>
+              <button onClick={() => setLogsModalId(null)} className="text-slate-400 hover:text-slate-600 hover:bg-slate-100 p-2 rounded-full">✕</button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-[#efeae2]">
+              {loadingLogs ? (
+                 <div className="text-center text-sm text-slate-500 p-10 animate-pulse">Carregando conversas...</div>
+              ) : logs.length === 0 ? (
+                 <div className="text-center text-sm text-slate-500 p-10 bg-white/50 rounded-xl">Nenhuma mensagem registrada.</div>
+              ) : (
+                logs.map(log => {
+                  // Opcional: Detectar a direção baseando-se no instance_a do warmer vs from_phone. 
+                  // Pra simplificar visualmente alternamos pela paridade pro mockup de demo se não tiver a config exata no escopo local
+                  const isSentByA = true; 
+                  return (
+                    <div key={log.id} className="flex flex-col mb-4">
+                       <span className="text-[10px] text-slate-500 mb-1 font-semibold">{log.from_phone}</span>
+                       <div className="w-fit max-w-[85%] p-3 rounded-2xl bg-white shadow-sm border border-slate-100 text-sm text-slate-800">
+                          {log.content_summary}
+                          <div className="text-[9px] text-slate-400 text-right mt-1.5">{new Date(log.sent_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</div>
+                       </div>
+                    </div>
+                  )
+                })
+              )}
+            </div>
           </div>
         </div>
       )}
@@ -205,9 +273,17 @@ export function AdminWarmerPage({ can }: { can?: (code: string) => boolean }) {
                       </div>
                     </div>
                     
-                    <button onClick={() => handleToggleStatus(warmer.id, warmer.status)} className={`text-xs font-semibold px-3 py-1.5 rounded-full border ${isPaused ? 'border-amber-300 text-amber-700 hover:bg-amber-100' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}>
-                      {isPaused ? 'Retomar' : 'Pausar'}
-                    </button>
+                    <div className="flex gap-2">
+                      <button onClick={() => openLogs(warmer.id)} title="Ver conversas" className="text-xs font-semibold px-3 py-1.5 rounded-full border border-indigo-200 text-indigo-600 hover:bg-indigo-50 transition">
+                        💬
+                      </button>
+                      <button onClick={() => handleForceRun(warmer.id)} disabled={forcingId === warmer.id} title="Forçar Disparo Agora" className={`text-xs font-semibold px-3 py-1.5 rounded-full border transition ${forcingId === warmer.id ? 'border-slate-300 text-slate-400 bg-slate-100 cursor-not-allowed' : 'border-amber-300 text-amber-600 hover:bg-amber-50'} flex items-center gap-1`}>
+                        {forcingId === warmer.id ? <span className="animate-spin text-[10px]">⏳</span> : '⚡'}
+                      </button>
+                      <button onClick={() => handleToggleStatus(warmer.id, warmer.status)} className={`text-xs font-semibold px-4 py-1.5 rounded-full border ${isPaused ? 'border-amber-300 text-amber-700 hover:bg-amber-100' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}>
+                        {isPaused ? 'Retomar' : 'Pausar'}
+                      </button>
+                    </div>
                   </div>
 
                   <div className="space-y-4">
