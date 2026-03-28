@@ -1,4 +1,4 @@
-import type { Campaign, Contact, ContactList, SendHistoryItem, CampaignSendLog } from '../types'
+﻿import type { Campaign, Contact, ContactList, SendHistoryItem, CampaignSendLog } from '../types'
 
 type DashboardPageProps = {
   // Dados
@@ -115,9 +115,9 @@ export function DashboardPage({
             <div className={`p-5 flex flex-col gap-3 transition-colors ${hasEvolutionConfigured && contacts.length === 0 ? 'bg-amber-50/30' : 'bg-white'}`}>
               <div className="flex items-center justify-between">
                 <div className={`w-8 h-8 rounded-xl flex items-center justify-center text-sm ${contacts.length > 0 ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-100 text-slate-600'}`}>
-                  {contacts.length > 0 ? '✓' : '2'}
+                  {contacts.length > 0 ? 'OK' : '2'}
                 </div>
-                {hasEvolutionConfigured && contacts.length === 0 && <span className="text-[9px] font-bold text-amber-600 animate-pulse">PRÃ“XIMO PASSO</span>}
+                {hasEvolutionConfigured && contacts.length === 0 && <span className="text-[9px] font-bold text-amber-600 animate-pulse">PROXIMO PASSO</span>}
               </div>
               <div>
                 <h4 className="text-xs font-bold text-slate-800">Adicionar Contatos</h4>
@@ -127,33 +127,33 @@ export function DashboardPage({
                 onClick={() => onNavigate('contacts')}
                 className={`mt-auto text-[10px] font-bold text-left hover:underline ${contacts.length > 0 ? 'text-emerald-600' : 'text-slate-600'}`}
               >
-                {contacts.length > 0 ? 'Contatos cadastrados' : 'Gerenciar Contatos →'}
+                {contacts.length > 0 ? 'Contatos cadastrados' : 'Gerenciar Contatos ->'}
               </button>
             </div>
 
             <div className={`p-5 flex flex-col gap-3 transition-colors ${contacts.length > 0 && campaigns.length === 0 ? 'bg-amber-50/30' : 'bg-white'}`}>
               <div className="flex items-center justify-between">
                 <div className={`w-8 h-8 rounded-xl flex items-center justify-center text-sm ${campaigns.length > 0 ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-100 text-slate-600'}`}>
-                  {campaigns.length > 0 ? '✓' : '3'}
+                  {campaigns.length > 0 ? 'OK' : '3'}
                 </div>
-                {contacts.length > 0 && campaigns.length === 0 && <span className="text-[9px] font-bold text-amber-600 animate-pulse">QUASE LÁ</span>}
+                {contacts.length > 0 && campaigns.length === 0 && <span className="text-[9px] font-bold text-amber-600 animate-pulse">QUASE LA</span>}
               </div>
               <div>
                 <h4 className="text-xs font-bold text-slate-800">Criar Campanha</h4>
-                <p className="text-[10px] text-slate-500 mt-1 leading-relaxed">Crie sua primeira campanha de mensagens e escolha o público alvo.</p>
+                <p className="text-[10px] text-slate-500 mt-1 leading-relaxed">Crie sua primeira campanha de mensagens e escolha o publico-alvo.</p>
               </div>
               <button 
                 onClick={() => onNavigate('campaigns')}
                 className={`mt-auto text-[10px] font-bold text-left hover:underline ${campaigns.length > 0 ? 'text-emerald-600' : 'text-slate-600'}`}
               >
-                {campaigns.length > 0 ? 'Campanha criada' : 'Criar Campanha →'}
+                {campaigns.length > 0 ? 'Campanha criada' : 'Criar Campanha ->'}
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Banner da Extensão do Navegador */}
+      {/* Banner da Extensao do Navegador */}
       <div className="relative overflow-hidden mb-4 p-4 rounded-3xl bg-gradient-to-r from-emerald-600 to-emerald-800 text-white shadow-xl shadow-emerald-950/20 group">
         {/* Decorative elements */}
         <div className="absolute top-0 right-0 -mr-10 -mt-10 h-40 w-40 rounded-full bg-white/10 blur-3xl pointer-events-none group-hover:bg-white/20 transition-all duration-700" />
@@ -162,12 +162,12 @@ export function DashboardPage({
         <div className="relative flex flex-col md:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-4">
             <div className="h-12 w-12 rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center text-2xl shadow-inner border border-white/30">
-              🚀
+              [EXT]
             </div>
             <div>
-              <h3 className="text-sm font-bold tracking-tight">Potencialize sua extração com nossa extensão</h3>
+              <h3 className="text-sm font-bold tracking-tight">Potencialize sua extracao com nossa extensao</h3>
               <p className="text-[11px] text-emerald-50/80 leading-relaxed max-w-md">
-                Extraia contatos diretamente do seu navegador com 1 clique. Mais rápido, seguro e integrado ao seu WhatsApp.
+                Extraia contatos diretamente do seu navegador com 1 clique. Mais rapido, seguro e integrado ao seu WhatsApp.
               </p>
             </div>
           </div>
@@ -182,7 +182,7 @@ export function DashboardPage({
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 16v1a3 3 0 0 0 3 3h10a3 3 0 0 0 3-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
               </svg>
             </a>
-            <span className="text-[10px] text-emerald-100/90 font-medium px-2">v1.0.9 • 19/03/2026 às 23:59</span>
+            <span className="text-[10px] text-emerald-100/90 font-medium px-2">v1.0.9 - 19/03/2026 as 23:59</span>
           </div>
         </div>
       </div>
@@ -193,7 +193,7 @@ export function DashboardPage({
           <div className="flex items-center justify-between">
             <span className="text-[11px] text-slate-500">Total de contatos</span>
             <span className="h-6 w-6 rounded-lg bg-emerald-500/10 text-emerald-600 flex items-center justify-center text-[12px]" aria-hidden="true">
-              👥
+              [CTT]
             </span>
           </div>
           <span className="text-2xl font-semibold text-slate-900">
@@ -205,7 +205,7 @@ export function DashboardPage({
           <div className="flex items-center justify-between">
             <span className="text-[11px] text-slate-500">Lista atual</span>
             <span className="h-6 w-6 rounded-lg bg-emerald-500/10 text-emerald-600 flex items-center justify-center text-[12px]" aria-hidden="true">
-              📌
+              [LST]
             </span>
           </div>
           <span className="text-2xl font-semibold text-slate-900">{contacts.length}</span>
@@ -217,11 +217,11 @@ export function DashboardPage({
           <div className="flex items-center justify-between">
             <span className="text-[11px] text-slate-500">Listas de contatos</span>
             <span className="h-6 w-6 rounded-lg bg-sky-500/10 text-sky-600 flex items-center justify-center text-[12px]" aria-hidden="true">
-              📂
+              [CMP]
             </span>
           </div>
           <span className="text-2xl font-semibold text-slate-900">{lists.length}</span>
-          <span className="text-[10px] text-slate-400">Inclui lista padrão e personalizadas</span>
+          <span className="text-[10px] text-slate-400">Inclui lista padrao e personalizadas</span>
         </div>
         <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-3 flex flex-col gap-1">
           <div className="flex items-center justify-between">
@@ -232,7 +232,7 @@ export function DashboardPage({
           </div>
           <span className="text-2xl font-semibold text-slate-900">{campaigns.length}</span>
           <span className="text-[10px] text-slate-400">
-            {campaigns.filter((c) => c.status === 'agendada').length} agendadas ·{' '}
+            {campaigns.filter((c) => c.status === 'agendada').length} agendadas -{' '}
             {campaigns.filter((c) => c.status === 'enviada').length} enviadas
           </span>
         </div>
@@ -249,7 +249,7 @@ export function DashboardPage({
           <div className="flex items-center justify-between">
             <span
               className="text-[11px] text-slate-500"
-              title="Calculado com base nos últimos 10 registros de envio: percentual de envios com status OK em relação ao total (OK ÷ total)."
+              title="Calculado com base nos ultimos 10 registros de envio: percentual de envios com status OK em relacao ao total (OK / total)."
             >
               Qualidade dos envios recentes
             </span>
@@ -265,27 +265,27 @@ export function DashboardPage({
             >
               {recentSuccessRate == null
                 ? 'Sem dados'
-                : `${recentQualityLabel} · ${Math.round(recentSuccessRate)}% OK`}
+                : `${recentQualityLabel} - ${Math.round(recentSuccessRate)}% OK`}
             </span>
           </div>
           {recentSuccessRate == null ? (
             <span className="text-[10px] text-slate-400">Nenhum disparo registrado ainda.</span>
           ) : (
             <span className="text-[10px] text-slate-400">
-              Considerando até os últimos {recentHistory.length} disparos: {recentTotals.total} contato(s),{' '}
+              Considerando ate os ultimos {recentHistory.length} disparos: {recentTotals.total} contato(s),{' '}
               {recentTotals.errors} com erro.
             </span>
           )}
         </div>
       </div>
 
-      {/* Histórico global de disparos */}
+      {/* Historico global de disparos */}
       <section className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 flex flex-col gap-2">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-xs font-semibold text-slate-800">Histórico de disparos</h2>
+            <h2 className="text-xs font-semibold text-slate-800">Historico de disparos</h2>
             <p className="text-[11px] text-slate-500">
-              Ãšltimos envios de campanhas via webhooks.
+              Ultimos envios de campanhas via webhooks.
             </p>
           </div>
         </div>
@@ -319,7 +319,7 @@ export function DashboardPage({
                     {item.ok
                       ? `HTTP ${item.status || 200}`
                       : `HTTP ${item.status || (item.errorCount > 0 ? 500 : 0)}`}
-                    · {item.errorCount}/{item.total} contatos com erro · {item.runAt}
+                    - {item.errorCount}/{item.total} contatos com erro - {item.runAt}
                   </span>
                 </div>
               </li>
@@ -335,7 +335,7 @@ export function DashboardPage({
           <div className="flex items-center justify-between mb-1">
             <div>
               <h2 className="text-xs font-semibold text-slate-700">Campanhas</h2>
-              <p className="text-[11px] text-slate-400">Resumo rápido das últimas campanhas.</p>
+              <p className="text-[11px] text-slate-400">Resumo rapido das ultimas campanhas.</p>
             </div>
             <button
               type="button"
@@ -348,7 +348,7 @@ export function DashboardPage({
 
           {campaigns.length === 0 ? (
             <p className="text-[11px] text-slate-400">
-              Nenhuma campanha cadastrada ainda. Crie a primeira para começar a enviar mensagens.
+              Nenhuma campanha cadastrada ainda. Crie a primeira para comecar a enviar mensagens.
             </p>
           ) : (
             <div className="space-y-1.5">
@@ -365,8 +365,8 @@ export function DashboardPage({
                       {(() => {
                         const log = campaignSendLog[camp.id]
                         if (log) {
-                          return `Ãšltimo envio: ${log.lastOk ? 'OK' : `Erro ${log.lastErrorCount > 0 ? 500 : 0}`
-                            } · ${log.lastRunAt}`
+                          return `Ultimo envio: ${log.lastOk ? 'OK' : `Erro ${log.lastErrorCount > 0 ? 500 : 0}`
+                            } - ${log.lastRunAt}`
                         }
 
                         const historyForCamp = sendHistory.filter(
@@ -379,7 +379,7 @@ export function DashboardPage({
                             0,
                           )
                           const successes = total - errors
-                          return `Histórico: ${successes} sucesso(s), ${errors} erro(s), total ${total}`
+                          return `Historico: ${successes} sucesso(s), ${errors} erro(s), total ${total}`
                         }
 
                         return 'Nenhum disparo registrado para esta campanha.'
@@ -398,7 +398,7 @@ export function DashboardPage({
                           </span>
                         )}
                       </span>
-                      <span className="text-slate-400">·</span>
+                      <span className="text-slate-400">-</span>
                       <span>{camp.listName}</span>
                     </span>
                   </div>
@@ -483,9 +483,9 @@ export function DashboardPage({
             </div>
           </div>
 
-          {/* Status de envio / integrações */}
+          {/* Status de envio / integracoes */}
           <div className="bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 rounded-2xl p-3 flex flex-col gap-2 text-slate-100 shadow-lg shadow-slate-950/60">
-            <h2 className="text-xs font-semibold">Envio e integrações</h2>
+            <h2 className="text-xs font-semibold">Envio e integracoes</h2>
             {sendingCampaignId ? (
               <div className="text-[11px] space-y-1">
                 <div className="flex items-center justify-between">
@@ -535,11 +535,11 @@ export function DashboardPage({
                       : 'bg-amber-500/10 text-amber-200 border-amber-400/40'
                       }`}
                   >
-                    {hasEvolutionConfigured ? 'Ativo' : 'Não configurado'}
+                    {hasEvolutionConfigured ? 'Ativo' : 'Nao configurado'}
                   </span>
                 </div>
                 <span className="max-w-[150px] truncate text-slate-200 text-[9px] text-right">
-                  {hasEvolutionConfigured ? 'Configurado' : '—'}
+                  {hasEvolutionConfigured ? 'Configurado' : '-'}
                 </span>
               </div>
               <button
@@ -547,7 +547,7 @@ export function DashboardPage({
                 className="mt-1 px-2.5 py-1 rounded-md border border-slate-700 text-[10px] text-slate-100 hover:bg-slate-800/80"
                 onClick={() => onNavigate('settings')}
               >
-                Abrir configurações
+                Abrir configuracoes
               </button>
             </div>
           </div>
@@ -560,7 +560,7 @@ export function DashboardPage({
           <div>
             <h2 className="text-xs font-semibold text-slate-800">Atividades recentes</h2>
             <p className="text-[11px] text-slate-500">
-              Ãšltimas campanhas criadas ou atualizadas no sistema.
+              Ultimas campanhas criadas ou atualizadas no sistema.
             </p>
           </div>
         </div>
