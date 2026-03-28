@@ -91,8 +91,14 @@ function createQueryMock(state) {
       return { rows: [] }
     }
 
-    if (sql.includes("FROM campaign_schedule WHERE status = 'agendado'")) {
-      return { rows: state.schedules.filter((s) => s.status === 'agendado').map(clone) }
+    if (sql.includes("WITH due_schedules AS ( SELECT id FROM campaign_schedule WHERE status = 'agendado'")) {
+      const dueSchedules = state.schedules
+        .filter((s) => s.status === 'agendado')
+        .map((s) => {
+          s.status = 'preparando'
+          return clone(s)
+        })
+      return { rows: dueSchedules }
     }
 
     if (sql === 'SELECT * FROM campaigns WHERE id = $1') {

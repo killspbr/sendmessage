@@ -112,6 +112,7 @@ function formatServerClock(clock?: ServerClock | null) {
 
 function getScheduleStatusLabel(status: string) {
     if (status === 'em_execucao') return 'Em execução'
+    if (status === 'preparando') return 'Preparando fila'
     if (status === 'pausado') return 'Pausado'
     if (status === 'agendado') return 'Agendado'
     if (status === 'concluido') return 'Concluído'

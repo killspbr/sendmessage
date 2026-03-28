@@ -364,10 +364,19 @@ export async function runScheduler() {
     await resumePausedSchedules()
 
     const result = await queueWorkerDeps.query(
-      `SELECT *
-       FROM campaign_schedule
-       WHERE status = 'agendado'
-         AND (data_inicio < CURRENT_DATE OR (data_inicio = CURRENT_DATE AND hora_inicio <= CURRENT_TIME))`
+      `WITH due_schedules AS (
+         SELECT id
+         FROM campaign_schedule
+         WHERE status = 'agendado'
+           AND (data_inicio < CURRENT_DATE OR (data_inicio = CURRENT_DATE AND hora_inicio <= CURRENT_TIME))
+         ORDER BY data_inicio ASC, hora_inicio ASC, id ASC
+         FOR UPDATE SKIP LOCKED
+       )
+       UPDATE campaign_schedule cs
+       SET status = 'preparando'
+       FROM due_schedules ds
+       WHERE cs.id = ds.id
+       RETURNING cs.*`
     )
 
     for (const schedule of result.rows) {

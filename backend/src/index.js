@@ -1712,7 +1712,7 @@ app.post('/api/campaigns/:id/schedule', authenticateToken, async (req, res) => {
     }
 
     // Cancela agendamentos anteriores da mesma campanha e limpa pendências antigas para evitar reenvio indevido
-    await query('UPDATE campaign_schedule SET status = \'cancelado\' WHERE campaign_id = $1 AND status = ANY($2)', [id, ['agendado', 'em_execucao', 'pausado']]);
+    await query('UPDATE campaign_schedule SET status = \'cancelado\' WHERE campaign_id = $1 AND status = ANY($2)', [id, ['agendado', 'preparando', 'em_execucao', 'pausado']]);
     await query('DELETE FROM message_queue WHERE campaign_id = $1 AND status = $2', [id, 'pendente']);
 
     const result = await query(
@@ -1823,7 +1823,7 @@ app.delete('/api/campaigns/:id/schedule', authenticateToken, async (req, res) =>
            paused_at = COALESCE(paused_at, NOW())
        WHERE campaign_id = $1
          AND status = ANY($2)`,
-      [id, ['agendado', 'em_execucao', 'pausado']]
+      [id, ['agendado', 'preparando', 'em_execucao', 'pausado']]
     );
     await syncCampaignStatusFromQueue(id);
     res.json({ success: true });
@@ -1838,7 +1838,7 @@ app.get('/api/schedules/professional', authenticateToken, async (req, res) => {
     const params = [];
     let whereClause = "WHERE s.status = ANY($1)";
 
-    params.push(['agendado', 'em_execucao', 'pausado']);
+    params.push(['agendado', 'preparando', 'em_execucao', 'pausado']);
 
     if (!admin) {
       params.push(req.user.id);
@@ -2288,8 +2288,10 @@ app.use(errorHandler);
 app.listen(port, '0.0.0.0', async () => {
   console.log(`Backend listening on port ${port} (all interfaces)`);
   await runMigrations();
-  if (process.env.EMBED_QUEUE_WORKER !== 'false') {
-    await import('./queueWorker.js');
+  await import('./queueWorker.js');
+  if (process.env.EMBED_QUEUE_WORKER === 'false') {
+    console.warn('[Worker] EMBED_QUEUE_WORKER=false foi ignorado. O motor agora sobe no processo principal para garantir agendamentos automáticos.');
+  } else {
     console.log('[Worker] queueWorker.js incorporado ao processo principal.');
   }
 });
