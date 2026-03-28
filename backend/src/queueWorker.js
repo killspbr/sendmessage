@@ -274,14 +274,34 @@ async function enqueueScheduleMessages(schedule, campaign) {
   const variations = parseVariations(campaign.variations)
   const variationsList = [campaign.message, ...variations].filter((t) => t && String(t).trim().length > 5)
 
+  const listResult = await queueWorkerDeps.query(
+    'SELECT id FROM lists WHERE user_id = $1 AND name = $2 LIMIT 1',
+    [schedule.user_id, campaign.list_name]
+  )
+  const list = listResult.rows[0]
+
+  if (!list) {
+    console.log(`[Scheduler] Lista não encontrada para a campanha ${campaign.id}: ${campaign.list_name}.`)
+    await queueWorkerDeps.query('UPDATE campaign_schedule SET status = $1 WHERE id = $2', ['erro', schedule.id])
+    await queueWorkerDeps.query('UPDATE campaigns SET status = $1 WHERE id = $2', ['rascunho', campaign.id])
+    await queueWorkerDeps.query('INSERT INTO scheduler_logs (event, details) VALUES ($1, $2)', [
+      'schedule_error',
+      JSON.stringify({
+        schedule_id: schedule.id,
+        campaign_id: campaign.id,
+        motivo: 'Lista da campanha não encontrada',
+      }),
+    ])
+    return
+  }
+
   const contactsResult = await queueWorkerDeps.query(
     `SELECT *
      FROM contacts
-     WHERE status = 'ativo'
-       AND list_name = $1
-       AND user_id = $2
+     WHERE user_id = $1
+       AND list_id = $2
        AND COALESCE(TRIM(phone), '') <> ''`,
-    [campaign.list_name, schedule.user_id]
+    [schedule.user_id, list.id]
   )
   const contacts = contactsResult.rows
 

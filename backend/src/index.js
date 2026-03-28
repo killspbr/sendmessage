@@ -1654,14 +1654,25 @@ app.post('/api/campaigns/:id/schedule', authenticateToken, async (req, res) => {
       });
     }
 
+    const listResult = await query(
+      'SELECT id FROM lists WHERE user_id = $1 AND name = $2 LIMIT 1',
+      [req.user.id, campaign.list_name]
+    );
+    const list = listResult.rows[0];
+
+    if (!list) {
+      return res.status(400).json({
+        error: 'A lista vinculada a esta campanha nÃ£o foi encontrada.'
+      });
+    }
+
     const contactsCheck = await query(
       `SELECT COUNT(*)::int AS total
        FROM contacts
        WHERE user_id = $1
-         AND list_name = $2
-         AND status = 'ativo'
+         AND list_id = $2
          AND COALESCE(TRIM(phone), '') <> ''`,
-      [req.user.id, campaign.list_name]
+      [req.user.id, list.id]
     );
 
     if (!Number(contactsCheck.rows[0]?.total || 0)) {

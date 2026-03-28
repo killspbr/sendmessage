@@ -16,6 +16,7 @@ function createState(overrides = {}) {
     campaigns: [],
     schedules: [],
     contacts: [],
+    lists: [],
     queue: [],
     reputation: [],
     logs: [],
@@ -104,10 +105,17 @@ function createQueryMock(state) {
       return { rows: found ? [{ 1: 1 }] : [] }
     }
 
-    if (sql.includes("FROM contacts WHERE status = 'ativo'")) {
-      const [listName, userId] = params
+    if (sql === 'SELECT id FROM lists WHERE user_id = $1 AND name = $2 LIMIT 1') {
+      const [userId, listName] = params
       return {
-        rows: state.contacts.filter((c) => c.status === 'ativo' && c.list_name === listName && c.user_id === userId && String(c.phone || '').trim()).map(clone)
+        rows: state.lists.filter((l) => l.user_id === userId && l.name === listName).slice(0, 1).map(clone)
+      }
+    }
+
+    if (sql.includes('FROM contacts WHERE user_id = $1') && sql.includes('AND list_id = $2')) {
+      const [userId, listId] = params
+      return {
+        rows: state.contacts.filter((c) => c.user_id === userId && c.list_id === listId && String(c.phone || '').trim()).map(clone)
       }
     }
 
@@ -277,9 +285,10 @@ test('scheduler gera fila para campanha agendada com contatos elegíveis', async
   const state = createState({
     campaigns: [{ id: 'camp-1', channels: '["whatsapp"]', list_name: 'Lista A', variations: '[]', message: 'Olá', status: 'agendada' }],
     schedules: [{ id: 1, campaign_id: 'camp-1', user_id: 'user-1', status: 'agendado', limite_diario: 300 }],
+    lists: [{ id: 'list-1', user_id: 'user-1', name: 'Lista A' }],
     contacts: [
-      { id: 'c1', user_id: 'user-1', list_name: 'Lista A', status: 'ativo', phone: '11999999999', name: 'Contato 1' },
-      { id: 'c2', user_id: 'user-1', list_name: 'Lista A', status: 'ativo', phone: '11888888888', name: 'Contato 2' },
+      { id: 'c1', user_id: 'user-1', list_id: 'list-1', phone: '11999999999', name: 'Contato 1' },
+      { id: 'c2', user_id: 'user-1', list_id: 'list-1', phone: '11888888888', name: 'Contato 2' },
     ],
   })
 
