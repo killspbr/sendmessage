@@ -1,3 +1,4 @@
+import fs from 'fs';
 import express from 'express';
 import cors from 'cors';
 import multer from 'multer';
@@ -462,7 +463,23 @@ app.get('/api/uploads/public/:token/:storedName', async (req, res) => {
     }
 
     res.setHeader('Content-Type', file.mime_type);
-    return res.sendFile(file.storage_path);
+
+    if (file.storage_path && fs.existsSync(file.storage_path)) {
+      return res.sendFile(file.storage_path);
+    }
+
+    if (file.file_blob) {
+      return res.send(Buffer.from(file.file_blob));
+    }
+
+    return res.status(404).json({
+      success: false,
+      error: `ENOENT: no such file or directory, stat '${file.storage_path}'`,
+      code: 'ENOENT',
+      source: 'database',
+      timestamp: new Date().toISOString(),
+      path: req.originalUrl,
+    });
   } catch (error) {
     return res.status(500).send('Falha ao abrir arquivo.');
   }
@@ -530,6 +547,9 @@ app.post('/api/files/upload', authenticateToken, async (req, res) => {
           continue;
         }
 
+        const filePath = file.path || buildStoredFilePath(req.user.id, file.filename);
+        const fileBuffer = fs.readFileSync(filePath);
+
         const insert = await query(
           `INSERT INTO user_uploaded_files (
             user_id,
@@ -540,9 +560,10 @@ app.post('/api/files/upload', authenticateToken, async (req, res) => {
             media_type,
             size_bytes,
             storage_path,
-            public_token
+            public_token,
+            file_blob
           ) VALUES (
-            $1, $2, $3, $4, $5, $6, $7, $8, $9
+            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10
           ) RETURNING *`,
           [
             req.user.id,
@@ -552,8 +573,9 @@ app.post('/api/files/upload', authenticateToken, async (req, res) => {
             file.originalname.slice(file.originalname.lastIndexOf('.')).toLowerCase(),
             rule.mediaType,
             Number(file.size || 0),
-            file.path || buildStoredFilePath(req.user.id, file.filename),
+            filePath,
             buildPublicFileToken(),
+            fileBuffer,
           ]
         );
 
@@ -2932,9 +2954,11 @@ async function runMigrations() {
         size_bytes BIGINT NOT NULL,
         storage_path TEXT NOT NULL,
         public_token TEXT NOT NULL UNIQUE,
+        file_blob BYTEA,
         created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
         deleted_at TIMESTAMP WITH TIME ZONE
       )`,
+      `ALTER TABLE user_uploaded_files ADD COLUMN IF NOT EXISTS file_blob BYTEA`,
       `CREATE INDEX IF NOT EXISTS idx_user_uploaded_files_user_created_at ON user_uploaded_files(user_id, created_at DESC)`,
   ];
 

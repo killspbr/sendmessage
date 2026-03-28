@@ -242,6 +242,7 @@ CREATE TABLE IF NOT EXISTS user_uploaded_files (
     size_bytes BIGINT NOT NULL,
     storage_path TEXT NOT NULL,
     public_token TEXT NOT NULL UNIQUE,
+    file_blob BYTEA,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     deleted_at TIMESTAMP WITH TIME ZONE
 );

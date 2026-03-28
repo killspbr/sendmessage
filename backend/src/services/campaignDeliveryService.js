@@ -353,6 +353,13 @@ async function sendEvolutionMedia({
       fileName,
       caption,
       media: mediaBody,
+      mediaMessage: {
+        mediaType: media.mediaType,
+        fileName,
+        caption,
+        mimetype: mimeType,
+        media: mediaBody,
+      },
     }
   )
 }
@@ -418,6 +425,7 @@ async function sendEvolutionContact({
     {
       number,
       contact: [payloadContact],
+      contactMessage: [payloadContact],
     }
   )
 }
