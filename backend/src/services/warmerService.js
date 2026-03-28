@@ -164,15 +164,14 @@ export async function runWarmer() {
       return;
     }
 
-    // Buscar configs ativas dentro do horário comercial (business_hours_start e end)
+    // Buscar configs ativas (sem limitar por horario, pois trataremos no JS para AFK/Sleep)
     const result = await query(`
       SELECT 
         id, instance_a_id, instance_b_id, phone_a, phone_b, 
-        base_daily_limit, increment_per_day, start_date 
+        base_daily_limit, increment_per_day, start_date,
+        business_hours_start, business_hours_end, current_mode, mode_until
       FROM warmer_configs 
       WHERE status = 'active'
-        AND CURRENT_TIME >= business_hours_start
-        AND CURRENT_TIME <= business_hours_end
     `);
 
     const activeWarmers = result.rows;
@@ -203,8 +202,70 @@ export async function runWarmer() {
         continue;
       }
 
-      // Jitter (delay aleatório p/ não enviar cravado no minuto cron)
-      // Math.random() < 0.3 = 30% de chance de rodar neste pulso do worker pra dar mais aleatoriedade
+      // --- CAMADA DE SEGURANÇA COMPORTAMENTAL (SONO / AFK) ---
+      const now = new Date();
+      if (warmer.mode_until && new Date(warmer.mode_until) > now) {
+        // Ainda está no modo afk ou sleeping, ignora a iteracao
+        continue;
+      }
+
+      // Se venceu o modo (acabou de acordar ou voltar do café) e estava em sleep/afk, voltou para active
+      if (warmer.current_mode !== 'active' && warmer.mode_until && new Date(warmer.mode_until) <= now) {
+         await query(`UPDATE warmer_configs SET current_mode = 'active', mode_until = NULL WHERE id = $1`, [warmer.id]);
+         console.log(`[Warmer] Maturação ${warmer.id} retornou ao estado ACTIVE.`);
+      }
+
+      const parseTime = (timeStr) => {
+        const d = new Date();
+        const [h,m,s] = timeStr.split(':');
+        d.setHours(parseInt(h||0), parseInt(m||0), parseInt(s||0), 0);
+        return d;
+      };
+
+      const startBusiness = parseTime(warmer.business_hours_start || '08:00:00');
+      const endBusiness = parseTime(warmer.business_hours_end || '20:00:00');
+
+      let isOutsideBusinessHours = false;
+      let wakeUpDate = new Date(startBusiness);
+
+      if (now < startBusiness) {
+         isOutsideBusinessHours = true;
+      } else if (now > endBusiness) {
+         isOutsideBusinessHours = true;
+         wakeUpDate.setDate(wakeUpDate.getDate() + 1); // amanhã
+      } else if (now <= endBusiness && now >= new Date(endBusiness.getTime() - 30 * 60 * 1000)) {
+         // Antes de encerrar o expediente (janela de 30 min), tem 4% chance por minuto de dormir "mais cedo"
+         if (Math.random() < 0.04) {
+             isOutsideBusinessHours = true;
+             wakeUpDate.setDate(wakeUpDate.getDate() + 1); // acorda só amanhã
+         }
+      }
+
+      if (isOutsideBusinessHours) {
+         // Variação de +- 30 mins no relógio de acordar
+         const offsetMs = (Math.floor(Math.random() * 61) - 30) * 60 * 1000;
+         wakeUpDate = new Date(wakeUpDate.getTime() + offsetMs);
+
+         if (wakeUpDate > now) {
+            await query(`UPDATE warmer_configs SET current_mode = 'sleeping', mode_until = $1 WHERE id = $2`, [wakeUpDate, warmer.id]);
+            console.log(`[Warmer] Chip ${warmer.instance_a_id} ↔️ ${warmer.instance_b_id} entrou em MODO SONO até ${wakeUpDate.toLocaleString()}`);
+            continue;
+         }
+      }
+
+      // Soneca Diurna (AFK) 
+      // Em média, num ciclo de 60 mins a chance por tick é menor p/ simular ~1 a 2 pausas de 15~45min no dia
+      // Como tem jitter base embaixo de 30% pra rodar a iteração, 2% de AFK é um bom equilíbrio
+      if (Math.random() < 0.02) {
+         const afkMinutes = Math.floor(Math.random() * 31) + 15;
+         const afkUntil = new Date(now.getTime() + afkMinutes * 60 * 1000);
+         await query(`UPDATE warmer_configs SET current_mode = 'afk', mode_until = $1 WHERE id = $2`, [afkUntil, warmer.id]);
+         console.log(`[Warmer] Chip ${warmer.instance_a_id} ↔️ ${warmer.instance_b_id} entrou em PAUSA AFK até ${afkUntil.toLocaleString()}`);
+         continue;
+      }
+
+      // Jitter (delay aleatório p/ não enviar cravado cronometricamente)
+      // 30% de chance de rodar neste pulso pra dar mais aleatoriedade
       if (Math.random() > 0.3) {
         continue;
       }

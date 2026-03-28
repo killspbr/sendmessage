@@ -12,8 +12,10 @@ type WarmerConfig = {
   increment_per_day: number
   start_date: string
   business_hours_start: string
-  business_hours_end: string
+  business_hours_end?: string
   sent_today?: number
+  current_mode?: 'active' | 'sleeping' | 'afk'
+  mode_until?: string
 }
 
 export function AdminWarmerPage({ can }: { can?: (code: string) => boolean }) {
@@ -182,14 +184,24 @@ export function AdminWarmerPage({ can }: { can?: (code: string) => boolean }) {
                 <div key={warmer.id} className={`rounded-3xl border p-5 transition ${isPaused ? 'border-amber-200 bg-amber-50/30' : 'border-slate-200 bg-white shadow-sm'}`}>
                   <div className="flex justify-between items-start mb-4">
                     <div className="flex gap-2 items-center">
-                      <div className={`p-2 rounded-full ${isPaused ? 'bg-amber-100 text-amber-600' : 'bg-emerald-100 text-emerald-600'}`}>
-                        {isPaused ? <span className="text-xs">⏹️</span> : <span className="text-xs">▶️</span>}
+                      <div className={`p-2 rounded-full ${
+                        warmer.current_mode === 'sleeping' ? 'bg-indigo-900 text-indigo-200' :
+                        warmer.current_mode === 'afk' ? 'bg-orange-100 text-orange-600' :
+                        isPaused ? 'bg-amber-100 text-amber-600' : 'bg-emerald-100 text-emerald-600'
+                      }`}>
+                        {warmer.current_mode === 'sleeping' ? <span className="text-xs">🌙</span> :
+                         warmer.current_mode === 'afk' ? <span className="text-xs">☕</span> :
+                         isPaused ? <span className="text-xs">⏹️</span> : <span className="text-xs">▶️</span>}
                       </div>
                       <div>
                         <h3 className="font-semibold text-slate-800 text-sm tracking-tight flex items-center gap-1">
                           {warmer.instance_a_id} <span className="text-[10px] text-slate-400">↔️</span> {warmer.instance_b_id}
                         </h3>
-                        <p className="text-[11px] text-slate-500 uppercase tracking-wide">Dia {diffDays + 1} de maturação</p>
+                        <p className="text-[11px] text-slate-500 uppercase tracking-wide">
+                          {warmer.current_mode === 'sleeping' ? `Dormindo até ${warmer.mode_until ? new Date(warmer.mode_until).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : ''}` :
+                           warmer.current_mode === 'afk' ? `Pausa p/ Café até ${warmer.mode_until ? new Date(warmer.mode_until).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : ''}` :
+                           isPaused ? 'Pausado' : `Dia ${diffDays + 1} de maturação`}
+                        </p>
                       </div>
                     </div>
                     
@@ -217,7 +229,7 @@ export function AdminWarmerPage({ can }: { can?: (code: string) => boolean }) {
 
                     <div className="bg-slate-50 rounded-xl p-3 text-[11px] text-slate-500 flex items-center gap-2">
                       <span className="text-indigo-400">ℹ️</span>
-                      Ativo dás {warmer.business_hours_start.substring(0,5)}h às {warmer.business_hours_end.substring(0,5)}h. Incremento: {warmer.increment_per_day} msgs/dia.
+                      Ativo dás {warmer.business_hours_start?.substring(0,5) || '08:00'}h às {warmer.business_hours_end?.substring(0,5) || '20:00'}h. Incremento: {warmer.increment_per_day} msgs/dia.
                     </div>
                   </div>
                 </div>

@@ -3189,9 +3189,13 @@ async function runMigrations() {
         start_date TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
         business_hours_start TIME DEFAULT '08:00:00',
         business_hours_end TIME DEFAULT '20:00:00',
+        current_mode TEXT DEFAULT 'active' CHECK (current_mode IN ('active', 'sleeping', 'afk')),
+        mode_until TIMESTAMP WITH TIME ZONE,
         created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
       )`,
+      `ALTER TABLE warmer_configs ADD COLUMN IF NOT EXISTS current_mode TEXT DEFAULT 'active' CHECK (current_mode IN ('active', 'sleeping', 'afk'))`,
+      `ALTER TABLE warmer_configs ADD COLUMN IF NOT EXISTS mode_until TIMESTAMP WITH TIME ZONE`,
       `CREATE TABLE IF NOT EXISTS warmer_logs (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         warmer_id UUID REFERENCES warmer_configs(id) ON DELETE CASCADE,
