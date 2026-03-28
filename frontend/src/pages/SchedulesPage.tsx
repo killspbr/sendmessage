@@ -136,19 +136,23 @@ function getStatusClasses(tone: string) {
 
 export function SchedulesPage({ effectiveUserId }: SchedulesPageProps) {
     const [schedules, setSchedules] = useState<ProfSchedule[]>([])
+    const [history, setHistory] = useState<ProfSchedule[]>([])
     const [queue, setQueue] = useState<QueueItem[]>([])
     const [loading, setLoading] = useState(false)
-    const [viewMode, setViewMode] = useState<'schedules' | 'queue'>('schedules')
+    const [viewMode, setViewMode] = useState<'schedules' | 'history' | 'queue'>('schedules')
+    const [historyFilter, setHistoryFilter] = useState<'all' | 'concluido' | 'cancelado' | 'erro'>('all')
 
     const loadData = async () => {
         if (!effectiveUserId) return
         setLoading(true)
         try {
-            const [sData, qData] = await Promise.all([
+            const [sData, hData, qData] = await Promise.all([
                 apiFetch('/api/schedules/professional'),
+                apiFetch(`/api/schedules/history?status=${historyFilter}`),
                 apiFetch('/api/queue/professional')
             ])
             setSchedules(Array.isArray(sData.data) ? sData.data : [])
+            setHistory(Array.isArray(hData.data) ? hData.data : [])
             setQueue(Array.isArray(qData.data) ? qData.data : [])
         } catch (e) {
             console.error('Erro ao carregar dados de agendamento profissional', e)
@@ -161,7 +165,7 @@ export function SchedulesPage({ effectiveUserId }: SchedulesPageProps) {
         void loadData()
         const interval = setInterval(loadData, 15000)
         return () => clearInterval(interval)
-    }, [effectiveUserId])
+    }, [effectiveUserId, historyFilter])
 
     const summary = useMemo(() => {
         return {
@@ -199,6 +203,12 @@ export function SchedulesPage({ effectiveUserId }: SchedulesPageProps) {
                         className={`px-6 py-2.5 rounded-xl text-sm font-bold transition-all ${viewMode === 'queue' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
                     >
                         Monitor de fila
+                    </button>
+                    <button
+                        onClick={() => setViewMode('history')}
+                        className={`px-6 py-2.5 rounded-xl text-sm font-bold transition-all ${viewMode === 'history' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                    >
+                        Histórico
                     </button>
                 </div>
                 <span className="text-xs text-slate-400">{loading ? 'Atualizando dados...' : 'Atualização automática a cada 15s'}</span>
@@ -337,6 +347,96 @@ export function SchedulesPage({ effectiveUserId }: SchedulesPageProps) {
                                 </div>
                             )
                         })
+                    )}
+                </div>
+            ) : viewMode === 'history' ? (
+                <div className="space-y-4">
+                    <div className="flex flex-wrap items-center gap-2">
+                        <button
+                            onClick={() => setHistoryFilter('all')}
+                            className={`px-4 py-2 rounded-xl text-xs font-bold border transition-colors ${historyFilter === 'all' ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-600 border-slate-200'}`}
+                        >
+                            Todos
+                        </button>
+                        <button
+                            onClick={() => setHistoryFilter('concluido')}
+                            className={`px-4 py-2 rounded-xl text-xs font-bold border transition-colors ${historyFilter === 'concluido' ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-slate-600 border-slate-200'}`}
+                        >
+                            Concluídos
+                        </button>
+                        <button
+                            onClick={() => setHistoryFilter('cancelado')}
+                            className={`px-4 py-2 rounded-xl text-xs font-bold border transition-colors ${historyFilter === 'cancelado' ? 'bg-amber-500 text-white border-amber-500' : 'bg-white text-slate-600 border-slate-200'}`}
+                        >
+                            Cancelados
+                        </button>
+                        <button
+                            onClick={() => setHistoryFilter('erro')}
+                            className={`px-4 py-2 rounded-xl text-xs font-bold border transition-colors ${historyFilter === 'erro' ? 'bg-rose-600 text-white border-rose-600' : 'bg-white text-slate-600 border-slate-200'}`}
+                        >
+                            Com erro
+                        </button>
+                    </div>
+
+                    {loading && history.length === 0 ? (
+                        <div className="p-12 text-center text-slate-400">Carregando histórico...</div>
+                    ) : history.length === 0 ? (
+                        <div className="bg-white rounded-3xl p-16 text-center border border-dashed border-slate-200">
+                            <span className="text-5xl mb-6 block">Histórico vazio</span>
+                            <h3 className="text-xl font-bold text-slate-800">Nenhum agendamento encontrado</h3>
+                            <p className="text-slate-500 max-w-sm mx-auto mt-2">Quando campanhas forem concluídas, canceladas ou terminarem com erro, elas aparecerão aqui.</p>
+                        </div>
+                    ) : (
+                        <div className="grid grid-cols-1 gap-4">
+                            {history.map((s) => {
+                                const total = Number(s.pending_count || 0) + Number(s.processing_count || 0) + Number(s.sent_count || 0) + Number(s.failed_count || 0)
+                                const tone =
+                                    s.status === 'concluido' ? 'emerald' :
+                                    s.status === 'cancelado' ? 'amber' :
+                                    'rose'
+                                return (
+                                    <div key={s.id} className="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm">
+                                        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                                            <div className="space-y-2">
+                                                <div className="flex flex-wrap items-center gap-3">
+                                                    <h3 className="text-lg font-bold text-slate-800">{s.campaign_name || 'Campanha sem nome'}</h3>
+                                                    <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border ${getStatusClasses(tone)}`}>
+                                                        {getScheduleStatusLabel(s.status)}
+                                                    </span>
+                                                </div>
+                                                <div className="flex flex-wrap items-center gap-4 text-xs text-slate-500">
+                                                    <span>Criado em {formatDateTime(s.data_criacao)}</span>
+                                                    <span>Última atividade: {formatDateTime(s.last_queue_activity_at || s.last_event_at)}</span>
+                                                    {s.paused_at && <span>Pausado em {formatDateTime(s.paused_at)}</span>}
+                                                    {s.resumed_at && <span>Retomado em {formatDateTime(s.resumed_at)}</span>}
+                                                </div>
+                                                <div className="text-sm text-slate-600">
+                                                    {s.pause_details || s.last_error || 'Sem observações adicionais registradas.'}
+                                                </div>
+                                            </div>
+                                            <div className="grid grid-cols-2 gap-3 min-w-[240px]">
+                                                <div className="rounded-2xl border border-slate-100 bg-slate-50 p-3">
+                                                    <div className="text-[10px] uppercase font-bold tracking-wider text-slate-400">Total</div>
+                                                    <div className="mt-1 text-xl font-black text-slate-800">{total}</div>
+                                                </div>
+                                                <div className="rounded-2xl border border-emerald-100 bg-emerald-50 p-3">
+                                                    <div className="text-[10px] uppercase font-bold tracking-wider text-emerald-500">Enviadas</div>
+                                                    <div className="mt-1 text-xl font-black text-emerald-800">{Number(s.sent_count || 0)}</div>
+                                                </div>
+                                                <div className="rounded-2xl border border-rose-100 bg-rose-50 p-3">
+                                                    <div className="text-[10px] uppercase font-bold tracking-wider text-rose-500">Falhas</div>
+                                                    <div className="mt-1 text-xl font-black text-rose-800">{Number(s.failed_count || 0)}</div>
+                                                </div>
+                                                <div className="rounded-2xl border border-slate-100 bg-white p-3">
+                                                    <div className="text-[10px] uppercase font-bold tracking-wider text-slate-400">Evento</div>
+                                                    <div className="mt-1 text-sm font-bold text-slate-700">{s.last_event || '-'}</div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )
+                            })}
+                        </div>
                     )}
                 </div>
             ) : (

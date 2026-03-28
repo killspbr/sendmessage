@@ -1896,6 +1896,103 @@ app.get('/api/schedules/professional', authenticateToken, async (req, res) => {
   }
 });
 
+app.get('/api/schedules/history', authenticateToken, async (req, res) => {
+  try {
+    const admin = await isAdminUser(req.user.id);
+    const requestedStatus = String(req.query.status || 'all').trim().toLowerCase();
+    const historyStatuses = ['concluido', 'cancelado', 'erro'];
+    const filteredStatuses = requestedStatus === 'all'
+      ? historyStatuses
+      : historyStatuses.filter((status) => status === requestedStatus);
+
+    if (filteredStatuses.length === 0) {
+      return res.status(400).json({ success: false, error: 'Filtro de histórico inválido.' });
+    }
+
+    const params = [filteredStatuses];
+    let whereClause = 'WHERE s.status = ANY($1)';
+
+    if (!admin) {
+      params.push(req.user.id);
+      whereClause += ' AND s.user_id = $2';
+    }
+
+    const result = await query(
+      `SELECT s.*, c.name as campaign_name,
+              COALESCE((
+                SELECT COUNT(*)::int
+                FROM message_queue mq
+                WHERE mq.schedule_id = s.id
+                  AND mq.status = 'pendente'
+              ), 0) AS pending_count,
+              COALESCE((
+                SELECT COUNT(*)::int
+                FROM message_queue mq
+                WHERE mq.schedule_id = s.id
+                  AND mq.status = 'processando'
+              ), 0) AS processing_count,
+              COALESCE((
+                SELECT COUNT(*)::int
+                FROM message_queue mq
+                WHERE mq.schedule_id = s.id
+                  AND mq.status = 'enviado'
+              ), 0) AS sent_count,
+              COALESCE((
+                SELECT COUNT(*)::int
+                FROM message_queue mq
+                WHERE mq.schedule_id = s.id
+                  AND mq.status = 'falhou'
+              ), 0) AS failed_count,
+              (
+                SELECT mq.erro
+                FROM message_queue mq
+                WHERE mq.schedule_id = s.id
+                  AND COALESCE(TRIM(mq.erro), '') <> ''
+                ORDER BY COALESCE(mq.data_envio, mq.processing_started_at, mq.data_criacao) DESC
+                LIMIT 1
+              ) AS last_error,
+              (
+                SELECT COALESCE(mq.data_envio, mq.processing_started_at, mq.data_criacao)
+                FROM message_queue mq
+                WHERE mq.schedule_id = s.id
+                ORDER BY COALESCE(mq.data_envio, mq.processing_started_at, mq.data_criacao) DESC
+                LIMIT 1
+              ) AS last_queue_activity_at,
+              (
+                SELECT l.event
+                FROM scheduler_logs l
+                WHERE CASE
+                  WHEN l.details ~ '^\\s*\\{' THEN (l.details::jsonb->>'schedule_id')::integer
+                  ELSE NULL
+                END = s.id
+                ORDER BY l.data_evento DESC
+                LIMIT 1
+              ) AS last_event,
+              (
+                SELECT l.data_evento
+                FROM scheduler_logs l
+                WHERE CASE
+                  WHEN l.details ~ '^\\s*\\{' THEN (l.details::jsonb->>'schedule_id')::integer
+                  ELSE NULL
+                END = s.id
+                ORDER BY l.data_evento DESC
+                LIMIT 1
+              ) AS last_event_at
+       FROM campaign_schedule s
+       LEFT JOIN campaigns c ON s.campaign_id = c.id
+       ${whereClause}
+       ORDER BY COALESCE(s.resumed_at, s.paused_at, s.data_criacao) DESC
+       LIMIT 100`,
+      params
+    );
+
+    res.json({ success: true, data: result.rows });
+  } catch (error) {
+    console.error('[ScheduleHistory] Erro:', error);
+    res.status(500).json({ success: false, error: 'Erro ao buscar histórico de agendamentos' });
+  }
+});
+
 app.get('/api/queue/professional', authenticateToken, async (req, res) => {
   try {
     const admin = await isAdminUser(req.user.id);
