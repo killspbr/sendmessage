@@ -5,8 +5,12 @@ import { login, signup, forgotPassword, resetPassword, authenticateToken, checkA
 import { toEvolutionNumber } from './utils/messageUtils.js';
 import { getActiveGeminiKey, incrementKeyUsage, logGeminiUsage } from './services/aiService.js';
 
+process.env.TZ = process.env.SYSTEM_TIMEZONE || process.env.TZ || 'America/Sao_Paulo';
+
 const app = express();
 const port = process.env.PORT || 4000;
+const SYSTEM_TIMEZONE = process.env.SYSTEM_TIMEZONE || 'America/Sao_Paulo';
+const SYSTEM_TIMEZONE_LABEL = 'GMT-3 (America/Sao_Paulo)';
 
 const allowedOrigins = [
   'https://sendmessage-frontend.pages.dev',
@@ -183,12 +187,35 @@ async function getServerClock() {
   const result = await query(
     `SELECT
        NOW() AS server_time,
-       CURRENT_DATE AS server_date,
-       CURRENT_TIME AS server_time_only,
-       current_setting('TimeZone') AS timezone`
+       TO_CHAR(NOW() AT TIME ZONE '${SYSTEM_TIMEZONE}', 'YYYY-MM-DD') AS server_date,
+       TO_CHAR(NOW() AT TIME ZONE '${SYSTEM_TIMEZONE}', 'HH24:MI:SS') AS server_time_only,
+       '${SYSTEM_TIMEZONE_LABEL}' AS timezone`
   );
 
   return result.rows[0] || null;
+}
+
+function getSystemDateTimeParts() {
+  const formatter = new Intl.DateTimeFormat('sv-SE', {
+    timeZone: SYSTEM_TIMEZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  });
+
+  const parts = Object.fromEntries(
+    formatter.formatToParts(new Date()).map((part) => [part.type, part.value])
+  );
+
+  return {
+    date: `${parts.year}-${parts.month}-${parts.day}`,
+    time: `${parts.hour}:${parts.minute}:${parts.second}`,
+    timeShort: `${parts.hour}:${parts.minute}`,
+  };
 }
 
 function normalizeGeminiModel(model) {
@@ -1642,6 +1669,7 @@ app.post('/api/campaigns/:id/schedule', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     const { data_inicio, hora_inicio, limite_diario, intervalo_minimo, intervalo_maximo, mensagens_por_lote, tempo_pausa_lote } = req.body;
+    const systemNow = getSystemDateTimeParts();
 
     const campaignResult = await query(
       'SELECT id, user_id, name, list_name, channels FROM campaigns WHERE id = $1 LIMIT 1',
@@ -1694,7 +1722,7 @@ app.post('/api/campaigns/:id/schedule', authenticateToken, async (req, res) => {
       });
     }
 
-    const parsedDateTime = new Date(`${data_inicio || new Date().toISOString().slice(0, 10)}T${hora_inicio || new Date().toTimeString().slice(0, 5)}:00`);
+    const parsedDateTime = new Date(`${data_inicio || systemNow.date}T${hora_inicio || systemNow.timeShort}:00`);
     if (Number.isNaN(parsedDateTime.getTime())) {
       return res.status(400).json({ error: 'Data ou hora de início inválida.' });
     }
@@ -1717,7 +1745,7 @@ app.post('/api/campaigns/:id/schedule', authenticateToken, async (req, res) => {
 
     const result = await query(
       'INSERT INTO campaign_schedule (campaign_id, user_id, data_inicio, hora_inicio, limite_diario, intervalo_minimo, intervalo_maximo, mensagens_por_lote, tempo_pausa_lote) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *',
-      [id, req.user.id, data_inicio || new Date().toISOString().split('T')[0], hora_inicio || new Date().toTimeString().split(' ')[0], limite_diario || 300, intervalo_minimo || 30, intervalo_maximo || 90, mensagens_por_lote || 45, tempo_pausa_lote || 15]
+      [id, req.user.id, data_inicio || systemNow.date, hora_inicio || systemNow.time, limite_diario || 300, intervalo_minimo || 30, intervalo_maximo || 90, mensagens_por_lote || 45, tempo_pausa_lote || 15]
     );
     
     // Atualiza status da campanha

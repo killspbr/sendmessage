@@ -2,12 +2,18 @@ import pg from 'pg';
 import 'dotenv/config';
 
 const { Pool } = pg;
+const SYSTEM_TIMEZONE = process.env.SYSTEM_TIMEZONE || 'America/Sao_Paulo';
 
-// Configuração do pool de conexões com PostgreSQL
-// No Easypanel, você usará a variável DATABASE_URL fornecida por eles
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
+  options: `-c timezone=${SYSTEM_TIMEZONE}`,
+  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+});
+
+pool.on('connect', (client) => {
+  client.query(`SET TIME ZONE '${SYSTEM_TIMEZONE}'`).catch((err) => {
+    console.error('[Postgres] Falha ao definir timezone da sessao', err);
+  });
 });
 
 pool.on('error', (err) => {
@@ -15,6 +21,4 @@ pool.on('error', (err) => {
 });
 
 export const query = (text, params) => pool.query(text, params);
-
-// Helper para transações simples
 export const getClient = () => pool.connect();

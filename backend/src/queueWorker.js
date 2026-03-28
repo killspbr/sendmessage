@@ -2,6 +2,8 @@ import 'dotenv/config'
 import { query } from './db.js'
 import { toEvolutionNumber, resolveTemplate, htmlToWhatsapp, extractImages } from './utils/messageUtils.js'
 
+process.env.TZ = process.env.SYSTEM_TIMEZONE || process.env.TZ || 'America/Sao_Paulo'
+
 const queueWorkerDeps = {
   query,
   fetchImpl: (...args) => globalThis.fetch(...args),
