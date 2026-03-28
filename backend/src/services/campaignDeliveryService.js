@@ -367,11 +367,7 @@ async function sendEvolutionMedia({
     return
   } catch (error) {
     const message = String(error?.message || '')
-    if (
-      !message.includes('"mediaMessage"') &&
-      !message.includes('Maximum call stack size exceeded') &&
-      !message.includes('"mediaType"')
-    ) {
+    if (!message.includes('"mediaMessage"') && !message.includes('"mediaType"')) {
       throw error
     }
   }
