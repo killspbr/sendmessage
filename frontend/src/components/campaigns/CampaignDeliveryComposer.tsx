@@ -7,6 +7,7 @@ import type {
   UploadedUserFile,
 } from '../../types'
 import { createEmptyMediaItem, createEmptySharedContact } from '../../utils/campaignDelivery'
+import { normalizeDisplayText } from '../../utils/textEncoding'
 
 type CampaignDeliveryComposerProps = {
   channels: CampaignChannel[]
@@ -83,7 +84,7 @@ export function CampaignDeliveryComposer({
       mediaType: file.mediaType,
       url: file.publicUrl,
       assetId: file.id,
-      assetName: file.originalName,
+      assetName: normalizeDisplayText(file.originalName),
       mimeType: file.mimeType,
       sizeBytes: file.sizeBytes,
     })
@@ -135,7 +136,7 @@ export function CampaignDeliveryComposer({
           mediaType: firstUploaded.mediaType,
           url: firstUploaded.publicUrl,
           assetId: firstUploaded.id,
-          assetName: firstUploaded.originalName,
+          assetName: normalizeDisplayText(firstUploaded.originalName),
           mimeType: firstUploaded.mimeType,
           sizeBytes: firstUploaded.sizeBytes,
         })
@@ -366,7 +367,7 @@ export function CampaignDeliveryComposer({
 
                       {item.assetName ? (
                         <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
-                          Arquivo selecionado: <span className="font-semibold">{item.assetName}</span>
+                          Arquivo selecionado: <span className="font-semibold">{normalizeDisplayText(item.assetName)}</span>
                         </div>
                       ) : null}
 
@@ -402,7 +403,7 @@ export function CampaignDeliveryComposer({
                               >
                                 <div className="min-w-0">
                                   <div className="truncate text-sm font-semibold text-slate-800">
-                                    {file.originalName}
+                                    {normalizeDisplayText(file.originalName)}
                                   </div>
                                   <div className="mt-1 truncate text-xs text-slate-500">
                                     {file.mimeType}

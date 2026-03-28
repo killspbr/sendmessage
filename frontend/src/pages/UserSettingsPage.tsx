@@ -1,6 +1,7 @@
 import React from 'react'
 import { apiFetch, apiUpload } from '../api'
 import type { UploadedUserFile, UserLimitSnapshot } from '../types'
+import { normalizeDisplayText } from '../utils/textEncoding'
 
 type UserSettingsPageProps = {
   effectiveUserId: string | null
@@ -356,7 +357,7 @@ export function UserSettingsPage({
                     <div key={file.id} className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
                       <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
                         <div className="min-w-0">
-                          <div className="truncate text-sm font-semibold text-slate-800">{file.originalName}</div>
+                          <div className="truncate text-sm font-semibold text-slate-800">{normalizeDisplayText(file.originalName)}</div>
                           <div className="mt-1 text-xs text-slate-500">
                             {file.mimeType} • {formatBytes(file.sizeBytes)} • {new Date(file.createdAt).toLocaleString('pt-BR')}
                           </div>

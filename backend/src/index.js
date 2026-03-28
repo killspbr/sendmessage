@@ -21,6 +21,7 @@ import {
   buildPublicFileToken,
   formatUploadFileResponse,
   getUploadUsageBytes,
+  normalizeUploadDisplayName,
   resolveFileRule,
   safeUnlink,
 } from './services/uploadService.js';
@@ -142,6 +143,29 @@ function buildRequestBaseUrl(req) {
   const protocol = forwardedProto || req.protocol || 'https';
   const host = forwardedHost || req.get('host');
   return `${protocol}://${host}`;
+}
+
+async function ensureContactSendHistoryTable() {
+  await query(`
+    CREATE TABLE IF NOT EXISTS contact_send_history (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+      campaign_id UUID REFERENCES campaigns(id) ON DELETE SET NULL,
+      campaign_name TEXT,
+      contact_name TEXT,
+      phone_key TEXT,
+      channel TEXT,
+      ok BOOLEAN DEFAULT false,
+      status INTEGER,
+      webhook_ok BOOLEAN DEFAULT false,
+      provider_status TEXT,
+      error_detail TEXT,
+      payload_raw JSONB,
+      delivery_summary JSONB,
+      run_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+      created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
 }
 
 async function getEffectiveLimitSnapshot(userId) {
@@ -547,6 +571,8 @@ app.post('/api/files/upload', authenticateToken, async (req, res) => {
           continue;
         }
 
+        const normalizedOriginalName = normalizeUploadDisplayName(file.originalname);
+
         const filePath = file.path || buildStoredFilePath(req.user.id, file.filename);
         const fileBuffer = fs.readFileSync(filePath);
 
@@ -567,10 +593,10 @@ app.post('/api/files/upload', authenticateToken, async (req, res) => {
           ) RETURNING *`,
           [
             req.user.id,
-            file.originalname,
+            normalizedOriginalName,
             file.filename,
             file.mimetype,
-            file.originalname.slice(file.originalname.lastIndexOf('.')).toLowerCase(),
+            normalizedOriginalName.slice(normalizedOriginalName.lastIndexOf('.')).toLowerCase(),
             rule.mediaType,
             Number(file.size || 0),
             filePath,
@@ -940,6 +966,7 @@ app.post('/api/schedules', authenticateToken, async (req, res) => {
 // --- HISTÓRICO ---
 app.post('/api/history', authenticateToken, async (req, res) => {
   try {
+    await ensureContactSendHistoryTable();
     const {
       campaign_id,
       campaign_name,
@@ -1000,6 +1027,7 @@ app.post('/api/history', authenticateToken, async (req, res) => {
 
 app.get('/api/history', authenticateToken, async (req, res) => {
   try {
+    await ensureContactSendHistoryTable();
     const result = await query(
       'SELECT * FROM contact_send_history WHERE user_id = $1 ORDER BY run_at DESC',
       [req.user.id]
@@ -1071,6 +1099,7 @@ app.post('/api/history', authenticateToken, async (req, res) => {
 
 app.delete('/api/history', authenticateToken, async (req, res) => {
   try {
+    await ensureContactSendHistoryTable();
     await query('DELETE FROM contact_send_history WHERE user_id = $1', [req.user.id]);
     res.json({ ok: true });
   } catch (error) {
@@ -2934,6 +2963,24 @@ async function runMigrations() {
       `CREATE INDEX IF NOT EXISTS idx_mq_schedule_status ON message_queue(schedule_id, status)`,
       `ALTER TABLE message_queue ADD COLUMN IF NOT EXISTS processing_started_at TIMESTAMP WITH TIME ZONE`,
       `ALTER TABLE message_queue ADD COLUMN IF NOT EXISTS recovered_at TIMESTAMP WITH TIME ZONE`,
+      `CREATE TABLE IF NOT EXISTS contact_send_history (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+        campaign_id UUID REFERENCES campaigns(id) ON DELETE SET NULL,
+        campaign_name TEXT,
+        contact_name TEXT,
+        phone_key TEXT,
+        channel TEXT,
+        ok BOOLEAN DEFAULT false,
+        status INTEGER,
+        webhook_ok BOOLEAN DEFAULT false,
+        provider_status TEXT,
+        error_detail TEXT,
+        payload_raw JSONB,
+        delivery_summary JSONB,
+        run_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      )`,
       `ALTER TABLE contact_send_history ADD COLUMN IF NOT EXISTS provider_status TEXT`,
       `ALTER TABLE contact_send_history ADD COLUMN IF NOT EXISTS error_detail TEXT`,
       `ALTER TABLE contact_send_history ADD COLUMN IF NOT EXISTS payload_raw JSONB`,

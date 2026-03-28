@@ -62,6 +62,26 @@ export function sanitizeOriginalName(name) {
     .slice(0, 180) || 'arquivo'
 }
 
+export function normalizeUploadDisplayName(name) {
+  const rawName = String(name || '').trim()
+  if (!rawName) return 'arquivo'
+
+  if (!/[ÃÂâ€™â€œâ€]/.test(rawName)) {
+    return rawName
+  }
+
+  try {
+    const decoded = Buffer.from(rawName, 'latin1').toString('utf8').trim()
+    if (decoded && !decoded.includes('\uFFFD')) {
+      return decoded
+    }
+  } catch {
+    // noop
+  }
+
+  return rawName
+}
+
 export function getFileExtension(name) {
   return path.extname(String(name || '')).toLowerCase()
 }
@@ -84,8 +104,9 @@ export function isAllowedUpload(mimeType, originalName) {
 }
 
 export function buildStoredFileName(originalName) {
-  const safeBase = sanitizeOriginalName(path.basename(originalName, path.extname(originalName)))
-  const extension = getFileExtension(originalName)
+  const normalizedName = normalizeUploadDisplayName(originalName)
+  const safeBase = sanitizeOriginalName(path.basename(normalizedName, path.extname(normalizedName)))
+  const extension = getFileExtension(normalizedName)
   return `${Date.now()}-${crypto.randomBytes(6).toString('hex')}-${safeBase}${extension}`
 }
 
@@ -140,7 +161,7 @@ export function formatUploadFileResponse(baseUrl, file) {
   const isAvailable = isStoredFileAvailable(file)
   return {
     id: file.id,
-    originalName: file.original_name,
+    originalName: normalizeUploadDisplayName(file.original_name),
     storedName: file.stored_name,
     mimeType: file.mime_type,
     extension: file.extension,
