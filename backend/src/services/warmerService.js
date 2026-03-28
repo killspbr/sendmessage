@@ -83,8 +83,9 @@ async function postEvolution(url, apiKey, body) {
     }
 
     // Blindagem de Log: Nunca lance um objeto bruto como erro. Garanta String para evitar [object Object]
-    const finalErrorMsg = String(errorText || `Erro HTTP ${response.status} na API`).substring(0, 300);
-    throw new Error(finalErrorMsg);
+    // Usando o padrão solicitado para extrair a mensagem de erro da resposta
+    const finalErrorMsg = String(errorText || `Erro HTTP ${response.status}`).substring(0, 300);
+    throw new Error(finalErrorMsg || 'Erro desconhecido na Evolution');
   }
 
   return { success: true };
@@ -316,8 +317,13 @@ export async function runWarmer() {
         continue;
       }
 
-      // Definir direção (A -> B ou B -> A)
-      await executeWarmerInteraction(warmer, evoUrl, evoKey, sentToday, limiteHoje);
+      // 3. Execução Silenciosa da Interação
+      try {
+        await executeWarmerInteraction(warmer, evoUrl, evoKey, sentToday, limiteHoje);
+      } catch (interactionError) {
+        // Blindagem do Worker: O erro de um par específico não pode derrubar o cronjob principal
+        console.error(`[Warmer Worker] Falha silenciosa no par ID ${warmer.id}:`, interactionError.message);
+      }
     }
   } catch (error) {
     console.error('[Warmer] Falha crítica na rotina do Worker:', error);
