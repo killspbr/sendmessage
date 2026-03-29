@@ -30,6 +30,20 @@ async function signAuthToken(env: Bindings, payload: { id: string; email: string
     .sign(getJwtSecret(env))
 }
 
+const ALLOWED_ORIGINS = new Set([
+  'https://sendmessage-frontend.pages.dev',
+  'http://localhost:5173',
+  'http://localhost:3000',
+  'http://localhost:4173',
+])
+
+function attachCorsForAllowedOrigin(c: any) {
+  const origin = String(c.req.header('origin') || '')
+  if (!ALLOWED_ORIGINS.has(origin)) return
+  c.header('Access-Control-Allow-Origin', origin)
+  c.header('Vary', 'Origin')
+}
+
 authRoutes.post('/auth/signup', async (c) => {
   const body = await c.req.json().catch(() => ({} as any))
   const email = String(body?.email || '').trim().toLowerCase()
@@ -82,41 +96,58 @@ authRoutes.post('/auth/signup', async (c) => {
 })
 
 authRoutes.post('/auth/login', async (c) => {
-  const body = await c.req.json().catch(() => ({} as any))
-  const email = String(body?.email || '').trim().toLowerCase()
-  const password = String(body?.password || '')
-  if (!email || !password) {
-    return c.json({ error: 'Credenciais invalidas.' }, 400)
+  try {
+    const body = await c.req.json().catch(() => ({} as any))
+    const email = String(body?.email || '').trim().toLowerCase()
+    const password = String(body?.password || '')
+    if (!email || !password) {
+      attachCorsForAllowedOrigin(c)
+      return c.json({ error: 'Credenciais invalidas.' }, 400)
+    }
+
+    const db = getDb(c.env)
+    const result = await db.query('SELECT * FROM users WHERE email = $1 LIMIT 1', [email])
+    const user = result.rows[0]
+
+    if (!user) {
+      attachCorsForAllowedOrigin(c)
+      return c.json({ error: 'Credenciais invalidas.' }, 400)
+    }
+
+    const passwordHash = typeof user.password_hash === 'string' ? user.password_hash : ''
+    if (!passwordHash) {
+      attachCorsForAllowedOrigin(c)
+      return c.json({ error: 'Credenciais invalidas.' }, 400)
+    }
+
+    const validPassword = await bcrypt.compare(password, passwordHash)
+    if (!validPassword) {
+      attachCorsForAllowedOrigin(c)
+      return c.json({ error: 'Credenciais invalidas.' }, 400)
+    }
+
+    const token = await signAuthToken(c.env, {
+      id: String(user.id),
+      email: String(user.email),
+      tv: Number(user.token_version || 0),
+    })
+
+    attachCorsForAllowedOrigin(c)
+    return c.json({
+      user: { id: user.id, email: user.email, name: user.name },
+      token,
+    })
+  } catch (error) {
+    console.error('[Auth.login] erro interno:', error)
+    attachCorsForAllowedOrigin(c)
+    return c.json(
+      {
+        error: 'Erro interno no login.',
+        technical: typeof (error as any)?.message === 'string' ? (error as any).message : String(error || 'erro'),
+      },
+      500
+    )
   }
-
-  const db = getDb(c.env)
-  const result = await db.query('SELECT * FROM users WHERE email = $1 LIMIT 1', [email])
-  const user = result.rows[0]
-
-  if (!user) {
-    return c.json({ error: 'Credenciais invalidas.' }, 400)
-  }
-
-  const passwordHash = typeof user.password_hash === 'string' ? user.password_hash : ''
-  if (!passwordHash) {
-    return c.json({ error: 'Credenciais invalidas.' }, 400)
-  }
-
-  const validPassword = await bcrypt.compare(password, passwordHash)
-  if (!validPassword) {
-    return c.json({ error: 'Credenciais invalidas.' }, 400)
-  }
-
-  const token = await signAuthToken(c.env, {
-    id: String(user.id),
-    email: String(user.email),
-    tv: Number(user.token_version || 0),
-  })
-
-  return c.json({
-    user: { id: user.id, email: user.email, name: user.name },
-    token,
-  })
 })
 
 authRoutes.post('/auth/forgot-password', async (c) => {
