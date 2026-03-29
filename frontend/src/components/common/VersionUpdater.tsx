@@ -60,7 +60,7 @@ export function VersionUpdater() {
           <div className="flex-1 min-w-0">
             <div className="flex items-center justify-between mb-1">
               <h4 className="font-semibold text-slate-900 dark:text-white flex items-center gap-2">
-                Nova Versão Antigravity
+                Nova versão!
                 <span className="w-2 h-2 bg-indigo-500 rounded-full animate-pulse"></span>
               </h4>
               <button 
