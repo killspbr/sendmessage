@@ -1,6 +1,7 @@
 import type { Pool } from 'pg'
 
 const ensureAttempted = new Set<string>()
+const ENABLE_RUNTIME_DDL = false
 
 function normalizeErrorMessage(error: unknown) {
   return String((error as { message?: unknown })?.message || error || '').toLowerCase()
@@ -26,6 +27,7 @@ export function isSchemaMissingError(error: unknown) {
 }
 
 export async function runBestEffortDdl(db: Pool, key: string, statements: string[]) {
+  if (!ENABLE_RUNTIME_DDL) return
   if (ensureAttempted.has(key)) return
   ensureAttempted.add(key)
 
@@ -42,4 +44,3 @@ export async function runBestEffortDdl(db: Pool, key: string, statements: string
     }
   }
 }
-

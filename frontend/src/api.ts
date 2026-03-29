@@ -7,6 +7,30 @@ const API_URL = import.meta.env.VITE_API_URL ||
     ? 'https://sendmessage-backend.claudio-rodrigues-seconci.workers.dev'
     : 'http://localhost:4000')
 
+const MAX_CONCURRENT_API_REQUESTS = 4
+let activeApiRequests = 0
+const apiRequestQueue: Array<() => void> = []
+
+async function acquireApiSlot() {
+  if (activeApiRequests < MAX_CONCURRENT_API_REQUESTS) {
+    activeApiRequests += 1
+    return
+  }
+
+  await new Promise<void>((resolve) => {
+    apiRequestQueue.push(() => {
+      activeApiRequests += 1
+      resolve()
+    })
+  })
+}
+
+function releaseApiSlot() {
+  activeApiRequests = Math.max(0, activeApiRequests - 1)
+  const next = apiRequestQueue.shift()
+  if (next) next()
+}
+
 function clearAuthStorage() {
   localStorage.removeItem('auth_token')
   localStorage.removeItem('auth_user')
@@ -37,6 +61,8 @@ async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs = 0) {
 }
 
 export async function apiFetch(endpoint: string, options: RequestInit = {}) {
+  await acquireApiSlot()
+  try {
   const token = localStorage.getItem('auth_token')
   const isFormData = typeof FormData !== 'undefined' && options.body instanceof FormData
   const method = String(options.method || 'GET').toUpperCase()
@@ -66,53 +92,56 @@ export async function apiFetch(endpoint: string, options: RequestInit = {}) {
     ;(headers as any)['Content-Type'] = 'application/json'
   }
 
-  let response: Response | null = null
-  let fetchError: unknown = null
+    let response: Response | null = null
+    let fetchError: unknown = null
 
-  for (let attempt = 1; attempt <= (canRetry ? 2 : 1); attempt += 1) {
-    try {
-      response = await fetchWithTimeout(`${API_URL}${endpoint}`, {
-        ...options,
-        headers,
-      }, timeoutMs)
+    for (let attempt = 1; attempt <= (canRetry ? 2 : 1); attempt += 1) {
+      try {
+        response = await fetchWithTimeout(`${API_URL}${endpoint}`, {
+          ...options,
+          headers,
+        }, timeoutMs)
 
-      if (response.status >= 500 && attempt < (canRetry ? 2 : 1)) {
-        await new Promise((resolve) => setTimeout(resolve, 350 * attempt))
-        continue
-      }
-      break
-    } catch (error) {
-      fetchError = error
-      if (attempt < (canRetry ? 2 : 1)) {
-        await new Promise((resolve) => setTimeout(resolve, 350 * attempt))
-        continue
+        if (response.status >= 500 && attempt < (canRetry ? 2 : 1)) {
+          await new Promise((resolve) => setTimeout(resolve, 350 * attempt))
+          continue
+        }
+        break
+      } catch (error) {
+        fetchError = error
+        if (attempt < (canRetry ? 2 : 1)) {
+          await new Promise((resolve) => setTimeout(resolve, 350 * attempt))
+          continue
+        }
       }
     }
-  }
 
-  if (!response) {
-    if (fetchError && typeof fetchError === 'object' && (fetchError as any).name === 'AbortError') {
-      throw new Error('Tempo limite de resposta excedido. Tente novamente.')
+    if (!response) {
+      if (fetchError && typeof fetchError === 'object' && (fetchError as any).name === 'AbortError') {
+        throw new Error('Tempo limite de resposta excedido. Tente novamente.')
+      }
+      throw fetchError instanceof Error ? fetchError : new Error(String(fetchError || 'Falha de rede'))
     }
-    throw fetchError instanceof Error ? fetchError : new Error(String(fetchError || 'Falha de rede'))
-  }
 
-  if (response.status === 401) {
-    clearAuthStorage()
-    throw createAuthExpiredError(response.status)
-  }
+    if (response.status === 401) {
+      clearAuthStorage()
+      throw createAuthExpiredError(response.status)
+    }
 
-  if (response.status === 403) {
-    const errorData = await response.json().catch(() => ({}))
-    throw new Error(errorData.error || 'Acesso negado.')
-  }
+    if (response.status === 403) {
+      const errorData = await response.json().catch(() => ({}))
+      throw new Error(errorData.error || 'Acesso negado.')
+    }
 
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}))
-    throw new Error(errorData.error || `Erro na requisicao: ${response.status}`)
-  }
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}))
+      throw new Error(errorData.error || `Erro na requisicao: ${response.status}`)
+    }
 
-  return response.json()
+    return response.json()
+  } finally {
+    releaseApiSlot()
+  }
 }
 
 type ApiUploadOptions = {

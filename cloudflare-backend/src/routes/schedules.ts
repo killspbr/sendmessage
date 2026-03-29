@@ -590,68 +590,31 @@ async function listSchedulesWithStats(
   const limitClause = typeof limit === 'number' ? `LIMIT $${params.length}` : ''
 
   return db.query(
-    `SELECT s.*, c.name as campaign_name,
-            COALESCE((
-              SELECT COUNT(*)::int
-              FROM message_queue mq
-              WHERE mq.schedule_id = s.id
-                AND mq.status = 'pendente'
-            ), 0) AS pending_count,
-            COALESCE((
-              SELECT COUNT(*)::int
-              FROM message_queue mq
-              WHERE mq.schedule_id = s.id
-                AND mq.status = 'processando'
-            ), 0) AS processing_count,
-            COALESCE((
-              SELECT COUNT(*)::int
-              FROM message_queue mq
-              WHERE mq.schedule_id = s.id
-                AND mq.status = 'enviado'
-            ), 0) AS sent_count,
-            COALESCE((
-              SELECT COUNT(*)::int
-              FROM message_queue mq
-              WHERE mq.schedule_id = s.id
-                AND mq.status = 'falhou'
-            ), 0) AS failed_count,
-            (
-              SELECT mq.erro
-              FROM message_queue mq
-              WHERE mq.schedule_id = s.id
-                AND COALESCE(TRIM(mq.erro), '') <> ''
-              ORDER BY COALESCE(mq.data_envio, mq.processing_started_at, mq.data_criacao) DESC
-              LIMIT 1
-            ) AS last_error,
-            (
-              SELECT COALESCE(mq.data_envio, mq.processing_started_at, mq.data_criacao)
-              FROM message_queue mq
-              WHERE mq.schedule_id = s.id
-              ORDER BY COALESCE(mq.data_envio, mq.processing_started_at, mq.data_criacao) DESC
-              LIMIT 1
-            ) AS last_queue_activity_at,
-            (
-              SELECT l.event
-              FROM scheduler_logs l
-              WHERE CASE
-                WHEN l.details ~ '^\\s*\\{' THEN NULLIF(regexp_replace(COALESCE(l.details::jsonb->>'schedule_id', ''), '[^0-9]', '', 'g'), '')::integer
-                ELSE NULL
-              END = s.id
-              ORDER BY l.data_evento DESC
-              LIMIT 1
-            ) AS last_event,
-            (
-              SELECT l.data_evento
-              FROM scheduler_logs l
-              WHERE CASE
-                WHEN l.details ~ '^\\s*\\{' THEN NULLIF(regexp_replace(COALESCE(l.details::jsonb->>'schedule_id', ''), '[^0-9]', '', 'g'), '')::integer
-                ELSE NULL
-              END = s.id
-              ORDER BY l.data_evento DESC
-              LIMIT 1
-            ) AS last_event_at
+    `SELECT
+        s.*,
+        c.name as campaign_name,
+        COALESCE(q.pending_count, 0) AS pending_count,
+        COALESCE(q.processing_count, 0) AS processing_count,
+        COALESCE(q.sent_count, 0) AS sent_count,
+        COALESCE(q.failed_count, 0) AS failed_count,
+        q.last_error,
+        q.last_queue_activity_at,
+        NULL::text AS last_event,
+        NULL::timestamp with time zone AS last_event_at
      FROM campaign_schedule s
      LEFT JOIN campaigns c ON s.campaign_id = c.id
+     LEFT JOIN (
+       SELECT
+         mq.schedule_id,
+         COUNT(*) FILTER (WHERE mq.status = 'pendente')::int AS pending_count,
+         COUNT(*) FILTER (WHERE mq.status = 'processando')::int AS processing_count,
+         COUNT(*) FILTER (WHERE mq.status = 'enviado')::int AS sent_count,
+         COUNT(*) FILTER (WHERE mq.status = 'falhou')::int AS failed_count,
+         MAX(COALESCE(mq.data_envio, mq.processing_started_at, mq.data_criacao)) AS last_queue_activity_at,
+         (ARRAY_REMOVE(ARRAY_AGG(mq.erro ORDER BY COALESCE(mq.data_envio, mq.processing_started_at, mq.data_criacao) DESC), NULL))[1] AS last_error
+       FROM message_queue mq
+       GROUP BY mq.schedule_id
+     ) q ON q.schedule_id = s.id
      ${whereClause}
      ORDER BY COALESCE(s.resumed_at, s.paused_at, s.data_criacao) DESC
      ${limitClause}`,
@@ -899,19 +862,26 @@ scheduleRoutes.get('/queue/professional', authenticateToken, async (c) => {
   }
 
   const queueResult = await db.query(
-    `SELECT q.*, c.name as campaign_name,
-            (SELECT json_agg(l.*)
-             FROM scheduler_logs l
-             WHERE CASE
-               WHEN l.details ~ '^\\s*\\{' THEN NULLIF(regexp_replace(COALESCE(l.details::jsonb->>'message_id', ''), '[^0-9]', '', 'g'), '')::integer
-               ELSE NULL
-             END = q.id
-             AND l.event IN ('zombie_recovered', 'zombie_failed')
-            ) as recovery_logs
+    `SELECT
+        q.id,
+        q.schedule_id,
+        q.campaign_id,
+        q.user_id,
+        q.contact_id,
+        q.telefone,
+        q.nome,
+        q.status,
+        q.tentativas,
+        q.data_criacao,
+        q.data_envio,
+        q.processing_started_at,
+        q.recovered_at,
+        q.erro,
+        c.name as campaign_name
        FROM message_queue q
        LEFT JOIN campaigns c ON q.campaign_id = c.id
        ${whereClause}
-       ORDER BY q.data_criacao DESC
+       ORDER BY q.id DESC
        LIMIT 100`,
     params
   )

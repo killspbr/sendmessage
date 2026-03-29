@@ -36,21 +36,13 @@ export function useAuth(): UseAuthResult {
             console.warn('[useAuth] Token expirado, redirecionando ao login.')
             setCurrentUser(null)
           } else {
-            const isOffline = typeof navigator !== 'undefined' && navigator.onLine === false
-            if (isOffline) {
-              console.warn('[useAuth] Sem conectividade. Usando cache local de sessao.')
-              try {
-                setCurrentUser(JSON.parse(storedUser))
-              } catch {
-                setCurrentUser(null)
-              }
-            } else {
-              console.warn(
-                '[useAuth] Falha ao validar token com o backend. Sessao local descartada.',
-                e?.message
-              )
-              localStorage.removeItem('auth_token')
-              localStorage.removeItem('auth_user')
+            console.warn(
+              '[useAuth] Falha transitoria ao validar token. Mantendo cache local de sessao.',
+              e?.message
+            )
+            try {
+              setCurrentUser(JSON.parse(storedUser))
+            } catch {
               setCurrentUser(null)
             }
           }

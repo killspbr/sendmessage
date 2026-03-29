@@ -11,16 +11,50 @@ function isRetryableConnectionError(error: unknown) {
   const message = String((error as any)?.message || error || '').toLowerCase()
   const code = String((error as any)?.code || '').toUpperCase()
 
-  if (code === 'ETIMEDOUT' || code === 'ECONNRESET' || code === 'ECONNREFUSED') return true
+  if (
+    code === 'ETIMEDOUT' ||
+    code === 'ECONNRESET' ||
+    code === 'ECONNREFUSED' ||
+    code === 'EPIPE' ||
+    code === 'DB_QUERY_TIMEOUT'
+  ) return true
 
   return (
     message.includes('timeout exceeded when trying to connect') ||
     message.includes('connection terminated unexpectedly') ||
     message.includes('connection closed') ||
     message.includes('connect timeout') ||
-    message.includes('query read timeout') ||
-    message.includes('statement timeout')
+    message.includes('client has encountered a connection error') ||
+    message.includes('cannot use a pool after calling end on the pool') ||
+    message.includes('too many clients already') ||
+    message.includes('remaining connection slots are reserved')
   )
+}
+
+function isReadOnlyQuery(queryText: unknown) {
+  if (typeof queryText !== 'string') return false
+  const normalized = queryText.trim().toLowerCase()
+  return (
+    normalized.startsWith('select') ||
+    normalized.startsWith('with') ||
+    normalized.startsWith('show') ||
+    normalized.startsWith('explain')
+  )
+}
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number) {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      const timeoutError = new Error(`DB_QUERY_TIMEOUT after ${timeoutMs}ms`)
+      ;(timeoutError as any).code = 'DB_QUERY_TIMEOUT'
+      reject(timeoutError)
+    }, timeoutMs)
+
+    promise
+      .then((result) => resolve(result))
+      .catch((error) => reject(error))
+      .finally(() => clearTimeout(timer))
+  })
 }
 
 export function getDb(env: Bindings) {
@@ -33,12 +67,10 @@ export function getDb(env: Bindings) {
 
   pool = new Pool({
     connectionString,
-    max: 15,
-    idleTimeoutMillis: 10000,
-    connectionTimeoutMillis: 10000,
-    query_timeout: 10000,
-    statement_timeout: 10000,
-    idle_in_transaction_session_timeout: 10000,
+    max: 5,
+    idleTimeoutMillis: 30000,
+    connectionTimeoutMillis: 15000,
+    idle_in_transaction_session_timeout: 60000,
     keepAlive: true,
   } as any)
 
@@ -49,18 +81,22 @@ export function getDb(env: Bindings) {
   const originalQuery = (pool as any).query.bind(pool)
   ;(pool as any).query = async (...args: any[]) => {
     let lastError: unknown = null
+    const queryText = args[0]
+    const isReadOnly = isReadOnlyQuery(queryText)
+    const maxAttempts = isReadOnly ? 3 : 1
 
-    for (let attempt = 1; attempt <= 3; attempt += 1) {
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
       try {
-        return await originalQuery(...args)
+        const execution = originalQuery(...args)
+        return await withTimeout(execution, isReadOnly ? 12000 : 15000)
       } catch (error) {
         lastError = error
-        if (!isRetryableConnectionError(error) || attempt >= 3) {
+        if (!isRetryableConnectionError(error) || attempt >= maxAttempts) {
           throw error
         }
 
-        const delay = attempt * 300
-        console.warn(`[DB] Falha transitoria de conexao (tentativa ${attempt}/3). Retentando em ${delay}ms...`)
+        const delay = 350 + attempt * 450
+        console.warn(`[DB] Falha transitoria de conexao (tentativa ${attempt}/${maxAttempts}). Retentando em ${delay}ms...`)
         await wait(delay)
       }
     }

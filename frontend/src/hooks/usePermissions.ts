@@ -39,6 +39,37 @@ export type UsePermissionsResult = {
   reload: () => Promise<void>
 }
 
+const PERMISSIONS_CACHE_KEY = 'auth_permissions_cache'
+
+function wait(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+function readCachedPermissions(): UserPermissions | null {
+  try {
+    const raw = localStorage.getItem(PERMISSIONS_CACHE_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw)
+    if (!Array.isArray(parsed?.permissionCodes)) return null
+    return {
+      groupId: parsed.groupId ?? null,
+      groupName: parsed.groupName ?? null,
+      displayName: parsed.displayName ?? null,
+      permissionCodes: parsed.permissionCodes.map((item: unknown) => String(item)),
+    }
+  } catch {
+    return null
+  }
+}
+
+function writeCachedPermissions(value: UserPermissions) {
+  try {
+    localStorage.setItem(PERMISSIONS_CACHE_KEY, JSON.stringify(value))
+  } catch {
+    // ignore
+  }
+}
+
 export function usePermissions(currentUser: { id: string } | null | undefined): UsePermissionsResult {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -55,18 +86,43 @@ export function usePermissions(currentUser: { id: string } | null | undefined): 
     setError(null)
 
     try {
-      const data = await apiFetch('/api/profile/full')
+      const delays = [0, 300, 900]
+      let data: any = null
+      let lastError: unknown = null
 
-      setPermissions({
+      for (let attempt = 0; attempt < delays.length; attempt += 1) {
+        if (delays[attempt] > 0) await wait(delays[attempt])
+        try {
+          data = await apiFetch('/api/profile/full')
+          break
+        } catch (error) {
+          lastError = error
+          if (String((error as any)?.message || '') === 'AUTH_EXPIRED') {
+            throw error
+          }
+        }
+      }
+
+      if (!data) {
+        throw lastError || new Error('Falha ao carregar permissoes')
+      }
+
+      const normalized: UserPermissions = {
         groupId: data.group_id ?? null,
         groupName: data.group_name ?? null,
         displayName: data.display_name ?? null,
         permissionCodes: data.permission_codes ?? [],
-      })
-    } catch (e: any) {
-      console.error('Erro ao carregar permissões:', e)
-      setError('Falha ao carregar permissões.')
-      setPermissions({ groupId: null, groupName: null, displayName: null, permissionCodes: [] })
+      }
+
+      setPermissions(normalized)
+      writeCachedPermissions(normalized)
+    } catch (error) {
+      console.error('Erro ao carregar permissoes:', error)
+      setError('Falha ao carregar permissoes. Tentando novamente em segundo plano.')
+      const cached = readCachedPermissions()
+      if (cached) {
+        setPermissions(cached)
+      }
     } finally {
       setLoading(false)
     }

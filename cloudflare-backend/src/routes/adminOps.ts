@@ -178,10 +178,25 @@ adminOpsRoutes.get('/admin/queue', authenticateToken, checkAdmin, async (c) => {
   const db = getDb(c.env)
   await ensureAdminOpsTables(db)
   const result = await db.query(
-    `SELECT q.*, c.name as campaign_name
+    `SELECT
+        q.id,
+        q.schedule_id,
+        q.campaign_id,
+        q.user_id,
+        q.contact_id,
+        q.telefone,
+        q.nome,
+        q.status,
+        q.tentativas,
+        q.data_criacao,
+        q.data_envio,
+        q.processing_started_at,
+        q.recovered_at,
+        q.erro,
+        c.name as campaign_name
        FROM message_queue q
        LEFT JOIN campaigns c ON q.campaign_id = c.id
-      ORDER BY q.data_criacao DESC
+      ORDER BY q.id DESC
       LIMIT 100`
   )
   return c.json({ success: true, data: result.rows })

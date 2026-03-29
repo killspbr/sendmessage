@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import type { Bindings, AppVariables } from '../types'
 import { authenticateToken } from '../lib/auth'
 import { getDb } from '../lib/db'
+import { isSchemaMissingError, runBestEffortDdl } from '../lib/ddl'
 import { DEFAULT_USER_UPLOAD_QUOTA_BYTES, getUploadUsageBytes } from '../lib/uploads'
 
 const DEFAULT_DAILY_MESSAGE_LIMIT = 300
@@ -14,20 +15,96 @@ function getAuthenticatedUserId(c: { get: (key: 'user') => { id?: string } | und
 }
 
 async function isAdminUser(userId: string, db: ReturnType<typeof getDb>) {
-  const result = await db.query(
-    `SELECT 1
-       FROM user_profiles up
-       JOIN user_groups ug ON ug.id = up.group_id
-      WHERE up.id = $1
-        AND ug.name = 'Administrador'
-      LIMIT 1`,
-    [userId]
-  )
-  return result.rows.length > 0
+  try {
+    const result = await db.query(
+      `SELECT 1
+         FROM user_profiles up
+         JOIN user_groups ug ON ug.id = up.group_id
+        WHERE up.id = $1
+          AND ug.name = 'Administrador'
+        LIMIT 1`,
+      [userId]
+    )
+    return result.rows.length > 0
+  } catch (error) {
+    if (isSchemaMissingError(error)) return false
+    throw error
+  }
 }
 
 async function ensureUserProfile(userId: string, db: ReturnType<typeof getDb>) {
+  await runBestEffortDdl(db, 'profileSettings.ensureUserProfile', [
+    `
+      CREATE TABLE IF NOT EXISTS user_profiles (
+        id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+        display_name TEXT,
+        phone TEXT,
+        group_id UUID,
+        use_global_ai BOOLEAN DEFAULT true,
+        ai_api_key TEXT,
+        company_info TEXT,
+        evolution_url TEXT,
+        evolution_apikey TEXT,
+        evolution_instance TEXT,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      )
+    `,
+    `ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS display_name TEXT`,
+    `ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS phone TEXT`,
+    `ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS group_id UUID`,
+    `ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS use_global_ai BOOLEAN DEFAULT true`,
+    `ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS ai_api_key TEXT`,
+    `ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS company_info TEXT`,
+    `ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS evolution_url TEXT`,
+    `ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS evolution_apikey TEXT`,
+    `ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS evolution_instance TEXT`,
+    `ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP`,
+  ])
+
   await db.query('INSERT INTO user_profiles (id) VALUES ($1) ON CONFLICT (id) DO NOTHING', [userId])
+}
+
+async function ensureAppSettingsTable(db: ReturnType<typeof getDb>) {
+  await runBestEffortDdl(db, 'profileSettings.ensureAppSettingsTable', [
+    `
+      CREATE TABLE IF NOT EXISTS app_settings (
+        id SERIAL PRIMARY KEY,
+        global_ai_api_key TEXT,
+        evolution_api_url TEXT,
+        evolution_api_key TEXT,
+        evolution_shared_instance TEXT,
+        google_maps_api_key TEXT,
+        gemini_model TEXT,
+        gemini_api_version TEXT,
+        gemini_temperature NUMERIC(3,2),
+        gemini_max_tokens INTEGER,
+        send_interval_min INTEGER,
+        send_interval_max INTEGER,
+        default_daily_message_limit INTEGER DEFAULT 300,
+        default_monthly_message_limit INTEGER DEFAULT 9000,
+        default_upload_quota_bytes BIGINT DEFAULT 104857600,
+        global_gemini_daily_limit INTEGER DEFAULT 5000,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      )
+    `,
+    `ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS global_ai_api_key TEXT`,
+    `ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS evolution_api_url TEXT`,
+    `ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS evolution_api_key TEXT`,
+    `ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS evolution_shared_instance TEXT`,
+    `ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS google_maps_api_key TEXT`,
+    `ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS gemini_model TEXT`,
+    `ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS gemini_api_version TEXT`,
+    `ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS gemini_temperature NUMERIC(3,2)`,
+    `ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS gemini_max_tokens INTEGER`,
+    `ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS send_interval_min INTEGER`,
+    `ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS send_interval_max INTEGER`,
+    `ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS default_daily_message_limit INTEGER DEFAULT 300`,
+    `ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS default_monthly_message_limit INTEGER DEFAULT 9000`,
+    `ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS default_upload_quota_bytes BIGINT DEFAULT 104857600`,
+    `ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS global_gemini_daily_limit INTEGER DEFAULT 5000`,
+    `ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP`,
+  ])
 }
 
 async function getEffectiveLimitSnapshot(userId: string, db: ReturnType<typeof getDb>) {
@@ -127,29 +204,32 @@ profileSettingsRoutes.get('/profile/full', authenticateToken, async (c) => {
   if (!userId) return c.json({ error: 'Acesso negado.' }, 401)
   const db = getDb(c.env)
   await ensureUserProfile(userId, db)
-
-  const [profile, permissions] = await Promise.all([
-    db.query(
-      `SELECT up.*, ug.name as group_name
-         FROM user_profiles up
-         LEFT JOIN user_groups ug ON up.group_id = ug.id
-        WHERE up.id = $1
-        LIMIT 1`,
-      [userId]
-    ),
-    db.query(
+  const profile = await db.query(
+    `SELECT up.*, ug.name as group_name
+       FROM user_profiles up
+       LEFT JOIN user_groups ug ON up.group_id = ug.id
+      WHERE up.id = $1
+      LIMIT 1`,
+    [userId]
+  )
+  let permissionsRows: Array<{ code: string }> = []
+  try {
+    const permissions = await db.query(
       `SELECT p.code
          FROM user_profiles up
          JOIN group_permissions gp ON up.group_id = gp.group_id
          JOIN permissions p ON gp.permission_id = p.id
         WHERE up.id = $1`,
       [userId]
-    ),
-  ])
+    )
+    permissionsRows = permissions.rows as Array<{ code: string }>
+  } catch (error) {
+    if (!isSchemaMissingError(error)) throw error
+  }
 
   return c.json({
     ...(profile.rows[0] || {}),
-    permission_codes: permissions.rows.map((row) => row.code),
+    permission_codes: permissionsRows.map((row) => row.code),
   })
 })
 
@@ -244,6 +324,7 @@ profileSettingsRoutes.put('/profile', authenticateToken, async (c) => {
 
 profileSettingsRoutes.get('/settings', authenticateToken, async (c) => {
   const db = getDb(c.env)
+  await ensureAppSettingsTable(db)
   const result = await db.query('SELECT * FROM app_settings LIMIT 1')
   return c.json(result.rows[0] || {})
 })
@@ -251,6 +332,7 @@ profileSettingsRoutes.get('/settings', authenticateToken, async (c) => {
 profileSettingsRoutes.post('/settings', authenticateToken, async (c) => {
   const body = await c.req.json().catch(() => ({} as any))
   const db = getDb(c.env)
+  await ensureAppSettingsTable(db)
   const check = await db.query('SELECT id FROM app_settings LIMIT 1')
 
   let result
