@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "wrangler dev",
-    "deploy": "wrangler deploy",
+    "deploy:verify": "node scripts/verify-cloudflare-config.mjs",
+    "deploy": "npm run deploy:verify && wrangler deploy",
     "check": "tsc --noEmit"
   },
   "dependencies": {
