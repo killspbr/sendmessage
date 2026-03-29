@@ -39,6 +39,7 @@ function pickTextMessage(index: number) {
   return LAB_TEXT_MESSAGES[index % LAB_TEXT_MESSAGES.length]
 }
 
+
 async function sendPresence({
   evolutionUrl,
   apiKey,
@@ -744,6 +745,18 @@ async function executeLabRun(env: Bindings, runId: string, baseUrl?: string) {
     const row = runResult.rows[0]
     if (!row) throw new Error('Rodada do laboratorio nao encontrada.')
 
+    // CHECAGEM DE MODO NOTURNO (Horário de Brasília UTC-3)
+    const now = new Date()
+    const hourBR = (now.getUTCHours() - 3 + 24) % 24
+    const isNight = hourBR >= 22 || hourBR < 7
+
+    // Se for noite e a rodada não foi "forçada" manualmente (initiated_by != sys_cron), poderíamos pausar.
+    // Mas para simplificar, vamos apenas avisar no log e aumentar os delays.
+    const nightModeDelayMultiplier = isNight ? 2.5 : 1.0
+    if (isNight) {
+      console.log(`[InstanceLab] Rodando em MODO NOTURNO (Hora BR: ${hourBR}h). Simulando trafego reduzido.`)
+    }
+
     const run: RunRecord = {
       id: String(row.run_id),
       warmer_id: String(row.warmer_id),
@@ -788,12 +801,15 @@ async function executeLabRun(env: Bindings, runId: string, baseUrl?: string) {
       MAX_MESSAGES_PER_RUN,
       DEFAULT_MESSAGES_PER_RUN
     )
-    const delaySeconds = clampNumber(
+    const baseDelay = clampNumber(
       run.step_delay_seconds || pair.default_delay_seconds || DEFAULT_DELAY_SECONDS,
       1,
       120,
       DEFAULT_DELAY_SECONDS
     )
+    
+    // Aplica multiplicador de modo noturno ao delay base
+    const delaySeconds = baseDelay * nightModeDelayMultiplier
 
     for (let stepIndex = clampNumber(run.steps_completed, 0, MAX_MESSAGES_PER_RUN, 0); stepIndex < totalSteps; stepIndex++) {
       await executeRunStep({
