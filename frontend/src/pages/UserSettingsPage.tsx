@@ -111,6 +111,8 @@ export function UserSettingsPage({
   const [uploading, setUploading] = React.useState(false)
   const [uploadProgress, setUploadProgress] = React.useState(0)
   const [uploadMessage, setUploadMessage] = React.useState<string | null>(null)
+  const [searchTerm, setSearchTerm] = React.useState('')
+  const [deletingId, setDeletingId] = React.useState<string | null>(null)
   const fileInputRef = React.useRef<HTMLInputElement | null>(null)
 
   const loadLimits = React.useCallback(async () => {
@@ -215,16 +217,33 @@ export function UserSettingsPage({
   }
 
   const handleDeleteFile = async (fileId: string) => {
+    if (!window.confirm('Tem certeza que deseja excluir este arquivo permanentemente?')) return
+    
+    setDeletingId(fileId)
     try {
-      const response = await apiFetch(`/api/files/${fileId}`, { method: 'DELETE' })
-      if (response?.limits) {
-        setLimits(response.limits)
-      }
+      await apiFetch(`/api/files/${fileId}`, { method: 'DELETE' })
+      setUploadMessage('Arquivo excluído com sucesso.')
+      setTimeout(() => setUploadMessage(null), 3000)
+      
+      // Remove do estado local imediatamente para UX instantanea
+      setFiles(prev => prev.filter(f => f.id !== fileId))
+      
       await Promise.all([loadFiles(), loadLimits()])
     } catch (error: any) {
       setUploadMessage(error?.message || 'Falha ao remover o arquivo.')
+    } finally {
+      setDeletingId(null)
     }
   }
+
+  const filteredFiles = React.useMemo(() => {
+    if (!searchTerm.trim()) return files
+    const lowSearch = searchTerm.toLowerCase()
+    return files.filter(f => 
+      f.originalName.toLowerCase().includes(lowSearch) || 
+      f.extension.toLowerCase().includes(lowSearch)
+    )
+  }, [files, searchTerm])
 
   return (
     <section className="mx-auto flex max-w-5xl flex-col gap-6">
@@ -293,34 +312,64 @@ export function UserSettingsPage({
             accent="bg-fuchsia-500"
           >
             <div className="space-y-4">
-              <div className="flex flex-wrap items-center gap-3">
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={uploading}
-                  className="h-11 rounded-2xl bg-slate-900 px-4 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
-                >
-                  {uploading ? 'Enviando...' : 'Enviar arquivos'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    void loadFiles()
-                    void loadLimits()
-                  }}
-                  className="h-11 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
-                >
-                  Atualizar lista
-                </button>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  multiple
-                  accept=".jpg,.jpeg,.png,.webp,.pdf,.ppt,.pptx,.wav,.mp3,.mp4"
-                  className="hidden"
-                  onChange={handleUploadFiles}
-                />
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex flex-wrap items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={uploading}
+                    className="h-11 rounded-2xl bg-slate-900 px-4 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
+                  >
+                    {uploading ? 'Enviando...' : 'Enviar arquivos'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void loadFiles()
+                      void loadLimits()
+                    }}
+                    className="h-11 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                  >
+                    Atualizar lista
+                  </button>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    multiple
+                    accept=".jpg,.jpeg,.png,.webp,.pdf,.ppt,.pptx,.wav,.mp3,.mp4"
+                    className="hidden"
+                    onChange={handleUploadFiles}
+                  />
+                </div>
+                
+                <div className="relative flex-1 max-w-xs">
+                  <span className="absolute left-4 top-1/2 -translate-y-1/2 opacity-40">🔍</span>
+                  <input
+                    type="text"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    placeholder="Buscar arquivos..."
+                    className="h-11 w-full rounded-2xl border border-slate-200 bg-white pl-10 pr-4 text-sm outline-none focus:border-fuchsia-500"
+                  />
+                </div>
               </div>
+
+              {limits && (
+                <div className="rounded-2xl border border-slate-100 bg-slate-50/50 p-4">
+                  <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                    <span>Espaço Ocupado</span>
+                    <span>{formatBytes(limits.uploads.usedBytes)} / {limits.uploads.unlimited ? 'Ilimitado' : formatBytes(limits.uploads.limitBytes)}</span>
+                  </div>
+                  <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-200">
+                    <div 
+                      className={`h-full rounded-full transition-all duration-500 ${
+                        (limits.uploads.usedBytes / (limits.uploads.limitBytes || 1)) > 0.9 ? 'bg-rose-500' : 'bg-fuchsia-500'
+                      }`}
+                      style={{ width: `${Math.min(100, (limits.uploads.usedBytes / (limits.uploads.limitBytes || 1)) * 100)}%` }}
+                    />
+                  </div>
+                </div>
+              )}
 
               {uploadMessage ? (
                 <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
@@ -348,15 +397,17 @@ export function UserSettingsPage({
                   <div className="h-8 w-8 animate-spin rounded-full border-4 border-fuchsia-500 border-t-transparent" />
                   <p className="mt-4 text-xs font-semibold uppercase tracking-widest text-slate-400">Sincronizando arquivos...</p>
                 </div>
-              ) : files.length === 0 ? (
+              ) : filteredFiles.length === 0 ? (
                 <div className="flex flex-col items-center justify-center rounded-3xl border border-dashed border-slate-200 bg-slate-50/50 py-12 text-center">
                   <div className="text-3xl mb-3 opacity-30">☁️</div>
-                  <p className="text-sm font-medium text-slate-500">Sua biblioteca está vazia.</p>
+                  <p className="text-sm font-medium text-slate-500">
+                    {searchTerm ? 'Nenhum arquivo encontrado para sua busca.' : 'Sua biblioteca está vazia.'}
+                  </p>
                   <p className="text-xs text-slate-400 mt-1">Comece enviando mídias para usar em disparos.</p>
                 </div>
               ) : (
                 <div className="grid gap-4 sm:grid-cols-2">
-                  {files.map((file) => {
+                  {filteredFiles.map((file) => {
                     const isImage = file.mimeType.startsWith('image/')
                     const isVideo = file.mimeType.startsWith('video/')
                     const isAudio = file.mimeType.startsWith('audio/')
@@ -370,6 +421,11 @@ export function UserSettingsPage({
                         {isImage ? (
                           <div className="aspect-video w-full overflow-hidden bg-slate-100">
                              <img src={publicUrl} alt={file.originalName} className="h-full w-full object-cover transition-transform group-hover:scale-105" />
+                          </div>
+                        ) : isAudio ? (
+                          <div className="flex aspect-video w-full flex-col items-center justify-center bg-slate-900 p-4 text-white">
+                            <div className="text-3xl mb-2">🔊</div>
+                            <audio controls src={publicUrl} className="h-8 w-full scale-90 opacity-80" />
                           </div>
                         ) : (
                           <div className="flex aspect-video w-full items-center justify-center bg-slate-100 text-4xl">
@@ -402,18 +458,19 @@ export function UserSettingsPage({
                               </button>
                               <button
                                 type="button"
+                                disabled={deletingId === file.id}
                                 onClick={() => handleDeleteFile(file.id)}
-                                className="flex h-8 w-8 items-center justify-center rounded-lg bg-rose-500 text-white transition hover:bg-rose-600"
+                                className="flex h-8 w-8 items-center justify-center rounded-lg bg-rose-500 text-white transition hover:bg-rose-600 disabled:bg-slate-300"
                                 title="Excluir arquivo"
                               >
-                                🗑️
+                                {deletingId === file.id ? '...' : '🗑️'}
                               </button>
                             </div>
                           </div>
                           
                           <div className="mt-3 flex gap-2">
                             <a
-                              href={publicUrl}
+                              href={`${publicUrl}&download=1`}
                               target="_blank"
                               rel="noreferrer"
                               className="flex-1 rounded-xl bg-slate-100 py-2 text-center text-[10px] font-bold uppercase tracking-widest text-slate-600 transition hover:bg-slate-200"
