@@ -18,9 +18,13 @@ function createAuthExpiredError(status: number) {
   return authError
 }
 
-async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs = 12000) {
+async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs = 0) {
+  if (!timeoutMs || timeoutMs <= 0) {
+    return fetch(url, init)
+  }
+
   const controller = new AbortController()
-  const timeout = window.setTimeout(() => controller.abort(), timeoutMs)
+  const timeout = window.setTimeout(() => controller.abort('REQUEST_TIMEOUT'), timeoutMs)
 
   try {
     return await fetch(url, {
@@ -36,7 +40,17 @@ export async function apiFetch(endpoint: string, options: RequestInit = {}) {
   const token = localStorage.getItem('auth_token')
   const isFormData = typeof FormData !== 'undefined' && options.body instanceof FormData
   const method = String(options.method || 'GET').toUpperCase()
-  const canRetry = method === 'GET' || endpoint === '/api/auth/presence'
+  const canRetry = method === 'GET' || endpoint === '/api/auth/presence' || endpoint === '/api/auth/me'
+  const isAuthCriticalEndpoint =
+    endpoint === '/api/auth/login' ||
+    endpoint === '/api/auth/signup' ||
+    endpoint === '/api/auth/me'
+
+  const timeoutMs = isAuthCriticalEndpoint
+    ? 0
+    : endpoint === '/api/auth/presence'
+      ? 20000
+      : 45000
 
   const headers = {
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -55,7 +69,7 @@ export async function apiFetch(endpoint: string, options: RequestInit = {}) {
       response = await fetchWithTimeout(`${API_URL}${endpoint}`, {
         ...options,
         headers,
-      })
+      }, timeoutMs)
 
       if (response.status >= 500 && attempt < (canRetry ? 2 : 1)) {
         await new Promise((resolve) => setTimeout(resolve, 350 * attempt))
@@ -72,6 +86,9 @@ export async function apiFetch(endpoint: string, options: RequestInit = {}) {
   }
 
   if (!response) {
+    if (fetchError && typeof fetchError === 'object' && (fetchError as any).name === 'AbortError') {
+      throw new Error('Tempo limite de resposta excedido. Tente novamente.')
+    }
     throw fetchError instanceof Error ? fetchError : new Error(String(fetchError || 'Falha de rede'))
   }
 

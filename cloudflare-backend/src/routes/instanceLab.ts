@@ -9,6 +9,8 @@ const DEFAULT_DELAY_SECONDS = 5
 const DEFAULT_MESSAGES_PER_RUN = 4
 const MAX_MESSAGES_PER_RUN = 20
 const ACTIVE_RUNS = new Set<string>()
+const COLUMN_CACHE_TTL_MS = 60_000
+const tableColumnsCache = new Map<string, { expiresAt: number; columns: Set<string> }>()
 
 const LAB_TEXT_MESSAGES = [
   'Bom dia. Teste tecnico de conectividade entre instancias.',
@@ -77,6 +79,40 @@ function toErrorMessage(error: unknown) {
   } catch {
     return String(error)
   }
+}
+
+async function getTableColumns(db: ReturnType<typeof getDb>, tableName: string) {
+  const cacheKey = `public.${tableName}`
+  const cached = tableColumnsCache.get(cacheKey)
+  const now = Date.now()
+  if (cached && cached.expiresAt > now) {
+    return cached.columns
+  }
+
+  const result = await db.query(
+    `SELECT column_name
+       FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND table_name = $1`,
+    [tableName]
+  )
+
+  const columns = new Set<string>(result.rows.map((row) => String(row.column_name)))
+  tableColumnsCache.set(cacheKey, {
+    columns,
+    expiresAt: now + COLUMN_CACHE_TTL_MS,
+  })
+
+  return columns
+}
+
+function hasColumn(columns: Set<string>, columnName: string) {
+  return columns.has(columnName)
+}
+
+async function tableExists(db: ReturnType<typeof getDb>, tableName: string) {
+  const result = await db.query(`SELECT to_regclass($1) AS table_name`, [`public.${tableName}`])
+  return Boolean(result.rows[0]?.table_name)
 }
 
 async function ensureInstanceLabSchema(db: ReturnType<typeof getDb>) {
@@ -378,27 +414,36 @@ async function createRunLog({
   responseTimeMs?: number | null
   errorDetail?: string | null
 }) {
-  await db.query(
-    `INSERT INTO warmer_logs (
-      warmer_id, run_id, from_phone, to_phone, from_instance, to_instance,
-      message_type, payload_type, content_summary, ok, provider_status, response_time_ms, error_detail
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
-    [
-      pairId,
-      runId,
-      direction.fromPhone,
-      direction.toPhone,
-      direction.fromInstance,
-      direction.toInstance,
-      payloadType === 'audio' ? 'audio' : 'text',
-      payloadType,
-      contentSummary,
-      ok,
-      providerStatus || null,
-      responseTimeMs || null,
-      errorDetail || null,
-    ]
-  )
+  const columns = await getTableColumns(db, 'warmer_logs')
+  const values: unknown[] = []
+  const fields: string[] = []
+
+  const add = (field: string, value: unknown) => {
+    if (!hasColumn(columns, field)) return
+    fields.push(field)
+    values.push(value)
+  }
+
+  add('warmer_id', pairId)
+  add('run_id', runId)
+  add('from_phone', direction.fromPhone)
+  add('to_phone', direction.toPhone)
+  add('from_instance', direction.fromInstance)
+  add('to_instance', direction.toInstance)
+  add('message_type', payloadType === 'audio' ? 'audio' : 'text')
+  add('payload_type', payloadType)
+  add('content_summary', contentSummary)
+  add('ok', ok)
+  add('provider_status', providerStatus || null)
+  add('response_time_ms', responseTimeMs || null)
+  add('error_detail', errorDetail || null)
+
+  if (fields.length === 0) {
+    throw new Error('Tabela warmer_logs sem colunas compatíveis para inserção.')
+  }
+
+  const placeholders = fields.map((_, index) => `$${index + 1}`).join(', ')
+  await db.query(`INSERT INTO warmer_logs (${fields.join(', ')}) VALUES (${placeholders})`, values)
 }
 
 async function executeRunStep({
@@ -719,6 +764,47 @@ export const instanceLabRoutes = new Hono<{ Bindings: Bindings; Variables: AppVa
 instanceLabRoutes.get('/admin/warmer', authenticateToken, checkAdmin, async (c) => {
   const db = getDb(c.env)
   await ensureInstanceLabSchema(db)
+  const [hasWarmerLogs, hasWarmerRuns, warmerLogColumns] = await Promise.all([
+    tableExists(db, 'warmer_logs'),
+    tableExists(db, 'warmer_runs'),
+    getTableColumns(db, 'warmer_logs'),
+  ])
+  const hasOkColumn = hasWarmerLogs && hasColumn(warmerLogColumns, 'ok')
+  const failedEventsExpr = hasOkColumn ? 'COUNT(*) FILTER (WHERE l.ok = false)' : '0'
+
+  const todayJoin = hasWarmerLogs
+    ? `LEFT JOIN LATERAL (
+      SELECT COUNT(*) AS total_events, ${failedEventsExpr} AS failed_events
+      FROM warmer_logs l
+      WHERE l.warmer_id = w.id
+        AND l.sent_at >= CURRENT_DATE
+    ) today ON TRUE`
+    : `LEFT JOIN LATERAL (
+      SELECT 0::bigint AS total_events, 0::bigint AS failed_events
+    ) today ON TRUE`
+
+  const recentRunJoin = hasWarmerRuns
+    ? `LEFT JOIN LATERAL (
+      SELECT * FROM warmer_runs r
+      WHERE r.warmer_id = w.id
+        AND r.status IN ('queued', 'running')
+      ORDER BY r.created_at DESC
+      LIMIT 1
+    ) recent_run ON TRUE`
+    : `LEFT JOIN LATERAL (
+      SELECT NULL::uuid AS id, NULL::text AS status, NULL::int AS steps_total, NULL::int AS steps_completed
+    ) recent_run ON TRUE`
+
+  const lastRunJoin = hasWarmerRuns
+    ? `LEFT JOIN LATERAL (
+      SELECT * FROM warmer_runs r
+      WHERE r.warmer_id = w.id
+      ORDER BY r.created_at DESC
+      LIMIT 1
+    ) last_run ON TRUE`
+    : `LEFT JOIN LATERAL (
+      SELECT NULL::text AS status, NULL::timestamptz AS finished_at, NULL::text AS last_error
+    ) last_run ON TRUE`
 
   const result = await db.query(`
     SELECT
@@ -733,26 +819,10 @@ instanceLabRoutes.get('/admin/warmer', authenticateToken, checkAdmin, async (c) 
       last_run.finished_at AS last_run_finished_at,
       last_run.last_error AS last_run_error_actual
     FROM warmer_configs w
-    LEFT JOIN LATERAL (
-      SELECT COUNT(*) AS total_events, COUNT(*) FILTER (WHERE ok = false) AS failed_events
-      FROM warmer_logs l
-      WHERE l.warmer_id = w.id
-        AND l.sent_at >= CURRENT_DATE
-    ) today ON TRUE
-    LEFT JOIN LATERAL (
-      SELECT * FROM warmer_runs r
-      WHERE r.warmer_id = w.id
-        AND r.status IN ('queued', 'running')
-      ORDER BY r.created_at DESC
-      LIMIT 1
-    ) recent_run ON TRUE
-    LEFT JOIN LATERAL (
-      SELECT * FROM warmer_runs r
-      WHERE r.warmer_id = w.id
-      ORDER BY r.created_at DESC
-      LIMIT 1
-    ) last_run ON TRUE
-    ORDER BY COALESCE(w.updated_at, w.created_at) DESC
+    ${todayJoin}
+    ${recentRunJoin}
+    ${lastRunJoin}
+    ORDER BY w.created_at DESC
   `)
 
   return c.json(result.rows)
@@ -873,15 +943,28 @@ instanceLabRoutes.put('/admin/warmer/:id/status', authenticateToken, checkAdmin,
 instanceLabRoutes.get('/admin/warmer/:id/logs', authenticateToken, checkAdmin, async (c) => {
   const db = getDb(c.env)
   await ensureInstanceLabSchema(db)
-  const result = await db.query(
-    `SELECT l.*, r.status AS run_status
-       FROM warmer_logs l
-       LEFT JOIN warmer_runs r ON r.id = l.run_id
-      WHERE l.warmer_id = $1
-      ORDER BY l.sent_at DESC
-      LIMIT 200`,
-    [c.req.param('id')]
-  )
+  const hasWarmerLogs = await tableExists(db, 'warmer_logs')
+  if (!hasWarmerLogs) {
+    return c.json([])
+  }
+
+  const warmerLogColumns = await getTableColumns(db, 'warmer_logs')
+  const hasRunIdColumn = hasColumn(warmerLogColumns, 'run_id')
+
+  const query = hasRunIdColumn
+    ? `SELECT l.*, r.status AS run_status
+         FROM warmer_logs l
+         LEFT JOIN warmer_runs r ON r.id = l.run_id
+        WHERE l.warmer_id = $1
+        ORDER BY l.sent_at DESC
+        LIMIT 200`
+    : `SELECT l.*, NULL::text AS run_status
+         FROM warmer_logs l
+        WHERE l.warmer_id = $1
+        ORDER BY l.sent_at DESC
+        LIMIT 200`
+
+  const result = await db.query(query, [c.req.param('id')])
   return c.json(result.rows)
 })
 
