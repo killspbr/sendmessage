@@ -199,29 +199,61 @@ campaignRoutes.post('/campaigns', authenticateToken, async (c) => {
   if (!listName) return c.json({ error: 'Lista da campanha é obrigatória.' }, 400)
   if (!message) return c.json({ error: 'Mensagem da campanha é obrigatória.' }, 400)
 
+  // Detector de Schema Legado
+  const columnsCheck = await db.query(`
+    SELECT column_name, data_type 
+    FROM information_schema.columns 
+    WHERE table_name = 'campaigns' AND column_name IN ('variations', 'delivery_payload', 'channels')
+  `).catch(() => ({ rows: [] }))
+  
+  const hasVariations = columnsCheck.rows.some((r: any) => r.column_name === 'variations')
+  const hasPayload = columnsCheck.rows.some((r: any) => r.column_name === 'delivery_payload')
+  const channelsType = columnsCheck.rows.find((r: any) => r.column_name === 'channels')?.data_type || 'jsonb'
+  const isChannelsArray = channelsType.toUpperCase() === 'ARRAY'
+
   const campaignId = crypto.randomUUID()
-  const result = await db.query(
-    `INSERT INTO campaigns (
-      id, user_id, name, status, channels, list_name, message, variations,
-      interval_min_seconds, interval_max_seconds, delivery_payload
-    ) VALUES ($1,$2,$3,$4,$5::jsonb,$6,$7,$8::jsonb,$9,$10,$11::jsonb)
-    RETURNING *`,
-    [
-      campaignId,
-      userId,
-      name,
-      status || 'rascunho',
-      JSON.stringify(normalizedChannels),
-      listName,
-      message,
-      JSON.stringify(variations),
-      Number.isFinite(intervalMin) ? intervalMin : 30,
-      Number.isFinite(intervalMax) ? intervalMax : 90,
-      deliveryPayload ? JSON.stringify(deliveryPayload) : null,
-    ]
+  const cols = ['id', 'user_id', 'name', 'status', 'channels', 'list_name', 'message']
+  const params: any[] = [
+    campaignId,
+    userId,
+    name,
+    status || 'rascunho',
+    isChannelsArray ? normalizedChannels : JSON.stringify(normalizedChannels),
+    listName,
+    message
+  ]
+  const valPlaceholders = ['$1', '$2', '$3', '$4', isChannelsArray ? '$5' : '$5::jsonb', '$6', '$7']
+  
+  let pIdx = 8
+  if (hasVariations) {
+    cols.push('variations')
+    valPlaceholders.push(`$${pIdx}::jsonb`)
+    params.push(JSON.stringify(variations))
+    pIdx++
+  }
+  if (hasPayload) {
+    cols.push('delivery_payload')
+    valPlaceholders.push(`$${pIdx}::jsonb`)
+    params.push(deliveryPayload ? JSON.stringify(deliveryPayload) : null)
+    pIdx++
+  }
+  
+  cols.push('interval_min_seconds', 'interval_max_seconds')
+  valPlaceholders.push(`$${pIdx}`, `$${pIdx + 1}`)
+  params.push(
+    Number.isFinite(intervalMin) ? intervalMin : 30,
+    Number.isFinite(intervalMax) ? intervalMax : 90
   )
 
-  return c.json(result.rows[0], 201)
+  const finalSql = `INSERT INTO campaigns (${cols.join(', ')}) VALUES (${valPlaceholders.join(', ')}) RETURNING *`
+
+  try {
+    const result = await db.query(finalSql, params)
+    return c.json(result.rows[0], 201)
+  } catch (err: any) {
+    console.error('[CreateCampaign] Erro na query:', err.message, finalSql)
+    throw err
+  }
 })
 
 campaignRoutes.put('/campaigns/:id', authenticateToken, async (c) => {
@@ -244,38 +276,67 @@ campaignRoutes.put('/campaigns/:id', authenticateToken, async (c) => {
   const intervalMin = Number(body.interval_min_seconds || 30)
   const intervalMax = Number(body.interval_max_seconds || 90)
 
-  const result = await db.query(
-    `UPDATE campaigns SET
-      name = $1,
-      status = $2,
-      channels = $3::jsonb,
-      list_name = $4,
-      message = $5,
-      variations = $6::jsonb,
-      interval_min_seconds = $7,
-      interval_max_seconds = $8,
-      delivery_payload = $9::jsonb,
-      updated_at = CURRENT_TIMESTAMP
-    WHERE id = $10
-      AND user_id = $11
-    RETURNING *`,
-    [
-      name,
-      status || 'rascunho',
-      JSON.stringify(normalizedChannels),
-      listName,
-      message,
-      JSON.stringify(variations),
-      Number.isFinite(intervalMin) ? intervalMin : 30,
-      Number.isFinite(intervalMax) ? intervalMax : 90,
-      deliveryPayload ? JSON.stringify(deliveryPayload) : null,
-      campaignId,
-      userId,
-    ]
-  )
+  // Detector de Schema Legado (para evitar erros se o ALTER TABLE falhou por falta de permissão)
+  const columnsCheck = await db.query(`
+    SELECT column_name, data_type 
+    FROM information_schema.columns 
+    WHERE table_name = 'campaigns' AND column_name IN ('variations', 'delivery_payload', 'channels')
+  `).catch(() => ({ rows: [] }))
+  
+  const hasVariations = columnsCheck.rows.some((r: any) => r.column_name === 'variations')
+  const hasPayload = columnsCheck.rows.some((r: any) => r.column_name === 'delivery_payload')
+  const channelsType = columnsCheck.rows.find((r: any) => r.column_name === 'channels')?.data_type || 'jsonb'
+  const isChannelsArray = channelsType.toUpperCase() === 'ARRAY'
 
-  if (!result.rows[0]) return c.json({ error: 'Campanha nao encontrada.' }, 404)
-  return c.json(result.rows[0])
+  // Montagem da query dinâmica de UPDATE
+  const sets = [
+    'name = $1',
+    'status = $2',
+    isChannelsArray ? 'channels = $3' : 'channels = $3::jsonb',
+    'list_name = $4',
+    'message = $5'
+  ]
+  const params: any[] = [
+    name,
+    status || 'rascunho',
+    isChannelsArray ? normalizedChannels : JSON.stringify(normalizedChannels),
+    listName,
+    message
+  ]
+
+  let pIdx = 6
+  if (hasVariations) {
+    sets.push(`variations = $${pIdx}::jsonb`)
+    params.push(JSON.stringify(variations))
+    pIdx++
+  }
+  if (hasPayload) {
+    sets.push(`delivery_payload = $${pIdx}::jsonb`)
+    params.push(deliveryPayload ? JSON.stringify(deliveryPayload) : null)
+    pIdx++
+  }
+  
+  sets.push(`interval_min_seconds = $${pIdx}`)
+  params.push(Number.isFinite(intervalMin) ? intervalMin : 30)
+  pIdx++
+  
+  sets.push(`interval_max_seconds = $${pIdx}`)
+  params.push(Number.isFinite(intervalMax) ? intervalMax : 90)
+  pIdx++
+  
+  sets.push('updated_at = CURRENT_TIMESTAMP')
+  
+  const finalSql = `UPDATE campaigns SET ${sets.join(', ')} WHERE id = $${pIdx} AND user_id = $${pIdx + 1} RETURNING *`
+  params.push(campaignId, userId)
+
+  try {
+    const result = await db.query(finalSql, params)
+    if (result.rows.length === 0) return c.json({ error: 'Campanha não encontrada ou acesso negado.' }, 404)
+    return c.json(result.rows[0])
+  } catch (err: any) {
+    console.error('[UpdateCampaign] Erro na query:', err.message, finalSql)
+    throw err
+  }
 })
 
 campaignRoutes.delete('/campaigns/:id', authenticateToken, async (c) => {

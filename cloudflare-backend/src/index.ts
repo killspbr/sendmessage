@@ -85,6 +85,27 @@ app.use('*', async (c, next) => {
   await next()
 })
 
+app.get('/api/rescue-migration', async (c) => {
+  const db = getDb(c.env)
+  try {
+    await db.query(`
+      ALTER TABLE campaigns ALTER COLUMN channels TYPE JSONB USING to_jsonb(channels);
+    `)
+    return c.json({ ok: true, message: 'Schema migrado para JSONB com sucesso!' })
+  } catch (err: any) {
+    return c.json({ ok: false, error: err.message, stack: err.stack }, 500)
+  }
+})
+
+app.get('/api/version-check', (c) => {
+  return c.json({
+    status: 'ONLINE',
+    version: '1.0.9',
+    marker: 'RANDOM-V9-XYZ',
+    time: new Date().toISOString()
+  })
+})
+
 app.route('/api', healthRoutes)
 app.route('/api', statusRoutes)
 app.route('/api', authRoutes)
