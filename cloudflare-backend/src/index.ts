@@ -29,6 +29,18 @@ const CORS_HEADERS = {
   'Access-Control-Allow-Headers': 'Content-Type,Authorization,X-Requested-With,Accept,Origin',
 }
 
+app.use('*', async (c, next) => {
+  console.log(`[REQUEST] ${c.req.method} ${c.req.url}`)
+  if (c.req.method !== 'GET' && c.req.method !== 'OPTIONS') {
+    try {
+      const cloned = c.req.raw.clone()
+      const body = await cloned.json().catch(() => ({}))
+      console.log(`[BODY]`, JSON.stringify(body))
+    } catch {}
+  }
+  await next()
+})
+
 app.use('*', cors({ origin: '*' }))
 
 app.use('*', async (c, next) => {

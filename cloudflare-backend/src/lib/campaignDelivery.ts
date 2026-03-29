@@ -253,10 +253,11 @@ function arrayBufferToBase64(buffer: ArrayBuffer) {
 }
 
 async function resolveMediaBody(fetchImpl: typeof fetch, media: MediaItem, resolvedUrl: string, baseUrl?: string) {
-  if (media.sourceType !== 'asset' || media.mediaType === 'document') {
+  if (media.sourceType !== 'asset') {
     return baseUrl ? ensureAbsoluteUrl(resolvedUrl, baseUrl) : resolvedUrl
   }
 
+  // Se for asset, tentamos baixar para enviar em Base64 (garante bypass de firewall/auth)
   const response = await fetchImpl(resolvedUrl)
   if (!response.ok) {
     throw new Error(`Falha ao carregar o arquivo do servidor (${response.status}): ${await response.text().catch(() => 'corpo indisponivel')}`)

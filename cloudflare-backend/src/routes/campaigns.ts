@@ -50,6 +50,9 @@ async function ensureCampaignsTable(db: ReturnType<typeof getDb>) {
   if (tableCreated) return
   const UUID_GEN = "gen_random_uuid()"
   await runSchemaBestEffort(async () => {
+    // Tenta carregar pgcrypto se necessário (Postgres < 13)
+    await db.query(`CREATE EXTENSION IF NOT EXISTS "pgcrypto"`).catch(() => {})
+
     await db.query(`
       CREATE TABLE IF NOT EXISTS campaigns (
         id UUID PRIMARY KEY DEFAULT ${UUID_GEN},
@@ -67,6 +70,12 @@ async function ensureCampaignsTable(db: ReturnType<typeof getDb>) {
         updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
       )
     `)
+
+    // Garante colunas individuais caso a tabela já exista de uma versão anterior
+    await db.query(`ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS variations JSONB NOT NULL DEFAULT '[]'::jsonb`).catch(() => {})
+    await db.query(`ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS delivery_payload JSONB`).catch(() => {})
+    await db.query(`ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS interval_min_seconds INTEGER NOT NULL DEFAULT 30`).catch(() => {})
+    await db.query(`ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS interval_max_seconds INTEGER NOT NULL DEFAULT 90`).catch(() => {})
 
     await db.query(`
       CREATE INDEX IF NOT EXISTS idx_campaigns_user_created_at

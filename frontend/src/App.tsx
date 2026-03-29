@@ -19,6 +19,7 @@ import {
 } from './pages'
 import GeminiKeysPage from './pages/GeminiKeysPage'
 import SecurityDashboardPage from './pages/SecurityDashboardPage'
+import { VersionUpdater } from './components/common/VersionUpdater'
 import { usePermissions } from './hooks/usePermissions'
 import { useAuth } from './hooks/useAuth'
 import { useLists } from './hooks/useLists'
@@ -1107,8 +1108,9 @@ function App() {
       setCampaignEditorOpen(false)
     } catch (e: any) {
       console.error('Erro inesperado ao salvar campanha no banco', e)
-      const technicalMsg = e?.response?.data?.technical || e?.message || ''
-      setLastMoveMessage(`Erro ao salvar no banco: ${technicalMsg || 'Erro interno.'}`)
+      const technicalMsg = e.technical || (e.response?.data?.technical) || e.message || ''
+      setLastMoveMessage(`Erro ao salvar no banco: ${technicalMsg}`)
+      console.log('Detalhes técnicos:', e.details || e.response?.data?.details)
     }
   }
 
@@ -3486,6 +3488,8 @@ function App() {
             </div>
           </div>
         )}
+
+        <VersionUpdater />
       </div>
     </div>
   )

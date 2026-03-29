@@ -134,8 +134,14 @@ export async function apiFetch(endpoint: string, options: RequestInit = {}) {
     }
 
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}))
-      throw new Error(errorData.error || `Erro na requisicao: ${response.status}`)
+      const errorData = await response.json().catch(() => ({} as any))
+      const combinedMsg = errorData.technical || errorData.error || `Erro na requisicao: ${response.status}`
+      const apiError = new Error(combinedMsg)
+      ;(apiError as any).status = response.status
+      ;(apiError as any).error = errorData.error
+      ;(apiError as any).technical = errorData.technical
+      ;(apiError as any).details = errorData.details
+      throw apiError
     }
 
     return response.json()
