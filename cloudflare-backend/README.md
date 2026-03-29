@@ -43,6 +43,28 @@ npm run dev
 npm run deploy
 ```
 
+Gerar connection string segura para Hyperdrive:
+
+```bash
+npm run hyperdrive:conn -- --user cf_hyperdrive --password CfHyper2026Safe --host easypanel.soepinaobasta.com --port 5433 --database sendmessage
+```
+
+## Troubleshooting Hyperdrive
+
+Se o painel mostrar `Invalid database credentials`:
+
+1. Crie um usuario exclusivo para o Hyperdrive no Postgres.
+2. Garanta SSL ativo no Postgres (`SHOW ssl;` deve retornar `on`).
+3. Use senha simples (sem caracteres especiais) para o usuario de Hyperdrive, ou gere a string com `npm run hyperdrive:conn`.
+4. Teste credenciais localmente no container antes de salvar no dashboard.
+
+Exemplo (executar no host VPS):
+
+```bash
+CID=$(docker ps --filter name=clrodrigues_postgres --format '{{.ID}}' | head -n 1)
+docker exec -it "$CID" sh -lc 'psql -h 127.0.0.1 -p 5432 -U cf_hyperdrive -d sendmessage -c "select now();"'
+```
+
 ## Checklist rapido de staging
 
 1. `npm run check`

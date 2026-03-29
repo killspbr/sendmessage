@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "wrangler dev",
     "deploy:verify": "node scripts/verify-cloudflare-config.mjs",
+    "hyperdrive:conn": "node scripts/build-hyperdrive-connection.mjs",
     "deploy": "npm run deploy:verify && wrangler deploy",
     "check": "tsc --noEmit"
   },

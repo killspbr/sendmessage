@@ -1,19 +1,19 @@
 # Cloudflare Deploy (Frontend + Backend)
 
-Documento operacional para publicar o projeto completo no Cloudflare em **29/03/2026**.
+Operational guide to publish the full project on Cloudflare.
 
-## Arquitetura atual
+## Current architecture
 
 - Frontend: Cloudflare Pages (`frontend`)
 - Backend API: Cloudflare Workers (`cloudflare-backend`)
-- Banco: Postgres via Hyperdrive (`HYPERDRIVE`)
+- Database: Postgres via Hyperdrive (`HYPERDRIVE`)
 - Uploads: R2 (`UPLOADS_BUCKET`)
 
-## 1) Deploy do Backend (Worker)
+## 1) Backend deploy (Worker)
 
-### 1.1 Pré-requisitos
+### 1.1 Preconditions
 
-No diretório [cloudflare-backend](G:\Dev\sendmessage\cloudflare-backend):
+In [cloudflare-backend](G:\Dev\sendmessage\cloudflare-backend):
 
 ```bash
 npm install
@@ -21,96 +21,116 @@ npm run check
 npx wrangler deploy --dry-run
 ```
 
-### 1.2 Configurar `wrangler.toml`
+### 1.2 Configure `wrangler.toml`
 
-Arquivo: [wrangler.toml](G:\Dev\sendmessage\cloudflare-backend\wrangler.toml)
+File: [wrangler.toml](G:\Dev\sendmessage\cloudflare-backend\wrangler.toml)
 
-- `name = "sendmessage-backend"` (ou nome desejado)
-- `[[hyperdrive]].id` com o ID real do Hyperdrive
-- `[[r2_buckets]].bucket_name` com o bucket real de uploads
+- `name = "sendmessage-backend"` (or your preferred worker name)
+- `[[hyperdrive]].id` must contain the real Hyperdrive ID
+- `[[r2_buckets]].bucket_name` must contain the real uploads bucket
 
-### 1.3 Secrets obrigatórios
+Current expected values:
 
-Executar no diretório `cloudflare-backend`:
+- Worker URL: `https://sendmessage-backend.claudio-rodrigues-seconci.workers.dev`
+- Hyperdrive ID: `12abb41244884c95a5ab078a0f17c62f`
+
+### 1.3 Required secrets
+
+Run in `cloudflare-backend`:
 
 ```bash
 npx wrangler secret put JWT_SECRET
 ```
 
-Opcional (fallback de IA):
+Optional:
 
 ```bash
 npx wrangler secret put GEMINI_API_KEY
 ```
 
-### 1.4 Variáveis de ambiente recomendadas
+### 1.4 Recommended environment vars
 
-No `wrangler.toml` (`[vars]`) ou no dashboard:
+In `wrangler.toml` (`[vars]`) or dashboard:
 
 - `SYSTEM_TIMEZONE=America/Sao_Paulo`
 - `SYSTEM_TIMEZONE_LABEL=GMT-3 (America/Sao_Paulo)`
 - `ACTIVE_USER_WINDOW_SECONDS=120`
-- `GOOGLE_MAPS_API_KEY` (opcional, para extração)
-- `WEBHOOK_EMAIL` (opcional, fallback de `/api/n8n/trigger`)
+- `GOOGLE_MAPS_API_KEY` (optional)
+- `WEBHOOK_EMAIL` (optional)
 
-### 1.5 Publicar
+### 1.5 Publish
 
 ```bash
 npm run deploy
 ```
 
-### 1.6 Smoke test do backend
+### 1.6 Backend smoke tests
 
-Após deploy, validar:
+After deploy, validate:
 
 - `GET /api/health`
 - `GET /api/_migration-status`
-- login e `GET /api/auth/me`
+- Login and `GET /api/auth/me`
 - `GET /api/profile/full`
 - `GET /api/admin/users` (admin)
 - `GET /api/admin/warmer` (admin)
 - `GET /api/schedules/professional`
-- `POST /api/campaigns/:id/send` (cenário controlado)
+- `POST /api/campaigns/:id/send` (controlled scenario)
 
----
+## 2) Frontend deploy (Pages)
 
-## 2) Deploy do Frontend (Pages)
-
-### 2.1 Configuração da aplicação no Pages
+### 2.1 Pages configuration
 
 - Framework preset: `Vite`
 - Root directory: `frontend`
 - Build command: `npm run build`
 - Output directory: `dist`
 
-### 2.2 Variáveis de ambiente do Frontend
+### 2.2 Frontend env vars
 
-No projeto Pages (Production/Preview):
+In Pages (Production/Preview):
 
-- `VITE_API_URL=https://<worker-name>.<account-subdomain>.workers.dev`
+- `VITE_API_URL=https://sendmessage-backend.claudio-rodrigues-seconci.workers.dev`
 
-### 2.3 Publicar
+### 2.3 Publish
 
-Conectar branch `main` no Pages e disparar deploy.
+Connect `main` branch and run deploy.
 
----
+## 3) Hyperdrive troubleshooting
 
-## 3) Checklist pós-publicação
+If Cloudflare dashboard shows `Invalid database credentials`:
 
-1. Login/logout funcionando.
-2. Dashboard sem erro de CORS.
-3. Contatos/listas CRUD.
-4. Campanhas (salvar + disparo manual).
-5. Agendamento profissional (`/api/schedules/professional` e refresh).
-6. Upload/remoção de arquivos e link público.
-7. IA (proxy Gemini) e tela Admin Gemini.
-8. Usuários & Grupos (alterar grupo/permissões, reset senha, notificação).
-9. Laboratório de instâncias (CRUD + force/manual + logs).
+1. Use a dedicated Postgres role for Hyperdrive (recommended: `cf_hyperdrive`).
+2. Confirm SSL is enabled in Postgres (`SHOW ssl;` must return `on`).
+3. Build the connection string with URL-encoded credentials.
+4. Test credentials in VPS before saving them in dashboard.
 
----
+Generate connection string:
 
-## 4) Observações
+```bash
+npm run hyperdrive:conn -- --user cf_hyperdrive --password CfHyper2026Safe --host easypanel.soepinaobasta.com --port 5433 --database sendmessage
+```
 
-- O backend Cloudflare já cobre os endpoints estáticos usados pelo frontend (`missing: []` na verificação local).
-- Se `JWT_SECRET` não estiver configurado no Worker, auth não funcionará.
-- Se `HYPERDRIVE`/R2 estiverem incorretos, as rotas podem responder com 500 mesmo com deploy bem-sucedido.
+VPS credential test:
+
+```bash
+CID=$(docker ps --filter name=clrodrigues_postgres --format '{{.ID}}' | head -n 1)
+docker exec -it "$CID" sh -lc 'psql -h 127.0.0.1 -p 5432 -U cf_hyperdrive -d sendmessage -c "select now();"'
+```
+
+## 4) Post deploy checklist
+
+1. Login/logout works.
+2. Dashboard has no CORS errors.
+3. Contacts/lists CRUD works.
+4. Campaign save + manual send works.
+5. Professional schedule loads and refreshes.
+6. Upload/delete files works with public links.
+7. Gemini proxy and admin Gemini screen work.
+8. Users & Groups admin actions work.
+9. Warmer admin module loads and can force-run safely.
+
+## 5) Windows CLI note
+
+In `cmd.exe`, do not break `wrangler` commands with `\`.
+Use a single line command.
