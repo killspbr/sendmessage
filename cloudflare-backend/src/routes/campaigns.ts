@@ -44,15 +44,16 @@ function normalizeDeliveryPayload(input: unknown) {
   return input
 }
 
-let tableCreated = false
+let migrationV3Attempted = false
 
 async function ensureCampaignsTable(db: ReturnType<typeof getDb>) {
-  if (tableCreated) return
+  if (migrationV3Attempted) return
+  migrationV3Attempted = true
+  
   const UUID_GEN = "gen_random_uuid()"
-  await runSchemaBestEffort(async () => {
-    // Tenta carregar pgcrypto se necessário (Postgres < 13)
-    await db.query(`CREATE EXTENSION IF NOT EXISTS "pgcrypto"`).catch(() => {})
+  await db.query(`CREATE EXTENSION IF NOT EXISTS "pgcrypto"`).catch(() => {})
 
+  await runSchemaBestEffort(async () => {
     await db.query(`
       CREATE TABLE IF NOT EXISTS campaigns (
         id UUID PRIMARY KEY DEFAULT ${UUID_GEN},
@@ -71,12 +72,14 @@ async function ensureCampaignsTable(db: ReturnType<typeof getDb>) {
       )
     `)
 
-    // Garante colunas de JSONB
-    await db.query(`ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS variations JSONB NOT NULL DEFAULT '[]'::jsonb`).catch(() => { })
-    await db.query(`ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS delivery_payload JSONB`).catch(() => { })
-
-    // MIGRAÇÃO CRÍTICA: Se channels for text[], converta para jsonb para suportar os novos payloads.
+    // MIGRAÇÃO CRÍTICA FORÇADA
     try {
+      // 1. Garante que as colunas novas existem (para quem tem schema antigo sem variations/payload)
+      await db.query(`ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS variations JSONB NOT NULL DEFAULT '[]'::jsonb`).catch(() => {})
+      await db.query(`ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS delivery_payload JSONB`).catch(() => {})
+      
+      // 2. Converte channels de Array de Texto (text[]) para JSONB se necessário
+      // Usamos uma query bruta que tenta a conversão se o tipo for ARRAY
       await db.query(`
         DO $$
         BEGIN
@@ -89,8 +92,9 @@ async function ensureCampaignsTable(db: ReturnType<typeof getDb>) {
         END $$;
       `)
     } catch (err) {
-      console.error('[Migration] Falha ao converter channels:', err)
+      console.warn('[MigrationV3] Falha na migracao de colunas:', err)
     }
+
     await db.query(`ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS interval_min_seconds INTEGER NOT NULL DEFAULT 30`).catch(() => {})
     await db.query(`ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS interval_max_seconds INTEGER NOT NULL DEFAULT 90`).catch(() => {})
 
@@ -98,8 +102,7 @@ async function ensureCampaignsTable(db: ReturnType<typeof getDb>) {
       CREATE INDEX IF NOT EXISTS idx_campaigns_user_created_at
         ON campaigns(user_id, created_at DESC)
     `)
-  }, 'campaigns')
-  tableCreated = true
+  }, 'campaigns_v3')
 }
 
 let historyTableCreated = false
