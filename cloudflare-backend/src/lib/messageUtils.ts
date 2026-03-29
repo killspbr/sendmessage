@@ -53,7 +53,7 @@ export function htmlToWhatsapp(html: unknown) {
     if (!cleanLabel) return String(url || '')
     return `${cleanLabel} (${String(url || '')})`
   })
-  text = text.replace(/<li[^>]*>\s*([\s\S]*?)\s*<\/li>/gi, '• $1\n')
+  text = text.replace(/<li[^>]*>\s*([\s\S]*?)\s*<\/li>/gi, '- $1\n')
   text = text.replace(/<\/?(ul|ol)[^>]*>/gi, '\n')
   text = text.replace(/<br\s*\/?>/gi, '\n')
   text = text.replace(/<\/(p|div)>/gi, '\n')
@@ -68,4 +68,3 @@ export function htmlToWhatsapp(html: unknown) {
     .replace(/\n{3,}/g, '\n\n')
     .trim()
 }
-
