@@ -6,9 +6,9 @@ import type { Bindings, AppVariables } from '../types'
 export const statusRoutes = new Hono<{ Bindings: Bindings; Variables: AppVariables }>()
 
 export const CURRENT_VERSION = {
-  commit: 'ace897b+',
-  timestamp: '2026-03-29T19:55:00-03:00',
-  message: 'Deploy Oficial de Estabilização (Fix 500 & 404) | Correção de Mídia PDF/Áudio',
+  commit: '7062f32+',
+  timestamp: '2026-03-29T20:04:00-03:00',
+  message: 'Teste Final da Notificação | Estabilização Geral do Sistema v1.0.6',
 }
 
 statusRoutes.get('/version', (c) => {

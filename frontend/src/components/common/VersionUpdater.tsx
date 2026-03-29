@@ -38,7 +38,7 @@ export function VersionUpdater() {
 
   useEffect(() => {
     checkVersion()
-    const timer = setInterval(checkVersion, 300000)
+    const timer = setInterval(checkVersion, 30000)
     return () => clearInterval(timer)
   }, [currentLocal?.commit])
 
