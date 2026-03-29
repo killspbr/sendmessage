@@ -5,6 +5,7 @@ import { getDb } from '../lib/db'
 import { executeWhatsappCampaignDelivery, validateCampaignDeliveryPayload } from '../lib/campaignDelivery'
 import { buildContactSendHistoryEntry, insertContactSendHistory } from '../lib/sendHistory'
 import { toEvolutionNumber } from '../lib/messageUtils'
+import { runSchemaBestEffort } from '../lib/runtimeSchema'
 
 const ALLOWED_CHANNELS = new Set(['whatsapp', 'email'])
 
@@ -44,51 +45,55 @@ function normalizeDeliveryPayload(input: unknown) {
 }
 
 async function ensureCampaignsTable(db: ReturnType<typeof getDb>) {
-  await db.query(`
-    CREATE TABLE IF NOT EXISTS campaigns (
-      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-      name TEXT NOT NULL,
-      status TEXT NOT NULL DEFAULT 'rascunho',
-      channels JSONB NOT NULL DEFAULT '["whatsapp"]'::jsonb,
-      list_name TEXT NOT NULL,
-      message TEXT NOT NULL,
-      variations JSONB NOT NULL DEFAULT '[]'::jsonb,
-      interval_min_seconds INTEGER NOT NULL DEFAULT 30,
-      interval_max_seconds INTEGER NOT NULL DEFAULT 90,
-      delivery_payload JSONB,
-      created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-      updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-    )
-  `)
+  await runSchemaBestEffort(async () => {
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS campaigns (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        name TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'rascunho',
+        channels JSONB NOT NULL DEFAULT '["whatsapp"]'::jsonb,
+        list_name TEXT NOT NULL,
+        message TEXT NOT NULL,
+        variations JSONB NOT NULL DEFAULT '[]'::jsonb,
+        interval_min_seconds INTEGER NOT NULL DEFAULT 30,
+        interval_max_seconds INTEGER NOT NULL DEFAULT 90,
+        delivery_payload JSONB,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      )
+    `)
 
-  await db.query(`
-    CREATE INDEX IF NOT EXISTS idx_campaigns_user_created_at
-      ON campaigns(user_id, created_at DESC)
-  `)
+    await db.query(`
+      CREATE INDEX IF NOT EXISTS idx_campaigns_user_created_at
+        ON campaigns(user_id, created_at DESC)
+    `)
+  }, 'campaigns')
 }
 
 async function ensureContactHistoryTable(db: ReturnType<typeof getDb>) {
-  await db.query(`
-    CREATE TABLE IF NOT EXISTS contact_send_history (
-      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      user_id UUID REFERENCES users(id) ON DELETE CASCADE,
-      campaign_id UUID,
-      campaign_name TEXT,
-      contact_name TEXT,
-      phone_key TEXT,
-      channel TEXT,
-      ok BOOLEAN DEFAULT false,
-      status INTEGER,
-      webhook_ok BOOLEAN DEFAULT false,
-      provider_status TEXT,
-      error_detail TEXT,
-      payload_raw JSONB,
-      delivery_summary JSONB,
-      run_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-      created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-    )
-  `)
+  await runSchemaBestEffort(async () => {
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS contact_send_history (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+        campaign_id UUID,
+        campaign_name TEXT,
+        contact_name TEXT,
+        phone_key TEXT,
+        channel TEXT,
+        ok BOOLEAN DEFAULT false,
+        status INTEGER,
+        webhook_ok BOOLEAN DEFAULT false,
+        provider_status TEXT,
+        error_detail TEXT,
+        payload_raw JSONB,
+        delivery_summary JSONB,
+        run_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      )
+    `)
+  }, 'campaigns-history')
 }
 
 async function resolveEvolutionConfigForUser(userId: string, db: ReturnType<typeof getDb>) {

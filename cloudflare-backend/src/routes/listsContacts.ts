@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import type { Bindings, AppVariables } from '../types'
 import { authenticateToken } from '../lib/auth'
 import { getDb } from '../lib/db'
+import { runSchemaBestEffort } from '../lib/runtimeSchema'
 
 function getAuthenticatedUserId(c: { get: (key: 'user') => { id?: string } | undefined }) {
   const user = c.get('user')
@@ -20,46 +21,48 @@ function normalizeNullableText(value: unknown) {
 }
 
 async function ensureListsAndContactsTables(db: ReturnType<typeof getDb>) {
-  await db.query(`
-    CREATE TABLE IF NOT EXISTS lists (
-      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-      name TEXT NOT NULL,
-      created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-    )
-  `)
+  await runSchemaBestEffort(async () => {
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS lists (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        name TEXT NOT NULL,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      )
+    `)
 
-  await db.query(`
-    CREATE INDEX IF NOT EXISTS idx_lists_user_name
-      ON lists(user_id, name)
-  `)
+    await db.query(`
+      CREATE INDEX IF NOT EXISTS idx_lists_user_name
+        ON lists(user_id, name)
+    `)
 
-  await db.query(`
-    CREATE TABLE IF NOT EXISTS contacts (
-      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-      list_id UUID NOT NULL REFERENCES lists(id) ON DELETE CASCADE,
-      name TEXT NOT NULL,
-      phone TEXT DEFAULT '',
-      email TEXT DEFAULT '',
-      category TEXT DEFAULT '',
-      cep TEXT DEFAULT '',
-      rating TEXT DEFAULT '',
-      address TEXT DEFAULT '',
-      city TEXT DEFAULT '',
-      state TEXT DEFAULT '',
-      instagram TEXT DEFAULT '',
-      facebook TEXT DEFAULT '',
-      whatsapp TEXT DEFAULT '',
-      website TEXT DEFAULT '',
-      created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-    )
-  `)
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS contacts (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        list_id UUID NOT NULL REFERENCES lists(id) ON DELETE CASCADE,
+        name TEXT NOT NULL,
+        phone TEXT DEFAULT '',
+        email TEXT DEFAULT '',
+        category TEXT DEFAULT '',
+        cep TEXT DEFAULT '',
+        rating TEXT DEFAULT '',
+        address TEXT DEFAULT '',
+        city TEXT DEFAULT '',
+        state TEXT DEFAULT '',
+        instagram TEXT DEFAULT '',
+        facebook TEXT DEFAULT '',
+        whatsapp TEXT DEFAULT '',
+        website TEXT DEFAULT '',
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      )
+    `)
 
-  await db.query(`
-    CREATE INDEX IF NOT EXISTS idx_contacts_user_list_name
-      ON contacts(user_id, list_id, name)
-  `)
+    await db.query(`
+      CREATE INDEX IF NOT EXISTS idx_contacts_user_list_name
+        ON contacts(user_id, list_id, name)
+    `)
+  }, 'listsContacts')
 }
 
 export const listsContactsRoutes = new Hono<{ Bindings: Bindings; Variables: AppVariables }>()

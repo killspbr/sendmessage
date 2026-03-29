@@ -22,17 +22,29 @@ import { extractMapsRoutes } from './routes/extractMaps'
 import { emailWebhookRoutes } from './routes/emailWebhook'
 
 const app = new Hono<{ Bindings: Bindings; Variables: AppVariables }>()
+const ALLOWED_ORIGINS = new Set([
+  'https://sendmessage-frontend.pages.dev',
+  'http://localhost:5173',
+  'http://localhost:3000',
+  'http://localhost:4173',
+])
 
 app.use('*', cors({
-  origin: [
-    'https://sendmessage-frontend.pages.dev',
-    'http://localhost:5173',
-    'http://localhost:3000',
-    'http://localhost:4173',
-  ],
+  origin: [...ALLOWED_ORIGINS],
   allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
 }))
+
+app.options('*', (c) => {
+  const origin = c.req.header('origin') || ''
+  if (ALLOWED_ORIGINS.has(origin)) {
+    c.header('Access-Control-Allow-Origin', origin)
+    c.header('Vary', 'Origin')
+  }
+  c.header('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS')
+  c.header('Access-Control-Allow-Headers', 'Content-Type,Authorization,X-Requested-With,Accept,Origin')
+  return c.body(null, 204)
+})
 
 app.use('*', async (c, next) => {
   if (c.req.method === 'OPTIONS') {
@@ -68,16 +80,15 @@ app.notFound((c) => c.json({ error: 'Rota nao encontrada no backend Cloudflare.'
 app.onError((error, c) => {
   console.error('[CloudflareBackend] Erro nao tratado:', error)
   const origin = c.req.header('origin') || ''
-  if (
-    origin === 'https://sendmessage-frontend.pages.dev' ||
-    origin === 'http://localhost:5173' ||
-    origin === 'http://localhost:3000' ||
-    origin === 'http://localhost:4173'
-  ) {
+  if (ALLOWED_ORIGINS.has(origin)) {
     c.header('Access-Control-Allow-Origin', origin)
     c.header('Vary', 'Origin')
   }
-  return c.json({ error: 'Erro interno no backend Cloudflare.' }, 500)
+  const technical =
+    typeof (error as any)?.message === 'string'
+      ? (error as any).message
+      : String(error || 'Erro interno')
+  return c.json({ error: 'Erro interno no backend Cloudflare.', technical }, 500)
 })
 
 export default app

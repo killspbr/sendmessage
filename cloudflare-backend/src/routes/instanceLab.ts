@@ -3,6 +3,7 @@ import type { Bindings, AppVariables } from '../types'
 import { authenticateToken, checkAdmin } from '../lib/auth'
 import { getDb } from '../lib/db'
 import { toEvolutionNumber } from '../lib/messageUtils'
+import { runSchemaBestEffort } from '../lib/runtimeSchema'
 
 const DEFAULT_DELAY_SECONDS = 5
 const DEFAULT_MESSAGES_PER_RUN = 4
@@ -79,91 +80,93 @@ function toErrorMessage(error: unknown) {
 }
 
 async function ensureInstanceLabSchema(db: ReturnType<typeof getDb>) {
-  await db.query(`
-    CREATE TABLE IF NOT EXISTS warmer_configs (
-      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      name TEXT,
-      instance_a_id TEXT NOT NULL,
-      instance_b_id TEXT NOT NULL,
-      phone_a TEXT NOT NULL,
-      phone_b TEXT NOT NULL,
-      status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'paused', 'error')),
-      default_delay_seconds INTEGER DEFAULT 5,
-      default_messages_per_run INTEGER DEFAULT 4,
-      sample_image_url TEXT,
-      sample_document_url TEXT,
-      sample_audio_url TEXT,
-      notes TEXT,
-      last_run_status TEXT,
-      last_run_error TEXT,
-      last_run_at TIMESTAMP WITH TIME ZONE,
-      created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-      updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-    )
-  `)
+  await runSchemaBestEffort(async () => {
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS warmer_configs (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        name TEXT,
+        instance_a_id TEXT NOT NULL,
+        instance_b_id TEXT NOT NULL,
+        phone_a TEXT NOT NULL,
+        phone_b TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'paused', 'error')),
+        default_delay_seconds INTEGER DEFAULT 5,
+        default_messages_per_run INTEGER DEFAULT 4,
+        sample_image_url TEXT,
+        sample_document_url TEXT,
+        sample_audio_url TEXT,
+        notes TEXT,
+        last_run_status TEXT,
+        last_run_error TEXT,
+        last_run_at TIMESTAMP WITH TIME ZONE,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      )
+    `)
 
-  await db.query(`
-    CREATE TABLE IF NOT EXISTS warmer_runs (
-      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      warmer_id UUID NOT NULL REFERENCES warmer_configs(id) ON DELETE CASCADE,
-      initiated_by UUID REFERENCES users(id) ON DELETE SET NULL,
-      status TEXT NOT NULL DEFAULT 'queued' CHECK (status IN ('queued', 'running', 'completed', 'failed')),
-      steps_total INTEGER NOT NULL DEFAULT 1,
-      steps_completed INTEGER NOT NULL DEFAULT 0,
-      step_delay_seconds INTEGER NOT NULL DEFAULT 5,
-      preferred_start_side TEXT CHECK (preferred_start_side IN ('a', 'b')),
-      last_error TEXT,
-      started_at TIMESTAMP WITH TIME ZONE,
-      finished_at TIMESTAMP WITH TIME ZONE,
-      created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-    )
-  `)
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS warmer_runs (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        warmer_id UUID NOT NULL REFERENCES warmer_configs(id) ON DELETE CASCADE,
+        initiated_by UUID REFERENCES users(id) ON DELETE SET NULL,
+        status TEXT NOT NULL DEFAULT 'queued' CHECK (status IN ('queued', 'running', 'completed', 'failed')),
+        steps_total INTEGER NOT NULL DEFAULT 1,
+        steps_completed INTEGER NOT NULL DEFAULT 0,
+        step_delay_seconds INTEGER NOT NULL DEFAULT 5,
+        preferred_start_side TEXT CHECK (preferred_start_side IN ('a', 'b')),
+        last_error TEXT,
+        started_at TIMESTAMP WITH TIME ZONE,
+        finished_at TIMESTAMP WITH TIME ZONE,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      )
+    `)
 
-  await db.query(`
-    CREATE TABLE IF NOT EXISTS warmer_logs (
-      id BIGSERIAL PRIMARY KEY,
-      warmer_id UUID NOT NULL REFERENCES warmer_configs(id) ON DELETE CASCADE,
-      from_phone TEXT NOT NULL,
-      to_phone TEXT NOT NULL,
-      message_type TEXT DEFAULT 'text',
-      content_summary TEXT,
-      sent_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-      run_id UUID REFERENCES warmer_runs(id) ON DELETE SET NULL,
-      from_instance TEXT,
-      to_instance TEXT,
-      payload_type TEXT,
-      ok BOOLEAN DEFAULT true,
-      provider_status INTEGER,
-      response_time_ms INTEGER,
-      error_detail TEXT
-    )
-  `)
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS warmer_logs (
+        id BIGSERIAL PRIMARY KEY,
+        warmer_id UUID NOT NULL REFERENCES warmer_configs(id) ON DELETE CASCADE,
+        from_phone TEXT NOT NULL,
+        to_phone TEXT NOT NULL,
+        message_type TEXT DEFAULT 'text',
+        content_summary TEXT,
+        sent_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        run_id UUID REFERENCES warmer_runs(id) ON DELETE SET NULL,
+        from_instance TEXT,
+        to_instance TEXT,
+        payload_type TEXT,
+        ok BOOLEAN DEFAULT true,
+        provider_status INTEGER,
+        response_time_ms INTEGER,
+        error_detail TEXT
+      )
+    `)
 
-  await db.query(`ALTER TABLE warmer_configs ADD COLUMN IF NOT EXISTS name TEXT`)
-  await db.query(`ALTER TABLE warmer_configs ADD COLUMN IF NOT EXISTS notes TEXT`)
-  await db.query(`ALTER TABLE warmer_configs ADD COLUMN IF NOT EXISTS default_delay_seconds INTEGER DEFAULT 5`)
-  await db.query(`ALTER TABLE warmer_configs ADD COLUMN IF NOT EXISTS default_messages_per_run INTEGER DEFAULT 4`)
-  await db.query(`ALTER TABLE warmer_configs ADD COLUMN IF NOT EXISTS sample_image_url TEXT`)
-  await db.query(`ALTER TABLE warmer_configs ADD COLUMN IF NOT EXISTS sample_document_url TEXT`)
-  await db.query(`ALTER TABLE warmer_configs ADD COLUMN IF NOT EXISTS sample_audio_url TEXT`)
-  await db.query(`ALTER TABLE warmer_configs ADD COLUMN IF NOT EXISTS last_run_status TEXT`)
-  await db.query(`ALTER TABLE warmer_configs ADD COLUMN IF NOT EXISTS last_run_error TEXT`)
-  await db.query(`ALTER TABLE warmer_configs ADD COLUMN IF NOT EXISTS last_run_at TIMESTAMP WITH TIME ZONE`)
-  await db.query(`ALTER TABLE warmer_configs ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP`)
+    await db.query(`ALTER TABLE warmer_configs ADD COLUMN IF NOT EXISTS name TEXT`)
+    await db.query(`ALTER TABLE warmer_configs ADD COLUMN IF NOT EXISTS notes TEXT`)
+    await db.query(`ALTER TABLE warmer_configs ADD COLUMN IF NOT EXISTS default_delay_seconds INTEGER DEFAULT 5`)
+    await db.query(`ALTER TABLE warmer_configs ADD COLUMN IF NOT EXISTS default_messages_per_run INTEGER DEFAULT 4`)
+    await db.query(`ALTER TABLE warmer_configs ADD COLUMN IF NOT EXISTS sample_image_url TEXT`)
+    await db.query(`ALTER TABLE warmer_configs ADD COLUMN IF NOT EXISTS sample_document_url TEXT`)
+    await db.query(`ALTER TABLE warmer_configs ADD COLUMN IF NOT EXISTS sample_audio_url TEXT`)
+    await db.query(`ALTER TABLE warmer_configs ADD COLUMN IF NOT EXISTS last_run_status TEXT`)
+    await db.query(`ALTER TABLE warmer_configs ADD COLUMN IF NOT EXISTS last_run_error TEXT`)
+    await db.query(`ALTER TABLE warmer_configs ADD COLUMN IF NOT EXISTS last_run_at TIMESTAMP WITH TIME ZONE`)
+    await db.query(`ALTER TABLE warmer_configs ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP`)
 
-  await db.query(`ALTER TABLE warmer_logs ADD COLUMN IF NOT EXISTS run_id UUID REFERENCES warmer_runs(id) ON DELETE SET NULL`)
-  await db.query(`ALTER TABLE warmer_logs ADD COLUMN IF NOT EXISTS from_instance TEXT`)
-  await db.query(`ALTER TABLE warmer_logs ADD COLUMN IF NOT EXISTS to_instance TEXT`)
-  await db.query(`ALTER TABLE warmer_logs ADD COLUMN IF NOT EXISTS payload_type TEXT`)
-  await db.query(`ALTER TABLE warmer_logs ADD COLUMN IF NOT EXISTS ok BOOLEAN DEFAULT true`)
-  await db.query(`ALTER TABLE warmer_logs ADD COLUMN IF NOT EXISTS provider_status INTEGER`)
-  await db.query(`ALTER TABLE warmer_logs ADD COLUMN IF NOT EXISTS response_time_ms INTEGER`)
-  await db.query(`ALTER TABLE warmer_logs ADD COLUMN IF NOT EXISTS error_detail TEXT`)
+    await db.query(`ALTER TABLE warmer_logs ADD COLUMN IF NOT EXISTS run_id UUID REFERENCES warmer_runs(id) ON DELETE SET NULL`)
+    await db.query(`ALTER TABLE warmer_logs ADD COLUMN IF NOT EXISTS from_instance TEXT`)
+    await db.query(`ALTER TABLE warmer_logs ADD COLUMN IF NOT EXISTS to_instance TEXT`)
+    await db.query(`ALTER TABLE warmer_logs ADD COLUMN IF NOT EXISTS payload_type TEXT`)
+    await db.query(`ALTER TABLE warmer_logs ADD COLUMN IF NOT EXISTS ok BOOLEAN DEFAULT true`)
+    await db.query(`ALTER TABLE warmer_logs ADD COLUMN IF NOT EXISTS provider_status INTEGER`)
+    await db.query(`ALTER TABLE warmer_logs ADD COLUMN IF NOT EXISTS response_time_ms INTEGER`)
+    await db.query(`ALTER TABLE warmer_logs ADD COLUMN IF NOT EXISTS error_detail TEXT`)
 
-  await db.query(`CREATE INDEX IF NOT EXISTS idx_warmer_configs_status ON warmer_configs(status)`)
-  await db.query(`CREATE INDEX IF NOT EXISTS idx_warmer_logs_warmer_id_sent_at ON warmer_logs(warmer_id, sent_at DESC)`)
-  await db.query(`CREATE INDEX IF NOT EXISTS idx_warmer_runs_warmer_created_at ON warmer_runs(warmer_id, created_at DESC)`)
-  await db.query(`CREATE INDEX IF NOT EXISTS idx_warmer_runs_status_created_at ON warmer_runs(status, created_at DESC)`)
+    await db.query(`CREATE INDEX IF NOT EXISTS idx_warmer_configs_status ON warmer_configs(status)`)
+    await db.query(`CREATE INDEX IF NOT EXISTS idx_warmer_logs_warmer_id_sent_at ON warmer_logs(warmer_id, sent_at DESC)`)
+    await db.query(`CREATE INDEX IF NOT EXISTS idx_warmer_runs_warmer_created_at ON warmer_runs(warmer_id, created_at DESC)`)
+    await db.query(`CREATE INDEX IF NOT EXISTS idx_warmer_runs_status_created_at ON warmer_runs(status, created_at DESC)`)
+  }, 'instanceLab')
 }
 
 async function getGlobalEvolutionConfig(db: ReturnType<typeof getDb>) {
