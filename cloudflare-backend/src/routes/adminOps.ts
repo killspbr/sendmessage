@@ -2,77 +2,82 @@ import { Hono } from 'hono'
 import type { Bindings, AppVariables } from '../types'
 import { authenticateToken, checkAdmin } from '../lib/auth'
 import { getDb } from '../lib/db'
+import { runBestEffortDdl } from '../lib/ddl'
 
 async function ensureAdminOpsTables(db: ReturnType<typeof getDb>) {
-  await db.query(`
-    CREATE TABLE IF NOT EXISTS campaign_schedule (
-      id SERIAL PRIMARY KEY,
-      campaign_id UUID NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
-      user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-      data_inicio DATE NOT NULL,
-      hora_inicio TIME NOT NULL,
-      limite_diario INTEGER DEFAULT 300,
-      intervalo_minimo INTEGER DEFAULT 30,
-      intervalo_maximo INTEGER DEFAULT 90,
-      mensagens_por_lote INTEGER DEFAULT 45,
-      tempo_pausa_lote INTEGER DEFAULT 15,
-      status TEXT DEFAULT 'agendado',
-      scheduler_claimed_at TIMESTAMP WITH TIME ZONE,
-      pause_reason TEXT,
-      pause_details TEXT,
-      paused_at TIMESTAMP WITH TIME ZONE,
-      resumed_at TIMESTAMP WITH TIME ZONE,
-      data_criacao TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-    )
-  `)
-
-  await db.query(`
-    CREATE TABLE IF NOT EXISTS message_queue (
-      id SERIAL PRIMARY KEY,
-      schedule_id INTEGER REFERENCES campaign_schedule(id) ON DELETE CASCADE,
-      campaign_id UUID NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
-      user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-      contact_id TEXT,
-      telefone TEXT NOT NULL,
-      nome TEXT,
-      mensagem TEXT NOT NULL,
-      status TEXT DEFAULT 'pendente',
-      tentativas INTEGER DEFAULT 0,
-      data_criacao TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-      data_envio TIMESTAMP WITH TIME ZONE,
-      processing_started_at TIMESTAMP WITH TIME ZONE,
-      recovered_at TIMESTAMP WITH TIME ZONE,
-      erro TEXT
-    )
-  `)
-
-  await db.query(`
-    CREATE TABLE IF NOT EXISTS gemini_api_keys (
-      id SERIAL PRIMARY KEY,
-      user_id UUID REFERENCES users(id) ON DELETE CASCADE,
-      nome TEXT NOT NULL,
-      api_key TEXT NOT NULL,
-      status TEXT DEFAULT 'ativa',
-      ultimo_uso TIMESTAMP WITH TIME ZONE,
-      requests_count INTEGER DEFAULT 0,
-      data_cadastro TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-      observacoes TEXT
-    )
-  `)
-
-  await db.query(`
-    CREATE TABLE IF NOT EXISTS gemini_api_usage_logs (
-      id SERIAL PRIMARY KEY,
-      key_id INTEGER,
-      user_id UUID,
-      module TEXT,
-      resultado TEXT,
-      erro TEXT,
-      source TEXT DEFAULT 'global-pool',
-      key_label TEXT,
-      data_solicitacao TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-    )
-  `)
+  await runBestEffortDdl(db, 'adminOps.ensureAdminOpsTables', [
+    `
+      CREATE TABLE IF NOT EXISTS campaign_schedule (
+        id SERIAL PRIMARY KEY,
+        campaign_id UUID NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
+        user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        data_inicio DATE NOT NULL,
+        hora_inicio TIME NOT NULL,
+        limite_diario INTEGER DEFAULT 300,
+        intervalo_minimo INTEGER DEFAULT 30,
+        intervalo_maximo INTEGER DEFAULT 90,
+        mensagens_por_lote INTEGER DEFAULT 45,
+        tempo_pausa_lote INTEGER DEFAULT 15,
+        status TEXT DEFAULT 'agendado',
+        scheduler_claimed_at TIMESTAMP WITH TIME ZONE,
+        pause_reason TEXT,
+        pause_details TEXT,
+        paused_at TIMESTAMP WITH TIME ZONE,
+        resumed_at TIMESTAMP WITH TIME ZONE,
+        data_criacao TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      )
+    `,
+    `
+      CREATE TABLE IF NOT EXISTS message_queue (
+        id SERIAL PRIMARY KEY,
+        schedule_id INTEGER REFERENCES campaign_schedule(id) ON DELETE CASCADE,
+        campaign_id UUID NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
+        user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        contact_id TEXT,
+        telefone TEXT NOT NULL,
+        nome TEXT,
+        mensagem TEXT NOT NULL,
+        status TEXT DEFAULT 'pendente',
+        tentativas INTEGER DEFAULT 0,
+        data_criacao TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        data_envio TIMESTAMP WITH TIME ZONE,
+        processing_started_at TIMESTAMP WITH TIME ZONE,
+        recovered_at TIMESTAMP WITH TIME ZONE,
+        erro TEXT
+      )
+    `,
+    `
+      CREATE TABLE IF NOT EXISTS gemini_api_keys (
+        id SERIAL PRIMARY KEY,
+        user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+        nome TEXT NOT NULL,
+        api_key TEXT NOT NULL,
+        status TEXT DEFAULT 'ativa',
+        ultimo_uso TIMESTAMP WITH TIME ZONE,
+        requests_count INTEGER DEFAULT 0,
+        data_cadastro TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        observacoes TEXT
+      )
+    `,
+    `
+      CREATE TABLE IF NOT EXISTS gemini_api_usage_logs (
+        id SERIAL PRIMARY KEY,
+        key_id INTEGER,
+        user_id UUID,
+        module TEXT,
+        resultado TEXT,
+        erro TEXT,
+        source TEXT DEFAULT 'global-pool',
+        key_label TEXT,
+        data_solicitacao TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      )
+    `,
+    `ALTER TABLE message_queue ADD COLUMN IF NOT EXISTS processing_started_at TIMESTAMP WITH TIME ZONE`,
+    `ALTER TABLE message_queue ADD COLUMN IF NOT EXISTS recovered_at TIMESTAMP WITH TIME ZONE`,
+    `ALTER TABLE message_queue ADD COLUMN IF NOT EXISTS erro TEXT`,
+    `ALTER TABLE gemini_api_usage_logs ADD COLUMN IF NOT EXISTS source TEXT DEFAULT 'global-pool'`,
+    `ALTER TABLE gemini_api_usage_logs ADD COLUMN IF NOT EXISTS key_label TEXT`,
+  ])
 }
 
 export const adminOpsRoutes = new Hono<{ Bindings: Bindings; Variables: AppVariables }>()
@@ -181,4 +186,3 @@ adminOpsRoutes.get('/admin/queue', authenticateToken, checkAdmin, async (c) => {
   )
   return c.json({ success: true, data: result.rows })
 })
-

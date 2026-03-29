@@ -2,6 +2,7 @@ import { jwtVerify } from 'jose'
 import type { MiddlewareHandler } from 'hono'
 import type { Bindings, AppVariables } from '../types'
 import { getDb } from './db'
+import { isSchemaMissingError } from './ddl'
 
 const DEFAULT_JWT_SECRET = 'sendmessage-cloudflare-jwt-secret-change-me-2026'
 let warnedWeakJwtSecret = false
@@ -35,8 +36,18 @@ export const authenticateToken: MiddlewareHandler<{ Bindings: Bindings; Variable
   }
 
   const db = getDb(c.env)
-  const result = await db.query('SELECT token_version FROM users WHERE id = $1 LIMIT 1', [payload.id])
-  const user = result.rows[0]
+  let user: any = null
+  try {
+    const result = await db.query('SELECT token_version FROM users WHERE id = $1 LIMIT 1', [payload.id])
+    user = result.rows[0]
+  } catch (error) {
+    if (isSchemaMissingError(error)) {
+      const fallback = await db.query('SELECT id FROM users WHERE id = $1 LIMIT 1', [payload.id])
+      user = fallback.rows[0] || null
+    } else {
+      throw error
+    }
+  }
 
   if (!user) {
     return c.json({ error: 'Usuario nao encontrado.' }, 401)
@@ -62,15 +73,23 @@ export const checkAdmin: MiddlewareHandler<{ Bindings: Bindings; Variables: AppV
   }
 
   const db = getDb(c.env)
-  const result = await db.query(
-    `SELECT 1
-       FROM user_profiles up
-       JOIN user_groups ug ON ug.id = up.group_id
-      WHERE up.id = $1
-        AND ug.name = 'Administrador'
-      LIMIT 1`,
-    [user.id]
-  )
+  let result
+  try {
+    result = await db.query(
+      `SELECT 1
+         FROM user_profiles up
+         JOIN user_groups ug ON ug.id = up.group_id
+        WHERE up.id = $1
+          AND ug.name = 'Administrador'
+        LIMIT 1`,
+      [user.id]
+    )
+  } catch (error) {
+    if (isSchemaMissingError(error)) {
+      return c.json({ error: 'Controle de grupos/permissoes indisponivel no banco atual.' }, 503)
+    }
+    throw error
+  }
 
   if (result.rows.length === 0) {
     return c.json({ error: 'Acesso restrito a administradores.' }, 403)

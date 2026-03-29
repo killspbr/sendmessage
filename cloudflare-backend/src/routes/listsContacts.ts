@@ -160,33 +160,48 @@ listsContactsRoutes.delete('/lists', authenticateToken, async (c) => {
 })
 
 listsContactsRoutes.get('/contacts', authenticateToken, async (c) => {
-  const userId = getAuthenticatedUserId(c)
-  if (!userId) return c.json({ error: 'Acesso negado.' }, 401)
-  const listId = c.req.query('listId')
-  const db = getDb(c.env)
-  await ensureListsAndContactsTables(db)
+  try {
+    const userId = getAuthenticatedUserId(c)
+    if (!userId) return c.json({ error: 'Acesso negado.' }, 401)
+    const listId = c.req.query('listId')
+    const db = getDb(c.env)
+    await ensureListsAndContactsTables(db)
 
-  if (listId) {
+    if (listId) {
+      const result = await db.query(
+        `SELECT *
+           FROM contacts
+          WHERE user_id = $1
+            AND list_id = $2
+          ORDER BY name ASC`,
+        [userId, listId]
+      )
+      return c.json(result.rows)
+    }
+
     const result = await db.query(
       `SELECT *
          FROM contacts
         WHERE user_id = $1
-          AND list_id = $2
         ORDER BY name ASC`,
-      [userId, listId]
+      [userId]
     )
+
     return c.json(result.rows)
+  } catch (error) {
+    const technical =
+      typeof (error as any)?.message === 'string'
+        ? (error as any).message
+        : String(error || 'Erro interno')
+    console.error('[contacts.get] Falha ao carregar contatos:', technical)
+    return c.json(
+      {
+        error: 'Erro ao carregar contatos.',
+        technical,
+      },
+      500
+    )
   }
-
-  const result = await db.query(
-    `SELECT *
-       FROM contacts
-      WHERE user_id = $1
-      ORDER BY name ASC`,
-    [userId]
-  )
-
-  return c.json(result.rows)
 })
 
 listsContactsRoutes.post('/contacts', authenticateToken, async (c) => {

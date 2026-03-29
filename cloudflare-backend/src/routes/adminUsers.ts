@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs'
 import type { Bindings, AppVariables } from '../types'
 import { authenticateToken, checkAdmin } from '../lib/auth'
 import { getDb } from '../lib/db'
+import { runBestEffortDdl } from '../lib/ddl'
 import { toEvolutionNumber } from '../lib/messageUtils'
 
 const DEFAULT_GROUPS = ['Administrador', 'Gerente', 'Operador', 'Visualizador']
@@ -66,71 +67,68 @@ const ROLE_PERMISSION_MATRIX: Record<string, string[]> = {
 }
 
 async function ensureAdminUsersTables(db: ReturnType<typeof getDb>) {
-  await db.query(`
-    CREATE TABLE IF NOT EXISTS user_groups (
-      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      name TEXT UNIQUE NOT NULL,
-      created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-    )
-  `)
-
-  await db.query(`
-    CREATE TABLE IF NOT EXISTS permissions (
-      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      code TEXT UNIQUE NOT NULL,
-      name TEXT,
-      description TEXT,
-      created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-    )
-  `)
-
-  await db.query(`
-    CREATE TABLE IF NOT EXISTS group_permissions (
-      group_id UUID NOT NULL REFERENCES user_groups(id) ON DELETE CASCADE,
-      permission_id UUID NOT NULL REFERENCES permissions(id) ON DELETE CASCADE,
-      PRIMARY KEY (group_id, permission_id)
-    )
-  `)
-
-  await db.query(`
-    CREATE TABLE IF NOT EXISTS user_profiles (
-      id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
-      display_name TEXT,
-      phone TEXT,
-      group_id UUID REFERENCES user_groups(id) ON DELETE SET NULL,
-      use_global_ai BOOLEAN DEFAULT true,
-      ai_api_key TEXT,
-      company_info TEXT,
-      evolution_url TEXT,
-      evolution_apikey TEXT,
-      evolution_instance TEXT,
-      created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-      updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-    )
-  `)
-
-  await db.query(`
-    CREATE TABLE IF NOT EXISTS app_settings (
-      id SERIAL PRIMARY KEY,
-      global_ai_api_key TEXT,
-      evolution_api_url TEXT,
-      evolution_api_key TEXT,
-      evolution_shared_instance TEXT,
-      updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-    )
-  `)
-
-  await db.query(`ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS display_name TEXT`)
-  await db.query(`ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS phone TEXT`)
-  await db.query(`ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS group_id UUID REFERENCES user_groups(id) ON DELETE SET NULL`)
-  await db.query(`ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS use_global_ai BOOLEAN DEFAULT true`)
-  await db.query(`ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS ai_api_key TEXT`)
-  await db.query(`ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS company_info TEXT`)
-  await db.query(`ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS evolution_url TEXT`)
-  await db.query(`ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS evolution_apikey TEXT`)
-  await db.query(`ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS evolution_instance TEXT`)
-  await db.query(`ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP`)
-  await db.query(`ALTER TABLE permissions ADD COLUMN IF NOT EXISTS description TEXT`)
+  await runBestEffortDdl(db, 'adminUsers.ensureAdminUsersTables', [
+    `
+      CREATE TABLE IF NOT EXISTS user_groups (
+        id UUID PRIMARY KEY DEFAULT (md5(random()::text || clock_timestamp()::text)::uuid),
+        name TEXT UNIQUE NOT NULL,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      )
+    `,
+    `
+      CREATE TABLE IF NOT EXISTS permissions (
+        id UUID PRIMARY KEY DEFAULT (md5(random()::text || clock_timestamp()::text)::uuid),
+        code TEXT UNIQUE NOT NULL,
+        name TEXT,
+        description TEXT,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      )
+    `,
+    `
+      CREATE TABLE IF NOT EXISTS group_permissions (
+        group_id UUID NOT NULL REFERENCES user_groups(id) ON DELETE CASCADE,
+        permission_id UUID NOT NULL REFERENCES permissions(id) ON DELETE CASCADE,
+        PRIMARY KEY (group_id, permission_id)
+      )
+    `,
+    `
+      CREATE TABLE IF NOT EXISTS user_profiles (
+        id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+        display_name TEXT,
+        phone TEXT,
+        group_id UUID REFERENCES user_groups(id) ON DELETE SET NULL,
+        use_global_ai BOOLEAN DEFAULT true,
+        ai_api_key TEXT,
+        company_info TEXT,
+        evolution_url TEXT,
+        evolution_apikey TEXT,
+        evolution_instance TEXT,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      )
+    `,
+    `
+      CREATE TABLE IF NOT EXISTS app_settings (
+        id SERIAL PRIMARY KEY,
+        global_ai_api_key TEXT,
+        evolution_api_url TEXT,
+        evolution_api_key TEXT,
+        evolution_shared_instance TEXT,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      )
+    `,
+    `ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS display_name TEXT`,
+    `ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS phone TEXT`,
+    `ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS group_id UUID REFERENCES user_groups(id) ON DELETE SET NULL`,
+    `ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS use_global_ai BOOLEAN DEFAULT true`,
+    `ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS ai_api_key TEXT`,
+    `ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS company_info TEXT`,
+    `ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS evolution_url TEXT`,
+    `ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS evolution_apikey TEXT`,
+    `ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS evolution_instance TEXT`,
+    `ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP`,
+    `ALTER TABLE permissions ADD COLUMN IF NOT EXISTS description TEXT`,
+  ])
 }
 
 async function ensureAdminSeeds(db: ReturnType<typeof getDb>) {

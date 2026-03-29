@@ -113,17 +113,32 @@ historyRoutes.post('/history', authenticateToken, async (c) => {
 })
 
 historyRoutes.get('/history', authenticateToken, async (c) => {
-  const userId = getAuthenticatedUserId(c)
-  if (!userId) return c.json({ error: 'Acesso negado.' }, 401)
-  const db = getDb(c.env)
-  await ensureHistoryTables(db)
+  try {
+    const userId = getAuthenticatedUserId(c)
+    if (!userId) return c.json({ error: 'Acesso negado.' }, 401)
+    const db = getDb(c.env)
+    await ensureHistoryTables(db)
 
-  const result = await db.query(
-    'SELECT * FROM contact_send_history WHERE user_id = $1 ORDER BY run_at DESC',
-    [userId]
-  )
+    const result = await db.query(
+      'SELECT * FROM contact_send_history WHERE user_id = $1 ORDER BY run_at DESC',
+      [userId]
+    )
 
-  return c.json(result.rows)
+    return c.json(result.rows)
+  } catch (error) {
+    const technical =
+      typeof (error as any)?.message === 'string'
+        ? (error as any).message
+        : String(error || 'Erro interno')
+    console.error('[history.get] Falha ao carregar historico:', technical)
+    return c.json(
+      {
+        error: 'Erro ao carregar historico de envios.',
+        technical,
+      },
+      500
+    )
+  }
 })
 
 historyRoutes.delete('/history', authenticateToken, async (c) => {
@@ -136,17 +151,32 @@ historyRoutes.delete('/history', authenticateToken, async (c) => {
 })
 
 historyRoutes.get('/campaigns/history', authenticateToken, async (c) => {
-  const userId = getAuthenticatedUserId(c)
-  if (!userId) return c.json({ error: 'Acesso negado.' }, 401)
-  const db = getDb(c.env)
-  await ensureHistoryTables(db)
+  try {
+    const userId = getAuthenticatedUserId(c)
+    if (!userId) return c.json({ error: 'Acesso negado.' }, 401)
+    const db = getDb(c.env)
+    await ensureHistoryTables(db)
 
-  const result = await db.query(
-    'SELECT * FROM campaign_history WHERE user_id = $1 ORDER BY run_at DESC',
-    [userId]
-  )
+    const result = await db.query(
+      'SELECT * FROM campaign_history WHERE user_id = $1 ORDER BY run_at DESC',
+      [userId]
+    )
 
-  return c.json(result.rows)
+    return c.json(result.rows)
+  } catch (error) {
+    const technical =
+      typeof (error as any)?.message === 'string'
+        ? (error as any).message
+        : String(error || 'Erro interno')
+    console.error('[campaigns.history.get] Falha ao carregar historico de campanhas:', technical)
+    return c.json(
+      {
+        error: 'Erro ao carregar historico de campanhas.',
+        technical,
+      },
+      500
+    )
+  }
 })
 
 historyRoutes.post('/campaigns/history', authenticateToken, async (c) => {

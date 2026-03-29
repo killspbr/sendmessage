@@ -43,7 +43,7 @@ export function AuthPage({
             <span className="text-[11px] text-slate-400">
               {authMode === 'login' && 'Acesse sua conta para ver contatos e campanhas.'}
               {authMode === 'signup' && 'Crie sua conta para começar a enviar.'}
-              {authMode === 'forgot-password' && 'Recupere o acesso à sua conta.'}
+              {authMode === 'forgot-password' && 'Recupere o acesso recebendo uma nova senha no seu WhatsApp.'}
               {authMode === 'reset-password' && 'Defina sua nova senha.'}
             </span>
           </div>

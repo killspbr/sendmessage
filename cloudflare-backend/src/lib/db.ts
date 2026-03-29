@@ -17,7 +17,9 @@ function isRetryableConnectionError(error: unknown) {
     message.includes('timeout exceeded when trying to connect') ||
     message.includes('connection terminated unexpectedly') ||
     message.includes('connection closed') ||
-    message.includes('connect timeout')
+    message.includes('connect timeout') ||
+    message.includes('query read timeout') ||
+    message.includes('statement timeout')
   )
 }
 
@@ -31,12 +33,15 @@ export function getDb(env: Bindings) {
 
   pool = new Pool({
     connectionString,
-    max: 5,
-    idleTimeoutMillis: 30000,
+    max: 15,
+    idleTimeoutMillis: 10000,
     connectionTimeoutMillis: 10000,
-  })
+    query_timeout: 10000,
+    statement_timeout: 10000,
+    idle_in_transaction_session_timeout: 10000,
+    keepAlive: true,
+  } as any)
 
-  // Evita crash por erro assíncrono de cliente ocioso no pool.
   ;(pool as any).on?.('error', (error: unknown) => {
     console.error('[DB] Erro no pool PostgreSQL:', error)
   })
@@ -55,7 +60,7 @@ export function getDb(env: Bindings) {
         }
 
         const delay = attempt * 300
-        console.warn(`[DB] Falha transitória de conexão (tentativa ${attempt}/3). Retentando em ${delay}ms...`)
+        console.warn(`[DB] Falha transitoria de conexao (tentativa ${attempt}/3). Retentando em ${delay}ms...`)
         await wait(delay)
       }
     }

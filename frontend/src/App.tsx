@@ -2770,13 +2770,12 @@ function App() {
     const password = authPassword.trim()
     const name = authName.trim()
 
-    if (!email || !password || (authMode === 'signup' && !name)) {
-      setAuthError(authMode === 'signup' ? 'Informe nome, email e senha.' : 'Informe email e senha.')
-      return
-    }
-
     try {
       if (authMode === 'signup') {
+        if (!email || !password || !name) {
+          setAuthError('Informe nome, email e senha.')
+          return
+        }
         await authSignup({ email, password, name })
         setAuthError(
           'Cadastro realizado com sucesso. Você já pode fazer login.',
@@ -2793,7 +2792,7 @@ function App() {
           method: 'POST',
           body: JSON.stringify({ email })
         })
-        setAuthError('Se o e-mail estiver cadastrado, as instruções serão enviadas para sua caixa de entrada.')
+        setAuthError('Se o e-mail estiver cadastrado, a nova senha será enviada para o telefone cadastrado.')
         return
       } else if (authMode === 'reset-password') {
         if (!password || password.length < 6) {
@@ -2814,6 +2813,10 @@ function App() {
         setResetToken(null)
         return
       } else {
+        if (!email || !password) {
+          setAuthError('Informe email e senha.')
+          return
+        }
         await authLogin({ email, password })
       }
 

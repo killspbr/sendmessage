@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import type { Bindings, AppVariables } from '../types'
 import { authenticateToken } from '../lib/auth'
 import { getDb } from '../lib/db'
+import { isSchemaMissingError, runBestEffortDdl } from '../lib/ddl'
 import { executeWhatsappCampaignDelivery, validateCampaignDeliveryPayload } from '../lib/campaignDelivery'
 import { buildContactSendHistoryEntry, insertContactSendHistory } from '../lib/sendHistory'
 import { htmlToWhatsapp, resolveTemplate } from '../lib/messageUtils'
@@ -57,16 +58,24 @@ function parseCampaignChannels(channels: unknown): string[] {
 }
 
 async function isAdminUser(userId: string, db: ReturnType<typeof getDb>) {
-  const result = await db.query(
-    `SELECT 1
-       FROM user_profiles up
-       JOIN user_groups ug ON ug.id = up.group_id
-      WHERE up.id = $1
-        AND ug.name = 'Administrador'
-      LIMIT 1`,
-    [userId]
-  )
-  return result.rows.length > 0
+  try {
+    const result = await db.query(
+      `SELECT 1
+         FROM user_profiles up
+         JOIN user_groups ug ON ug.id = up.group_id
+        WHERE up.id = $1
+          AND ug.name = 'Administrador'
+        LIMIT 1`,
+      [userId]
+    )
+    return result.rows.length > 0
+  } catch (error) {
+    if (isSchemaMissingError(error)) {
+      console.warn('[Schedules] Estrutura de permissao administrativa nao encontrada. Assumindo usuario nao-admin.')
+      return false
+    }
+    throw error
+  }
 }
 
 async function getServerClock(env: Bindings) {
@@ -102,62 +111,70 @@ async function resolveEvolutionConfigForUser(userId: string, db: ReturnType<type
 }
 
 async function ensureScheduleTables(db: ReturnType<typeof getDb>) {
-  await db.query(`
-    CREATE TABLE IF NOT EXISTS campaign_schedule (
-      id SERIAL PRIMARY KEY,
-      campaign_id UUID NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
-      user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-      data_inicio DATE NOT NULL,
-      hora_inicio TIME NOT NULL,
-      limite_diario INTEGER DEFAULT 300,
-      intervalo_minimo INTEGER DEFAULT 30,
-      intervalo_maximo INTEGER DEFAULT 90,
-      mensagens_por_lote INTEGER DEFAULT 45,
-      tempo_pausa_lote INTEGER DEFAULT 15,
-      status TEXT DEFAULT 'agendado',
-      scheduler_claimed_at TIMESTAMP WITH TIME ZONE,
-      pause_reason TEXT,
-      pause_details TEXT,
-      paused_at TIMESTAMP WITH TIME ZONE,
-      resumed_at TIMESTAMP WITH TIME ZONE,
-      data_criacao TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-    )
-  `)
-
-  await db.query(`
-    CREATE TABLE IF NOT EXISTS message_queue (
-      id SERIAL PRIMARY KEY,
-      schedule_id INTEGER REFERENCES campaign_schedule(id) ON DELETE CASCADE,
-      campaign_id UUID NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
-      user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-      contact_id TEXT,
-      telefone TEXT NOT NULL,
-      nome TEXT,
-      mensagem TEXT NOT NULL,
-      status TEXT DEFAULT 'pendente',
-      tentativas INTEGER DEFAULT 0,
-      data_criacao TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-      data_envio TIMESTAMP WITH TIME ZONE,
-      processing_started_at TIMESTAMP WITH TIME ZONE,
-      recovered_at TIMESTAMP WITH TIME ZONE,
-      erro TEXT
-    )
-  `)
-
-  await db.query(`
-    CREATE TABLE IF NOT EXISTS scheduler_logs (
-      id SERIAL PRIMARY KEY,
-      event TEXT NOT NULL,
-      details TEXT,
-      data_evento TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-    )
-  `)
-
-  await db.query('CREATE INDEX IF NOT EXISTS idx_mq_user_status ON message_queue(user_id, status)')
-  await db.query('CREATE INDEX IF NOT EXISTS idx_mq_schedule_status ON message_queue(schedule_id, status)')
-  await db.query('CREATE INDEX IF NOT EXISTS idx_schedule_user_status ON campaign_schedule(user_id, status)')
-  await db.query('CREATE INDEX IF NOT EXISTS idx_scheduler_logs_event_date ON scheduler_logs(event, data_evento DESC)')
-  await db.query('ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS last_scheduled_at TIMESTAMP WITH TIME ZONE')
+  await runBestEffortDdl(db, 'schedules.ensureScheduleTables', [
+    `
+      CREATE TABLE IF NOT EXISTS campaign_schedule (
+        id SERIAL PRIMARY KEY,
+        campaign_id UUID NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
+        user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        data_inicio DATE NOT NULL,
+        hora_inicio TIME NOT NULL,
+        limite_diario INTEGER DEFAULT 300,
+        intervalo_minimo INTEGER DEFAULT 30,
+        intervalo_maximo INTEGER DEFAULT 90,
+        mensagens_por_lote INTEGER DEFAULT 45,
+        tempo_pausa_lote INTEGER DEFAULT 15,
+        status TEXT DEFAULT 'agendado',
+        scheduler_claimed_at TIMESTAMP WITH TIME ZONE,
+        pause_reason TEXT,
+        pause_details TEXT,
+        paused_at TIMESTAMP WITH TIME ZONE,
+        resumed_at TIMESTAMP WITH TIME ZONE,
+        data_criacao TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      )
+    `,
+    `
+      CREATE TABLE IF NOT EXISTS message_queue (
+        id SERIAL PRIMARY KEY,
+        schedule_id INTEGER REFERENCES campaign_schedule(id) ON DELETE CASCADE,
+        campaign_id UUID NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
+        user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        contact_id TEXT,
+        telefone TEXT NOT NULL,
+        nome TEXT,
+        mensagem TEXT NOT NULL,
+        status TEXT DEFAULT 'pendente',
+        tentativas INTEGER DEFAULT 0,
+        data_criacao TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        data_envio TIMESTAMP WITH TIME ZONE,
+        processing_started_at TIMESTAMP WITH TIME ZONE,
+        recovered_at TIMESTAMP WITH TIME ZONE,
+        erro TEXT
+      )
+    `,
+    `
+      CREATE TABLE IF NOT EXISTS scheduler_logs (
+        id SERIAL PRIMARY KEY,
+        event TEXT NOT NULL,
+        details TEXT,
+        data_evento TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      )
+    `,
+    `ALTER TABLE campaign_schedule ADD COLUMN IF NOT EXISTS scheduler_claimed_at TIMESTAMP WITH TIME ZONE`,
+    `ALTER TABLE campaign_schedule ADD COLUMN IF NOT EXISTS pause_reason TEXT`,
+    `ALTER TABLE campaign_schedule ADD COLUMN IF NOT EXISTS pause_details TEXT`,
+    `ALTER TABLE campaign_schedule ADD COLUMN IF NOT EXISTS paused_at TIMESTAMP WITH TIME ZONE`,
+    `ALTER TABLE campaign_schedule ADD COLUMN IF NOT EXISTS resumed_at TIMESTAMP WITH TIME ZONE`,
+    `ALTER TABLE message_queue ADD COLUMN IF NOT EXISTS contact_id TEXT`,
+    `ALTER TABLE message_queue ADD COLUMN IF NOT EXISTS processing_started_at TIMESTAMP WITH TIME ZONE`,
+    `ALTER TABLE message_queue ADD COLUMN IF NOT EXISTS recovered_at TIMESTAMP WITH TIME ZONE`,
+    `ALTER TABLE message_queue ADD COLUMN IF NOT EXISTS erro TEXT`,
+    `CREATE INDEX IF NOT EXISTS idx_mq_user_status ON message_queue(user_id, status)`,
+    `CREATE INDEX IF NOT EXISTS idx_mq_schedule_status ON message_queue(schedule_id, status)`,
+    `CREATE INDEX IF NOT EXISTS idx_schedule_user_status ON campaign_schedule(user_id, status)`,
+    `CREATE INDEX IF NOT EXISTS idx_scheduler_logs_event_date ON scheduler_logs(event, data_evento DESC)`,
+    `ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS last_scheduled_at TIMESTAMP WITH TIME ZONE`,
+  ])
 }
 
 async function writeSchedulerLog(db: ReturnType<typeof getDb>, event: string, details: Record<string, unknown>) {
@@ -617,7 +634,7 @@ async function listSchedulesWithStats(
               SELECT l.event
               FROM scheduler_logs l
               WHERE CASE
-                WHEN l.details ~ '^\\s*\\{' THEN (l.details::jsonb->>'schedule_id')::integer
+                WHEN l.details ~ '^\\s*\\{' THEN NULLIF(regexp_replace(COALESCE(l.details::jsonb->>'schedule_id', ''), '[^0-9]', '', 'g'), '')::integer
                 ELSE NULL
               END = s.id
               ORDER BY l.data_evento DESC
@@ -627,7 +644,7 @@ async function listSchedulesWithStats(
               SELECT l.data_evento
               FROM scheduler_logs l
               WHERE CASE
-                WHEN l.details ~ '^\\s*\\{' THEN (l.details::jsonb->>'schedule_id')::integer
+                WHEN l.details ~ '^\\s*\\{' THEN NULLIF(regexp_replace(COALESCE(l.details::jsonb->>'schedule_id', ''), '[^0-9]', '', 'g'), '')::integer
                 ELSE NULL
               END = s.id
               ORDER BY l.data_evento DESC
@@ -886,7 +903,7 @@ scheduleRoutes.get('/queue/professional', authenticateToken, async (c) => {
             (SELECT json_agg(l.*)
              FROM scheduler_logs l
              WHERE CASE
-               WHEN l.details ~ '^\\s*\\{' THEN (l.details::jsonb->>'message_id')::integer
+               WHEN l.details ~ '^\\s*\\{' THEN NULLIF(regexp_replace(COALESCE(l.details::jsonb->>'message_id', ''), '[^0-9]', '', 'g'), '')::integer
                ELSE NULL
              END = q.id
              AND l.event IN ('zombie_recovered', 'zombie_failed')
@@ -902,4 +919,3 @@ scheduleRoutes.get('/queue/professional', authenticateToken, async (c) => {
   const server = await getServerClock(c.env)
   return c.json({ success: true, data: queueResult.rows, server })
 })
-
