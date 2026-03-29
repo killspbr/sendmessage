@@ -1091,7 +1091,7 @@ export function CampaignsPage({
                 })}
               </div>
             </div>
-          )}
+          ))}
         </section>
 
       {/* Modal de Agendamento Profissional */}
