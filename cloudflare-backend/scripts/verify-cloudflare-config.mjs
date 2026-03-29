@@ -15,19 +15,25 @@ if (!fs.existsSync(wranglerPath)) {
 
 const content = fs.readFileSync(wranglerPath, 'utf8')
 
-if (/YOUR_HYPERDRIVE_ID/.test(content)) {
-  fail('Configure [[hyperdrive]].id com o UUID real (o placeholder YOUR_HYPERDRIVE_ID ainda esta no arquivo).')
-}
+const hasHyperdriveSection = /\[\[hyperdrive\]\]/m.test(content)
+let hyperdriveId = ''
 
-const hyperdriveIdMatch = content.match(/\[\[hyperdrive\]\][\s\S]*?\bid\s*=\s*"([^"]+)"/m)
-if (!hyperdriveIdMatch || !hyperdriveIdMatch[1]) {
-  fail('Nao foi encontrado [[hyperdrive]].id em wrangler.toml.')
-}
+if (hasHyperdriveSection) {
+  if (/YOUR_HYPERDRIVE_ID/.test(content)) {
+    fail('Configure [[hyperdrive]].id com o UUID real (o placeholder YOUR_HYPERDRIVE_ID ainda esta no arquivo).')
+  }
 
-const hyperdriveId = hyperdriveIdMatch[1].trim()
-const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
-if (!uuidRegex.test(hyperdriveId)) {
-  fail(`Hyperdrive ID invalido: "${hyperdriveId}". Informe um UUID valido.`)
+  const hyperdriveIdMatch = content.match(/\[\[hyperdrive\]\][\s\S]*?\bid\s*=\s*"([^"]+)"/m)
+  if (!hyperdriveIdMatch || !hyperdriveIdMatch[1]) {
+    fail('Nao foi encontrado [[hyperdrive]].id em wrangler.toml.')
+  }
+
+  hyperdriveId = hyperdriveIdMatch[1].trim()
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+  const hex32Regex = /^[0-9a-f]{32}$/i
+  if (!uuidRegex.test(hyperdriveId) && !hex32Regex.test(hyperdriveId)) {
+    fail(`Hyperdrive ID invalido: "${hyperdriveId}". Informe um UUID com hifens ou ID hexadecimal de 32 caracteres.`)
+  }
 }
 
 const workerNameMatch = content.match(/^\s*name\s*=\s*"([^"]+)"/m)
@@ -35,4 +41,8 @@ if (!workerNameMatch?.[1]) {
   fail('Defina o nome do worker em wrangler.toml (name = "...").')
 }
 
-console.log(`[deploy:verify] OK - worker=${workerNameMatch[1]}, hyperdrive=${hyperdriveId}`)
+if (hasHyperdriveSection) {
+  console.log(`[deploy:verify] OK - worker=${workerNameMatch[1]}, hyperdrive=${hyperdriveId}`)
+} else {
+  console.log(`[deploy:verify] OK - worker=${workerNameMatch[1]}, sem Hyperdrive. Lembre de configurar o secret DATABASE_URL.`)
+}

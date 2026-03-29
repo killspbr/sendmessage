@@ -12,10 +12,9 @@ bucket_name = "sendmessage-uploads"
 
 [[hyperdrive]]
 binding = "HYPERDRIVE"
-id = "YOUR_HYPERDRIVE_ID"
+id = "12abb41244884c95a5ab078a0f17c62f"
 
 [vars]
 SYSTEM_TIMEZONE = "America/Sao_Paulo"
 SYSTEM_TIMEZONE_LABEL = "GMT-3 (America/Sao_Paulo)"
 ACTIVE_USER_WINDOW_SECONDS = "120"
-
