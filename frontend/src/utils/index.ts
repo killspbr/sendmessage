@@ -3,7 +3,7 @@
 // URL do backend - prioritiza variável de ambiente VITE_API_URL
 export const BACKEND_URL = import.meta.env.VITE_API_URL ||
   (import.meta.env.PROD
-    ? 'https://clrodrigues-sendmessage-backend.rsybpi.easypanel.host'
+    ? 'https://sendmessage-backend.claudio-rodrigues-seconci.workers.dev'
     : 'http://localhost:4000');
 
 // Normaliza telefone removendo caracteres não numéricos

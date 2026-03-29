@@ -275,7 +275,7 @@ FORMATO DE SAÍDA:
 
         try {
             const token = localStorage.getItem('auth_token')
-            const baseUrl = (import.meta as any).env.VITE_API_URL || 'https://clrodrigues-sendmessage-backend.rsybpi.easypanel.host'
+      const baseUrl = (import.meta as any).env.VITE_API_URL || 'https://sendmessage-backend.claudio-rodrigues-seconci.workers.dev'
             const apiUrl = `${baseUrl}/api/ai/proxy`
 
             if (!token) {
