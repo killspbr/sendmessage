@@ -108,7 +108,13 @@ export function useSendHistory({ effectiveUserId }: UseSendHistoryOptions): UseS
   }, [effectiveUserId])
 
   useEffect(() => {
-    void reloadContactSendHistory()
+    const timer = window.setTimeout(() => {
+      void reloadContactSendHistory()
+    }, 1100)
+
+    return () => {
+      window.clearTimeout(timer)
+    }
   }, [reloadContactSendHistory])
 
   return {

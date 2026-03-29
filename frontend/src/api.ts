@@ -21,6 +21,8 @@ function createAuthExpiredError(status: number) {
 export async function apiFetch(endpoint: string, options: RequestInit = {}) {
   const token = localStorage.getItem('auth_token')
   const isFormData = typeof FormData !== 'undefined' && options.body instanceof FormData
+  const method = String(options.method || 'GET').toUpperCase()
+  const canRetry = method === 'GET' || endpoint === '/api/auth/presence'
 
   const headers = {
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -31,10 +33,33 @@ export async function apiFetch(endpoint: string, options: RequestInit = {}) {
     ;(headers as any)['Content-Type'] = 'application/json'
   }
 
-  const response = await fetch(`${API_URL}${endpoint}`, {
-    ...options,
-    headers,
-  })
+  let response: Response | null = null
+  let fetchError: unknown = null
+
+  for (let attempt = 1; attempt <= (canRetry ? 2 : 1); attempt += 1) {
+    try {
+      response = await fetch(`${API_URL}${endpoint}`, {
+        ...options,
+        headers,
+      })
+
+      if (response.status >= 500 && attempt < (canRetry ? 2 : 1)) {
+        await new Promise((resolve) => setTimeout(resolve, 350 * attempt))
+        continue
+      }
+      break
+    } catch (error) {
+      fetchError = error
+      if (attempt < (canRetry ? 2 : 1)) {
+        await new Promise((resolve) => setTimeout(resolve, 350 * attempt))
+        continue
+      }
+    }
+  }
+
+  if (!response) {
+    throw fetchError instanceof Error ? fetchError : new Error(String(fetchError || 'Falha de rede'))
+  }
 
   if (response.status === 401 || response.status === 403) {
     clearAuthStorage()

@@ -61,7 +61,13 @@ export function useCampaigns({ effectiveUserId }: UseCampaignsOptions): UseCampa
     }
 
     useEffect(() => {
-        void loadCampaigns()
+        const timer = window.setTimeout(() => {
+            void loadCampaigns()
+        }, 700)
+
+        return () => {
+            window.clearTimeout(timer)
+        }
     }, [effectiveUserId])
 
     return {

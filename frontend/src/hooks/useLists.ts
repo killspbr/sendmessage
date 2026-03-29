@@ -55,7 +55,13 @@ export function useLists({ effectiveUserId }: UseListsOptions): UseListsResult {
     }
 
     useEffect(() => {
-        void loadLists()
+        const timer = window.setTimeout(() => {
+            void loadLists()
+        }, 350)
+
+        return () => {
+            window.clearTimeout(timer)
+        }
     }, [effectiveUserId])
 
     return {

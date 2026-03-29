@@ -1,3 +1,5 @@
+const ENABLE_RUNTIME_SCHEMA_ENSURE = false
+
 export function isSkippableRuntimeSchemaError(error: unknown) {
   const message = String((error as any)?.message || error || '').toLowerCase()
   return (
@@ -9,6 +11,7 @@ export function isSkippableRuntimeSchemaError(error: unknown) {
 }
 
 export async function runSchemaBestEffort(task: () => Promise<void>, context: string) {
+  if (!ENABLE_RUNTIME_SCHEMA_ENSURE) return
   try {
     await task()
   } catch (error) {

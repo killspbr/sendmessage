@@ -541,12 +541,17 @@ function App() {
       }
     }
 
-    void sendHeartbeat()
+    const initialTimer = setTimeout(() => {
+      void sendHeartbeat()
+    }, 2000)
     const interval = setInterval(() => {
       void sendHeartbeat()
     }, 60000)
 
-    return () => clearInterval(interval)
+    return () => {
+      clearTimeout(initialTimer)
+      clearInterval(interval)
+    }
   }, [currentUser?.id, currentPage])
 
   useEffect(() => {

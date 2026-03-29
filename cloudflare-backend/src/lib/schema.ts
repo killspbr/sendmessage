@@ -1,5 +1,6 @@
 import type { Pool } from 'pg'
 
+const ENABLE_RUNTIME_SCHEMA_ENSURE = false
 let schemaEnsureAttempted = false
 
 function isSkippableSchemaError(error: unknown) {
@@ -13,6 +14,7 @@ function isSkippableSchemaError(error: unknown) {
 }
 
 export async function ensureCloudflareSchema(db: Pool) {
+  if (!ENABLE_RUNTIME_SCHEMA_ENSURE) return
   if (schemaEnsureAttempted) return
   schemaEnsureAttempted = true
 
