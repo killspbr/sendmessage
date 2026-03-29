@@ -203,11 +203,16 @@ campaignRoutes.post('/campaigns', authenticateToken, async (c) => {
   const columnsCheck = await db.query(`
     SELECT column_name, data_type 
     FROM information_schema.columns 
-    WHERE table_name = 'campaigns' AND column_name IN ('variations', 'delivery_payload', 'channels')
+    WHERE table_name = 'campaigns' AND column_name IN (
+      'variations', 'delivery_payload', 'channels', 
+      'interval_min_seconds', 'interval_max_seconds', 'updated_at'
+    )
   `).catch(() => ({ rows: [] }))
   
   const hasVariations = columnsCheck.rows.some((r: any) => r.column_name === 'variations')
   const hasPayload = columnsCheck.rows.some((r: any) => r.column_name === 'delivery_payload')
+  const hasIntervalMin = columnsCheck.rows.some((r: any) => r.column_name === 'interval_min_seconds')
+  const hasIntervalMax = columnsCheck.rows.some((r: any) => r.column_name === 'interval_max_seconds')
   const channelsType = columnsCheck.rows.find((r: any) => r.column_name === 'channels')?.data_type || 'jsonb'
   const isChannelsArray = channelsType.toUpperCase() === 'ARRAY'
 
@@ -238,12 +243,19 @@ campaignRoutes.post('/campaigns', authenticateToken, async (c) => {
     pIdx++
   }
   
-  cols.push('interval_min_seconds', 'interval_max_seconds')
-  valPlaceholders.push(`$${pIdx}`, `$${pIdx + 1}`)
-  params.push(
-    Number.isFinite(intervalMin) ? intervalMin : 30,
-    Number.isFinite(intervalMax) ? intervalMax : 90
-  )
+  if (hasIntervalMin) {
+    cols.push('interval_min_seconds')
+    valPlaceholders.push(`$${pIdx}`)
+    params.push(Number.isFinite(intervalMin) ? intervalMin : 30)
+    pIdx++
+  }
+
+  if (hasIntervalMax) {
+    cols.push('interval_max_seconds')
+    valPlaceholders.push(`$${pIdx}`)
+    params.push(Number.isFinite(intervalMax) ? intervalMax : 90)
+    pIdx++
+  }
 
   const finalSql = `INSERT INTO campaigns (${cols.join(', ')}) VALUES (${valPlaceholders.join(', ')}) RETURNING *`
 
@@ -280,11 +292,17 @@ campaignRoutes.put('/campaigns/:id', authenticateToken, async (c) => {
   const columnsCheck = await db.query(`
     SELECT column_name, data_type 
     FROM information_schema.columns 
-    WHERE table_name = 'campaigns' AND column_name IN ('variations', 'delivery_payload', 'channels')
+    WHERE table_name = 'campaigns' AND column_name IN (
+      'variations', 'delivery_payload', 'channels', 
+      'interval_min_seconds', 'interval_max_seconds', 'updated_at'
+    )
   `).catch(() => ({ rows: [] }))
   
   const hasVariations = columnsCheck.rows.some((r: any) => r.column_name === 'variations')
   const hasPayload = columnsCheck.rows.some((r: any) => r.column_name === 'delivery_payload')
+  const hasIntervalMin = columnsCheck.rows.some((r: any) => r.column_name === 'interval_min_seconds')
+  const hasIntervalMax = columnsCheck.rows.some((r: any) => r.column_name === 'interval_max_seconds')
+  const hasUpdatedAt = columnsCheck.rows.some((r: any) => r.column_name === 'updated_at')
   const channelsType = columnsCheck.rows.find((r: any) => r.column_name === 'channels')?.data_type || 'jsonb'
   const isChannelsArray = channelsType.toUpperCase() === 'ARRAY'
 
@@ -316,15 +334,21 @@ campaignRoutes.put('/campaigns/:id', authenticateToken, async (c) => {
     pIdx++
   }
   
-  sets.push(`interval_min_seconds = $${pIdx}`)
-  params.push(Number.isFinite(intervalMin) ? intervalMin : 30)
-  pIdx++
+  if (hasIntervalMin) {
+    sets.push(`interval_min_seconds = $${pIdx}`)
+    params.push(Number.isFinite(intervalMin) ? intervalMin : 30)
+    pIdx++
+  }
   
-  sets.push(`interval_max_seconds = $${pIdx}`)
-  params.push(Number.isFinite(intervalMax) ? intervalMax : 90)
-  pIdx++
+  if (hasIntervalMax) {
+    sets.push(`interval_max_seconds = $${pIdx}`)
+    params.push(Number.isFinite(intervalMax) ? intervalMax : 90)
+    pIdx++
+  }
   
-  sets.push('updated_at = CURRENT_TIMESTAMP')
+  if (hasUpdatedAt) {
+    sets.push('updated_at = CURRENT_TIMESTAMP')
+  }
   
   const finalSql = `UPDATE campaigns SET ${sets.join(', ')} WHERE id = $${pIdx} AND user_id = $${pIdx + 1} RETURNING *`
   params.push(campaignId, userId)
