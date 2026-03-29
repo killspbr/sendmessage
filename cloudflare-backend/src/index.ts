@@ -35,6 +35,11 @@ app.use('*', cors({
 }))
 
 app.use('*', async (c, next) => {
+  if (c.req.method === 'OPTIONS') {
+    await next()
+    return
+  }
+
   const db = getDb(c.env)
   c.set('db', db)
   await ensureCloudflareSchema(db)

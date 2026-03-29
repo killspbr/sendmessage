@@ -3,8 +3,19 @@ import type { MiddlewareHandler } from 'hono'
 import type { Bindings, AppVariables } from '../types'
 import { getDb } from './db'
 
+const DEFAULT_JWT_SECRET = 'sendmessage-cloudflare-jwt-secret-change-me-2026'
+let warnedWeakJwtSecret = false
+
 function getJwtSecret(env: Bindings) {
-  return new TextEncoder().encode(env.JWT_SECRET)
+  const candidate = String(env.JWT_SECRET || '').trim()
+  const secret = candidate.length >= 32 ? candidate : DEFAULT_JWT_SECRET
+
+  if (!warnedWeakJwtSecret && candidate.length < 32) {
+    warnedWeakJwtSecret = true
+    console.warn('[AuthMiddleware] JWT_SECRET ausente ou curto no Worker. Usando fallback temporario. Configure um secret forte no Cloudflare.')
+  }
+
+  return new TextEncoder().encode(secret)
 }
 
 export const authenticateToken: MiddlewareHandler<{ Bindings: Bindings; Variables: AppVariables }> = async (c, next) => {

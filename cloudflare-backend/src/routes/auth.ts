@@ -7,8 +7,19 @@ import { getDb } from '../lib/db'
 
 export const authRoutes = new Hono<{ Bindings: Bindings; Variables: AppVariables }>()
 
+const DEFAULT_JWT_SECRET = 'sendmessage-cloudflare-jwt-secret-change-me-2026'
+let warnedWeakJwtSecret = false
+
 function getJwtSecret(env: Bindings) {
-  return new TextEncoder().encode(env.JWT_SECRET)
+  const candidate = String(env.JWT_SECRET || '').trim()
+  const secret = candidate.length >= 32 ? candidate : DEFAULT_JWT_SECRET
+
+  if (!warnedWeakJwtSecret && candidate.length < 32) {
+    warnedWeakJwtSecret = true
+    console.warn('[Auth] JWT_SECRET ausente ou curto no Worker. Usando fallback temporario. Configure um secret forte no Cloudflare.')
+  }
+
+  return new TextEncoder().encode(secret)
 }
 
 async function signAuthToken(env: Bindings, payload: { id: string; email: string; tv: number }) {
