@@ -6,12 +6,12 @@ import type { Bindings, AppVariables } from '../types'
 export const statusRoutes = new Hono<{ Bindings: Bindings; Variables: AppVariables }>()
 
 export const CURRENT_VERSION = {
-  commit: 'fd77a89',
-  timestamp: '2026-03-29T19:40:00-03:00',
-  message: 'Estabilização de Schema, Fix de UUID e Correção de Envio de PDF/Áudio (Base64) - Versão Final',
+  commit: 'ea44eba+',
+  timestamp: '2026-03-29T19:44:00-03:00',
+  message: 'Fix de Roteamento (404) e Migração Automática de Coluna Channels (Fix 500)',
 }
 
-statusRoutes.get('/api/version', (c) => {
+statusRoutes.get('/version', (c) => {
   return c.json({
     ...CURRENT_VERSION,
     check_time: new Date().toISOString(),

@@ -71,9 +71,26 @@ async function ensureCampaignsTable(db: ReturnType<typeof getDb>) {
       )
     `)
 
-    // Garante colunas individuais caso a tabela já exista de uma versão anterior
-    await db.query(`ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS variations JSONB NOT NULL DEFAULT '[]'::jsonb`).catch(() => {})
-    await db.query(`ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS delivery_payload JSONB`).catch(() => {})
+    // Garante colunas de JSONB
+    await db.query(`ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS variations JSONB NOT NULL DEFAULT '[]'::jsonb`).catch(() => { })
+    await db.query(`ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS delivery_payload JSONB`).catch(() => { })
+
+    // MIGRAÇÃO CRÍTICA: Se channels for text[], converta para jsonb para suportar os novos payloads.
+    try {
+      await db.query(`
+        DO $$
+        BEGIN
+          IF EXISTS (
+            SELECT 1 FROM information_schema.columns 
+            WHERE table_name = 'campaigns' AND column_name = 'channels' AND data_type = 'ARRAY'
+          ) THEN
+            ALTER TABLE campaigns ALTER COLUMN channels TYPE JSONB USING to_jsonb(channels);
+          END IF;
+        END $$;
+      `)
+    } catch (err) {
+      console.error('[Migration] Falha ao converter channels:', err)
+    }
     await db.query(`ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS interval_min_seconds INTEGER NOT NULL DEFAULT 30`).catch(() => {})
     await db.query(`ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS interval_max_seconds INTEGER NOT NULL DEFAULT 90`).catch(() => {})
 
