@@ -252,17 +252,43 @@ function arrayBufferToBase64(buffer: ArrayBuffer) {
   return btoa(binary)
 }
 
-async function resolveMediaBody(fetchImpl: typeof fetch, media: MediaItem, resolvedUrl: string, baseUrl?: string) {
-  if (media.sourceType !== 'asset') {
+async function resolveMediaBody(fetchImpl: typeof fetch, media: MediaItem, resolvedUrl: string, baseUrl?: string, env?: any) {
+  // Se for explicitamente um asset ou se a URL aponta fisicamente pro nosso backend, 
+  // tentamos resgatar direto do R2 ou via loopback HTTP e enviamos como Base64 (Data URI).
+  // Isso impede que a Evolution API tome Block 403 (Cloudflare WAF / Bot Fight Mode).
+  const isInternal = resolvedUrl.includes('sendmessage-backend') || media.sourceType === 'asset'
+
+  if (!isInternal) {
     return baseUrl ? ensureAbsoluteUrl(resolvedUrl, baseUrl) : resolvedUrl
   }
 
-  // Se for asset, tentamos baixar para enviar em Base64 (garante bypass de firewall/auth)
+  const mimeType = inferMimeType(media)
+  let base64Data: string;
+
+  try {
+    // Tenta bypass super rapido e fail-safe direto pelo bucket R2
+    if (env?.UPLOADS_BUCKET) {
+      const match = resolvedUrl.match(/\/uploads\/public\/([^/?#]+)/)
+      const filename = match ? decodeURIComponent(match[1]) : null
+      if (filename) {
+        const object = await env.UPLOADS_BUCKET.get(filename)
+        if (object) {
+          base64Data = arrayBufferToBase64(await object.arrayBuffer())
+          return `data:${mimeType};base64,${base64Data}`
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('[Delivery] Bypass R2 falhou, caindo para HTTP:', err)
+  }
+
   const response = await fetchImpl(resolvedUrl)
   if (!response.ok) {
-    throw new Error(`Falha ao carregar o arquivo do servidor (${response.status}): ${await response.text().catch(() => 'corpo indisponivel')}`)
+    throw new Error(`Falha ao carregar o arquivo interno (${response.status}): ${await response.text().catch(() => 'corpo indisponivel')}`)
   }
-  return arrayBufferToBase64(await response.arrayBuffer())
+  
+  base64Data = arrayBufferToBase64(await response.arrayBuffer())
+  return `data:${mimeType};base64,${base64Data}`
 }
 
 function buildMediaCaption(messageText: string, mediaCaption: string, attachMessage: boolean) {
@@ -282,6 +308,7 @@ async function sendEvolutionMedia({
   resolvedUrl,
   caption,
   baseUrl,
+  env,
 }: {
   fetchImpl: typeof fetch
   evolutionUrl: string
@@ -292,8 +319,9 @@ async function sendEvolutionMedia({
   resolvedUrl: string
   caption: string
   baseUrl?: string
+  env?: any
 }) {
-  const mediaBody = await resolveMediaBody(fetchImpl, media, resolvedUrl, baseUrl)
+  const mediaBody = await resolveMediaBody(fetchImpl, media, resolvedUrl, baseUrl, env)
   const fileName = resolveMediaFileName(media)
   const mimeType = inferMimeType(media)
 
@@ -318,6 +346,7 @@ async function sendEvolutionAudio({
   media,
   resolvedUrl,
   baseUrl,
+  env,
 }: {
   fetchImpl: typeof fetch
   evolutionUrl: string
@@ -327,8 +356,9 @@ async function sendEvolutionAudio({
   media: MediaItem
   resolvedUrl: string
   baseUrl?: string
+  env?: any
 }) {
-  const audioBody = await resolveMediaBody(fetchImpl, media, resolvedUrl, baseUrl)
+  const audioBody = await resolveMediaBody(fetchImpl, media, resolvedUrl, baseUrl, env)
   await postEvolutionWithRetry(fetchImpl, `${evolutionUrl}/message/sendWhatsAppAudio/${evolutionInstance}`, evolutionApiKey, {
     number,
     audio: audioBody,
@@ -388,6 +418,7 @@ export async function executeWhatsappCampaignDelivery({
   contact,
   messageOverride,
   baseUrl,
+  env,
 }: {
   fetchImpl?: typeof fetch
   evolutionUrl: string
@@ -397,6 +428,7 @@ export async function executeWhatsappCampaignDelivery({
   contact: Contact
   messageOverride?: string
   baseUrl?: string
+  env?: any
 }) {
   const evolutionNumber = toEvolutionNumber(contact.phone)
   if (!evolutionNumber) throw new Error('Contato sem telefone valido para envio no formato Evolution.')
@@ -437,6 +469,7 @@ export async function executeWhatsappCampaignDelivery({
           media,
           resolvedUrl,
           baseUrl,
+          env,
         })
       } else {
         await sendEvolutionMedia({
@@ -453,6 +486,7 @@ export async function executeWhatsappCampaignDelivery({
             attachMessage
           ),
           baseUrl,
+          env,
         })
       }
       result.mediaSent += 1

@@ -6,9 +6,9 @@ import type { Bindings, AppVariables } from '../types'
 export const statusRoutes = new Hono<{ Bindings: Bindings; Variables: AppVariables }>()
 
 export const CURRENT_VERSION = {
-  commit: 'UAS-v1.1.1',
-  timestamp: '2026-03-29T20:30:00-03:00',
-  message: 'Fix Definitivo Update: Bypass de Colunas Administrativas Faltantes (v1.1.1)',
+  commit: 'R2-Bypass-v1.1.2',
+  timestamp: '2026-03-29T20:36:00-03:00',
+  message: 'Atualização Crítica: Bypass R2 para Envio de PDFs e Áudios Nativos (v1.1.2)',
 }
 
 statusRoutes.get('/version', (c) => {
