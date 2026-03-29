@@ -36,15 +36,18 @@ app.use('*', async (c, next) => {
     await next()
   } catch (error) {
     console.error('[CloudflareBackend] Erro capturado no guard global:', error)
+    const errObj = error instanceof Error ? {
+      message: error.message,
+      stack: error.stack,
+      name: error.name
+    } : { message: String(error) }
+
     return c.json(
       {
         error: 'Erro interno no backend Cloudflare.',
-        technical:
-          typeof (error as any)?.message === 'string'
-            ? (error as any).message
-            : String(error || 'Erro interno'),
-      }
-      ,
+        technical: errObj.message,
+        details: errObj
+      },
       500,
       CORS_HEADERS
     )

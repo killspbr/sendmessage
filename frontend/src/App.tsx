@@ -1105,9 +1105,10 @@ function App() {
 
       resetCampaignComposerState()
       setCampaignEditorOpen(false)
-    } catch (e) {
+    } catch (e: any) {
       console.error('Erro inesperado ao salvar campanha no banco', e)
-      setLastMoveMessage('Erro inesperado ao salvar a campanha no banco.')
+      const technicalMsg = e?.response?.data?.technical || e?.message || ''
+      setLastMoveMessage(`Erro ao salvar no banco: ${technicalMsg || 'Erro interno.'}`)
     }
   }
 
