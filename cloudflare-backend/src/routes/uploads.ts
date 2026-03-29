@@ -209,6 +209,65 @@ uploadRoutes.delete('/files/:id', authenticateToken, async (c) => {
   return c.json({ ok: true })
 })
 
+uploadRoutes.patch('/files/:id', authenticateToken, async (c) => {
+  const user = c.get('user')
+  if (!user?.id) return c.json({ error: 'Acesso negado.' }, 401)
+  const id = c.req.param('id')
+  const body = await c.req.json().catch(() => ({}))
+  const newName = String(body.name || '').trim()
+
+  if (!newName) return c.json({ error: 'Nome invalido.' }, 400)
+
+  const db = getDb(c.env)
+  const result = await db.query(
+    `UPDATE user_uploaded_files
+        SET original_name = $1, updated_at = CURRENT_TIMESTAMP
+      WHERE id = $1::uuid
+        AND user_id = $2
+        AND deleted_at IS NULL
+    RETURNING *`,
+    [newName, user.id]
+  )
+
+  if (!result.rows[0]) return c.json({ error: 'Arquivo nao encontrado.' }, 404)
+  return c.json(mapFileRow(result.rows[0]))
+})
+
+uploadRoutes.post('/files/bulk-delete', authenticateToken, async (c) => {
+  const user = c.get('user')
+  if (!user?.id) return c.json({ error: 'Acesso negado.' }, 401)
+  const body = await c.req.json().catch(() => ({}))
+  const ids = Array.isArray(body.ids) ? body.ids : []
+
+  if (ids.length === 0) return c.json({ ok: true, deleted: 0 })
+
+  const db = getDb(c.env)
+  
+  // Busca os caminhos no R2 antes de deletar do banco
+  const filesResult = await db.query(
+    `SELECT id, storage_path FROM user_uploaded_files 
+      WHERE user_id = $1 AND id = ANY($2::uuid[]) AND deleted_at IS NULL`,
+    [user.id, ids]
+  )
+  
+  const filesToDelete = filesResult.rows as Array<{ storage_path: string }>
+  if (filesToDelete.length === 0) return c.json({ ok: true, deleted: 0 })
+
+  // Soft delete no banco
+  await db.query(
+    `UPDATE user_uploaded_files
+        SET deleted_at = CURRENT_TIMESTAMP
+      WHERE user_id = $1 AND id = ANY($2::uuid[])`,
+    [user.id, ids]
+  )
+
+  // Remove do R2 (Melhor esforço)
+  const deletePromises = filesToDelete.map((f) => c.env.UPLOADS_BUCKET.delete(f.storage_path))
+  await Promise.allSettled(deletePromises)
+
+  return c.json({ ok: true, deleted: filesToDelete.length })
+})
+
 uploadRoutes.get('/uploads/public/:token/:storedName', async (c) => {
   const { token, storedName } = c.req.param()
   const db = getDb(c.env)

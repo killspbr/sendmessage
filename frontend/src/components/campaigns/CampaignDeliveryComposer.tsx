@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
-import { apiFetch, apiUpload, API_URL } from '../../api'
+import { useRef, useState } from 'react'
+import { apiUpload, API_URL } from '../../api'
 import type {
   CampaignChannel,
   CampaignMediaItem,
@@ -8,6 +8,7 @@ import type {
 } from '../../types'
 import { createEmptyMediaItem, createEmptySharedContact } from '../../utils/campaignDelivery'
 import { normalizeDisplayText } from '../../utils/textEncoding'
+import { MediaManager } from '../media/MediaManager'
 
 type CampaignDeliveryComposerProps = {
   channels: CampaignChannel[]
@@ -27,46 +28,12 @@ export function CampaignDeliveryComposer({
   onChangeSharedContact,
 }: CampaignDeliveryComposerProps) {
   const whatsappEnabled = channels.includes('whatsapp')
-  const [serverFiles, setServerFiles] = useState<UploadedUserFile[]>([])
-  const [filesLoading, setFilesLoading] = useState(false)
-  const [pickerOpenForId, setPickerOpenForId] = useState<string | null>(null)
-  const [uploadingForId, setUploadingForId] = useState<string | null>(null)
-  const [uploadProgressForId, setUploadProgressForId] = useState<string | null>(null)
+  const [isLibraryOpen, setIsLibraryOpen] = useState(false)
+  const [uploading, setUploading] = useState(false)
   const [uploadProgress, setUploadProgress] = useState(0)
   const [libraryMessage, setLibraryMessage] = useState<string | null>(null)
-  const uploadItemIdRef = useRef<string | null>(null)
+  
   const uploadInputRef = useRef<HTMLInputElement | null>(null)
-
-  const loadFiles = async () => {
-    if (!whatsappEnabled) {
-      setServerFiles([])
-      setFilesLoading(false)
-      return
-    }
-
-    setFilesLoading(true)
-    try {
-      const data = await apiFetch('/api/files')
-      setServerFiles(Array.isArray(data) ? data : [])
-    } catch {
-      setServerFiles([])
-    } finally {
-      setFilesLoading(false)
-    }
-  }
-
-  useEffect(() => {
-    let mounted = true
-
-    void (async () => {
-      if (!mounted) return
-      await loadFiles()
-    })()
-
-    return () => {
-      mounted = false
-    }
-  }, [whatsappEnabled])
 
   const updateMediaItem = (id: string, patch: Partial<CampaignMediaItem>) => {
     onChangeMediaItems(
@@ -78,42 +45,35 @@ export function CampaignDeliveryComposer({
     onChangeMediaItems(mediaItems.filter((item) => item.id !== id))
   }
 
-  const pickServerFile = (itemId: string, file: UploadedUserFile) => {
-    updateMediaItem(itemId, {
-      sourceType: 'asset',
+  const handleLibrarySelect = (selectedFiles: UploadedUserFile[]) => {
+    const newItems = selectedFiles.map(file => ({
+      ...createEmptyMediaItem(),
+      sourceType: 'asset' as const,
       mediaType: file.mediaType,
       url: file.publicUrl.startsWith('http') ? file.publicUrl : `${API_URL}${file.publicUrl}`,
       assetId: file.id,
       assetName: normalizeDisplayText(file.originalName),
       mimeType: file.mimeType,
       sizeBytes: file.sizeBytes,
-    })
-    setPickerOpenForId(null)
-  }
-
-  const openUploadPicker = (itemId: string) => {
-    uploadItemIdRef.current = itemId
-    setLibraryMessage(null)
-    uploadInputRef.current?.click()
+    }))
+    
+    onChangeMediaItems([...mediaItems, ...newItems])
+    setIsLibraryOpen(false)
   }
 
   const handleUploadFiles = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFiles = Array.from(event.target.files || [])
-    const targetItemId = uploadItemIdRef.current
     event.target.value = ''
 
-    if (!targetItemId || selectedFiles.length === 0) {
-      return
-    }
+    if (selectedFiles.length === 0) return
 
     const oversizedFile = selectedFiles.find((file) => file.size > MAX_UPLOAD_SIZE_BYTES)
     if (oversizedFile) {
-      setLibraryMessage(`O arquivo "${oversizedFile.name}" excede o limite de 50 MB e nao foi enviado.`)
+      setLibraryMessage(`O arquivo "${oversizedFile.name}" excede o limite de 50 MB.`)
       return
     }
 
-    setUploadingForId(targetItemId)
-    setUploadProgressForId(targetItemId)
+    setUploading(true)
     setUploadProgress(0)
     setLibraryMessage(null)
 
@@ -125,395 +85,269 @@ export function CampaignDeliveryComposer({
         onProgress: ({ percent }) => setUploadProgress(percent),
       })
 
-      setUploadProgress(100)
-      await loadFiles()
-
       const incoming = Array.isArray(response) ? response : response ? [response] : []
-      const firstUploaded = incoming[0]
-      if (firstUploaded) {
-        updateMediaItem(targetItemId, {
-          sourceType: 'asset',
-          mediaType: firstUploaded.mediaType,
-          url: firstUploaded.publicUrl.startsWith('http') ? firstUploaded.publicUrl : `${API_URL}${firstUploaded.publicUrl}`,
-          assetId: firstUploaded.id,
-          assetName: normalizeDisplayText(firstUploaded.originalName),
-          mimeType: firstUploaded.mimeType,
-          sizeBytes: firstUploaded.sizeBytes,
-        })
-      }
-
-      setPickerOpenForId(targetItemId)
-      setLibraryMessage(
-        incoming.length > 0
-          ? `${incoming.length} arquivo(s) enviado(s) para a sua biblioteca.`
-          : 'Upload concluido.'
-      )
+      handleLibrarySelect(incoming)
+      
+      setLibraryMessage(`${incoming.length} arquivo(s) enviados e adicionados à campanha.`)
     } catch (error: any) {
-      setLibraryMessage(error?.message || 'Falha ao enviar o arquivo para a sua biblioteca.')
+      setLibraryMessage(error?.message || 'Falha ao enviar o arquivo.')
     } finally {
-      setUploadingForId(null)
-      setUploadProgressForId(null)
+      setUploading(false)
       setUploadProgress(0)
-      uploadItemIdRef.current = null
     }
   }
 
   const shared = sharedContact ?? createEmptySharedContact()
 
-  if (!whatsappEnabled) {
-    return null
-  }
+  if (!whatsappEnabled) return null
 
   return (
     <div className="grid gap-4 xl:grid-cols-2">
-      <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+      <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-xl shadow-slate-200/50">
         <input
           ref={uploadInputRef}
           type="file"
           multiple
-          accept=".jpg,.jpeg,.png,.webp,.pdf,.ppt,.pptx,.wav,.mp3,.mp4"
           className="hidden"
           onChange={handleUploadFiles}
         />
 
-        <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center justify-between gap-3 mb-6">
           <div>
-            <h3 className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-              Midias do WhatsApp
-            </h3>
-            <p className="mt-1 text-sm text-slate-600">
-              Use URL publica ou escolha arquivos da sua biblioteca no servidor.
-            </p>
+            <h3 className="text-xs font-bold uppercase tracking-[0.2em] text-slate-500">Mídias da Campanha</h3>
+            <p className="mt-1 text-xs text-slate-400">Anexe imagens, áudios ou documentos para o envio.</p>
           </div>
-          <button
+          <div className="flex gap-2">
+             <button
+              type="button"
+              onClick={() => setIsLibraryOpen(true)}
+              className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 shadow-sm transition-all"
+            >
+              📚 Biblioteca
+            </button>
+            <button
+              type="button"
+              onClick={() => onChangeMediaItems([...mediaItems, createEmptyMediaItem()])}
+              className="rounded-xl bg-slate-900 px-4 py-2 text-xs font-bold text-white hover:bg-slate-800 shadow-md shadow-slate-200"
+            >
+              + Avulso
+            </button>
+          </div>
+        </div>
+
+        <div className="space-y-4">
+          {mediaItems.length === 0 ? (
+            <div 
+               onClick={() => setIsLibraryOpen(true)}
+               className="flex cursor-pointer flex-col items-center justify-center rounded-3xl border-2 border-dashed border-slate-200 bg-slate-50/50 py-10 transition hover:bg-slate-50"
+            >
+               <div className="text-3xl mb-2 opacity-30">☁️</div>
+               <p className="text-sm font-medium text-slate-500">Nenhum anexo configurado.</p>
+               <p className="mt-1 text-xs text-slate-400">Clique para abrir sua biblioteca ou selecione arquivos.</p>
+            </div>
+          ) : (
+            mediaItems.map((item, index) => (
+              <div key={item.id} className="relative rounded-2xl border border-slate-100 bg-white p-4 shadow-sm ring-1 ring-slate-900/5 hover:ring-slate-900/10 transition-all">
+                <div className="mb-4 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="flex h-5 w-5 items-center justify-center rounded-full bg-slate-900 text-[10px] font-bold text-white">
+                      {index + 1}
+                    </span>
+                    <span className="text-xs font-bold uppercase tracking-widest text-slate-600">
+                      {item.assetName ? normalizeDisplayText(item.assetName) : 'Anexo sem título'}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => removeMediaItem(item.id)}
+                    className="flex h-7 w-7 items-center justify-center rounded-lg text-rose-500 hover:bg-rose-50 hover:text-rose-600 transition-colors"
+                  >
+                    🗑️
+                  </button>
+                </div>
+
+                <div className="grid gap-4 sm:grid-cols-[140px_1fr]">
+                   <div className="flex flex-col gap-1.5">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Tipo de Mídia</span>
+                      <select
+                        value={item.mediaType}
+                        onChange={(e) => updateMediaItem(item.id, { 
+                          mediaType: e.target.value as any,
+                          url: '',
+                          assetId: undefined,
+                          assetName: undefined
+                        })}
+                        className="h-10 rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm font-medium text-slate-700 focus:border-blue-500 outline-none"
+                      >
+                        <option value="image">🖼️ Imagem</option>
+                        <option value="document">📄 Documento</option>
+                        <option value="audio">🎵 Áudio</option>
+                      </select>
+                   </div>
+                   
+                   <div className="flex flex-col gap-1.5">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Origem do Arquivo</span>
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          value={item.url}
+                          onChange={(e) => updateMediaItem(item.id, { url: e.target.value, sourceType: 'url', assetId: undefined })}
+                          placeholder="https://..."
+                          readOnly={item.sourceType === 'asset'}
+                          className={`h-10 flex-1 rounded-xl border border-slate-200 px-4 text-sm outline-none transition-all ${
+                            item.sourceType === 'asset' ? 'bg-emerald-50 text-emerald-800 border-emerald-100 font-medium' : 'bg-white focus:border-blue-500'
+                          }`}
+                        />
+                        {item.sourceType !== 'asset' && (
+                          <button 
+                            type="button"
+                            onClick={() => setIsLibraryOpen(true)}
+                            className="flex items-center justify-center rounded-xl border border-slate-200 bg-slate-50 px-3 hover:bg-slate-100 transition-colors"
+                            title="Trocar por arquivo da biblioteca"
+                          >
+                            📂
+                          </button>
+                        )}
+                      </div>
+                   </div>
+                </div>
+
+                <div className="mt-4 flex flex-col gap-1.5">
+                   <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Legenda (Opcional)</span>
+                   <input
+                      type="text"
+                      value={item.caption || ''}
+                      onChange={(e) => updateMediaItem(item.id, { caption: e.target.value })}
+                      placeholder="Texto que acompanha a mídia..."
+                      className="h-10 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm outline-none focus:border-blue-500"
+                   />
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+
+        {uploading && (
+          <div className="mt-4 rounded-2xl bg-slate-900 p-4 text-white shadow-lg overflow-hidden relative">
+            <div className="flex items-center justify-between text-xs font-bold uppercase tracking-widest">
+              <span>🚀 Preparando mídias</span>
+              <span>{uploadProgress}%</span>
+            </div>
+            <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-white/10">
+              <div 
+                className="h-full bg-emerald-400 transition-all duration-300" 
+                style={{ width: `${uploadProgress}%` }}
+              />
+            </div>
+          </div>
+        )}
+        
+        {libraryMessage && (
+           <div className="mt-3 rounded-xl bg-orange-50 p-3 text-xs text-orange-700 font-medium border border-orange-100">
+             ⚠️ {libraryMessage}
+           </div>
+        )}
+      </section>
+
+      {/* Seção de Contato Compartilhado */}
+      <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-xl shadow-slate-200/50">
+        <div className="flex items-center justify-between gap-3 mb-6">
+          <div>
+            <h3 className="text-xs font-bold uppercase tracking-[0.2em] text-slate-500">Cartão de Contato</h3>
+            <p className="mt-1 text-xs text-slate-400">Envie um contato do WhatsApp VCard após as mídias.</p>
+          </div>
+          <button 
             type="button"
-            onClick={() => onChangeMediaItems([...mediaItems, createEmptyMediaItem()])}
-            className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-100"
+            onClick={() => onChangeSharedContact(sharedContact ? null : createEmptySharedContact())}
+            className={`flex h-6 w-11 items-center rounded-full transition-colors ${sharedContact ? 'bg-emerald-500' : 'bg-slate-300'}`}
           >
-            Adicionar midia
+            <div className={`h-4 w-4 rounded-full bg-white transition-transform ${sharedContact ? 'translate-x-6' : 'translate-x-1'}`} />
           </button>
         </div>
 
-        <div className="mt-4 space-y-3">
-          {mediaItems.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-5 text-sm text-slate-500">
-              Nenhuma midia configurada. Voce pode comecar com texto e anexar arquivos depois.
-            </div>
-          ) : (
-            mediaItems.map((item, index) => {
-              const compatibleFiles = serverFiles.filter(
-                (file) => file.mediaType === item.mediaType && file.isAvailable !== false
-              )
-              const selectedAsset = item.assetId
-                ? serverFiles.find((file) => file.id === item.assetId)
-                : null
-              const usingAssetLibrary = item.sourceType === 'asset'
-
-              return (
-                <div key={item.id} className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
-                  <div className="mb-3 flex items-center justify-between gap-3">
-                    <span className="text-xs font-semibold text-slate-700">Midia {index + 1}</span>
-                    <button
-                      type="button"
-                      onClick={() => removeMediaItem(item.id)}
-                      className="text-xs font-semibold text-red-600 hover:text-red-700"
-                    >
-                      Remover
-                    </button>
-                  </div>
-
-                  <div className="grid gap-3 md:grid-cols-[120px_1fr]">
-                    <label className="flex flex-col gap-1">
-                      <span className="text-[11px] font-medium text-slate-600">Tipo</span>
-                      <select
-                        value={item.mediaType}
-                        onChange={(e) =>
-                          updateMediaItem(item.id, {
-                            mediaType: e.target.value as CampaignMediaItem['mediaType'],
-                            sourceType: 'url',
-                            assetId: undefined,
-                            assetName: undefined,
-                            mimeType: undefined,
-                            sizeBytes: undefined,
-                          })
-                        }
-                        className="h-9 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
-                      >
-                        <option value="image">Imagem</option>
-                        <option value="document">Documento</option>
-                        <option value="audio">Audio</option>
-                      </select>
-                    </label>
-
-                    <div className="flex flex-col gap-1">
-                      <span className="text-[11px] font-medium text-slate-600">Origem</span>
-                      <div className="flex flex-wrap gap-2">
-                        <button
-                          type="button"
-                          onClick={() =>
-                            updateMediaItem(item.id, {
-                              sourceType: 'url',
-                              assetId: undefined,
-                              assetName: undefined,
-                              mimeType: undefined,
-                              sizeBytes: undefined,
-                            })
-                          }
-                          className={`rounded-xl px-3 py-2 text-xs font-semibold transition ${
-                            !usingAssetLibrary
-                              ? 'bg-slate-900 text-white'
-                              : 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
-                          }`}
-                        >
-                          URL externa
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            updateMediaItem(item.id, {
-                              sourceType: 'asset',
-                              url: usingAssetLibrary ? item.url : '',
-                            })
-                          }
-                          className={`rounded-xl px-3 py-2 text-xs font-semibold transition ${
-                            usingAssetLibrary
-                              ? 'bg-slate-900 text-white'
-                              : 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
-                          }`}
-                        >
-                          Minha biblioteca
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-
-                  {!usingAssetLibrary ? (
-                    <label className="mt-3 flex flex-col gap-1">
-                      <span className="text-[11px] font-medium text-slate-600">URL publica</span>
-                      <input
-                        type="url"
-                        value={item.url}
-                        onChange={(e) =>
-                          updateMediaItem(item.id, {
-                            url: e.target.value,
-                            sourceType: 'url',
-                            assetId: undefined,
-                            assetName: undefined,
-                            mimeType: undefined,
-                            sizeBytes: undefined,
-                          })
-                        }
-                        placeholder="https://exemplo.com/arquivo.jpg"
-                        className="h-9 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
-                      />
-                    </label>
-                  ) : (
-                    <div className="mt-3 rounded-xl border border-slate-200 bg-white p-3">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <div>
-                          <div className="text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">
-                            Biblioteca do servidor
-                          </div>
-                          <div className="mt-1 text-xs text-slate-500">
-                            Escolha um arquivo ja enviado ou faca upload direto daqui.
-                          </div>
-                        </div>
-
-                        <div className="flex flex-wrap gap-2">
-                          <button
-                            type="button"
-                            onClick={() => openUploadPicker(item.id)}
-                            disabled={uploadingForId === item.id}
-                            className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
-                          >
-                            {uploadingForId === item.id ? 'Enviando...' : 'Enviar para minha biblioteca'}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setPickerOpenForId((current) => (current === item.id ? null : item.id))
-                            }
-                            className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100"
-                          >
-                            {pickerOpenForId === item.id ? 'Fechar biblioteca' : item.assetName ? 'Trocar arquivo' : 'Escolher dos meus arquivos'}
-                          </button>
-                        </div>
-                      </div>
-
-                      <div className="mt-2 text-[11px] text-slate-500">
-                        Tipos aceitos: imagem, PDF, PPT/PPTX, WAV, MP3 e MP4. Limite de 50 MB por arquivo.
-                      </div>
-
-                      {libraryMessage ? (
-                        <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
-                          {libraryMessage}
-                        </div>
-                      ) : null}
-
-                      {uploadProgressForId === item.id ? (
-                        <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-3">
-                          <div className="flex items-center justify-between gap-3 text-[11px] font-semibold uppercase tracking-[0.16em] text-emerald-700">
-                            <span>Enviando para a biblioteca</span>
-                            <span>{uploadProgress}%</span>
-                          </div>
-                          <div className="mt-3 h-2 overflow-hidden rounded-full bg-emerald-100">
-                            <div
-                              className="h-full rounded-full bg-emerald-500 transition-all duration-200"
-                              style={{ width: `${uploadProgress}%` }}
-                            />
-                          </div>
-                        </div>
-                      ) : null}
-
-                      {item.assetName ? (
-                        <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
-                          Arquivo selecionado: <span className="font-semibold">{normalizeDisplayText(item.assetName)}</span>
-                        </div>
-                      ) : null}
-
-                      {usingAssetLibrary && selectedAsset && selectedAsset.isAvailable === false ? (
-                        <div className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
-                          {selectedAsset.availabilityReason || 'Este arquivo nao esta mais disponivel no servidor. Reenvie para a biblioteca e selecione novamente.'}
-                        </div>
-                      ) : null}
-
-                      {usingAssetLibrary && item.assetId && !selectedAsset ? (
-                        <div className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
-                          O arquivo vinculado a esta campanha nao foi encontrado na sua biblioteca atual. Reenvie e selecione novamente.
-                        </div>
-                      ) : null}
-
-                      {pickerOpenForId === item.id ? (
-                        <div className="mt-3 space-y-2">
-                          {filesLoading ? (
-                            <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-xs text-slate-500">
-                              Carregando arquivos...
-                            </div>
-                          ) : compatibleFiles.length === 0 ? (
-                            <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-3 py-3 text-xs text-slate-500">
-                              Nenhum arquivo compativel encontrado para este tipo.
-                            </div>
-                          ) : (
-                            compatibleFiles.map((file) => (
-                              <button
-                                key={file.id}
-                                type="button"
-                                onClick={() => pickServerFile(item.id, file)}
-                                className="flex w-full items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-left transition hover:border-emerald-200 hover:bg-emerald-50"
-                              >
-                                <div className="min-w-0">
-                                  <div className="truncate text-sm font-semibold text-slate-800">
-                                    {normalizeDisplayText(file.originalName)}
-                                  </div>
-                                  <div className="mt-1 truncate text-xs text-slate-500">
-                                    {file.mimeType}
-                                  </div>
-                                </div>
-                                <span className="ml-3 rounded-full bg-slate-900 px-2.5 py-1 text-[11px] font-semibold text-white">
-                                  Usar arquivo
-                                </span>
-                              </button>
-                            ))
-                          )}
-                        </div>
-                      ) : null}
-                    </div>
-                  )}
-
-                  <label className="mt-3 flex flex-col gap-1">
-                    <span className="text-[11px] font-medium text-slate-600">Legenda opcional</span>
-                    <input
-                      type="text"
-                      value={item.caption}
-                      onChange={(e) => updateMediaItem(item.id, { caption: e.target.value })}
-                      placeholder="Ex: Nosso catalogo atualizado"
-                      className="h-9 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
-                    />
-                  </label>
-                </div>
-              )
-            })
-          )}
-        </div>
-      </section>
-
-      <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <h3 className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-              Contato compartilhado
-            </h3>
-            <p className="mt-1 text-sm text-slate-600">
-              Opcionalmente, envie o contato do vendedor ou da empresa depois da campanha.
-            </p>
-          </div>
-          <label className="inline-flex items-center gap-2 text-xs font-semibold text-slate-700">
-            <input
-              type="checkbox"
-              className="h-4 w-4 accent-emerald-600"
-              checked={!!sharedContact}
-              onChange={(e) => onChangeSharedContact(e.target.checked ? createEmptySharedContact() : null)}
-            />
-            Ativar
-          </label>
-        </div>
-
         {sharedContact ? (
-          <div className="mt-4 grid gap-3 md:grid-cols-2">
-            <label className="flex flex-col gap-1 md:col-span-2">
-              <span className="text-[11px] font-medium text-slate-600">Nome completo</span>
-              <input
-                type="text"
-                value={shared.fullName}
-                onChange={(e) => onChangeSharedContact({ ...shared, fullName: e.target.value })}
-                className="h-9 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
-              />
-            </label>
-            <label className="flex flex-col gap-1">
-              <span className="text-[11px] font-medium text-slate-600">Telefone</span>
-              <input
-                type="text"
-                value={shared.phone}
-                onChange={(e) => onChangeSharedContact({ ...shared, phone: e.target.value })}
-                placeholder="11999999999"
-                className="h-9 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
-              />
-            </label>
-            <label className="flex flex-col gap-1">
-              <span className="text-[11px] font-medium text-slate-600">Empresa</span>
-              <input
-                type="text"
-                value={shared.company}
-                onChange={(e) => onChangeSharedContact({ ...shared, company: e.target.value })}
-                className="h-9 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
-              />
-            </label>
-            <label className="flex flex-col gap-1">
-              <span className="text-[11px] font-medium text-slate-600">Email</span>
-              <input
-                type="email"
-                value={shared.email}
-                onChange={(e) => onChangeSharedContact({ ...shared, email: e.target.value })}
-                className="h-9 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
-              />
-            </label>
-            <label className="flex flex-col gap-1">
-              <span className="text-[11px] font-medium text-slate-600">Site</span>
-              <input
-                type="url"
-                value={shared.url}
-                onChange={(e) => onChangeSharedContact({ ...shared, url: e.target.value })}
-                placeholder="https://empresa.com"
-                className="h-9 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
-              />
-            </label>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="flex flex-col gap-1.5 sm:col-span-2">
+               <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Nome VCard</span>
+               <input
+                 type="text"
+                 value={shared.fullName}
+                 onChange={(e) => onChangeSharedContact({ ...shared, fullName: e.target.value })}
+                 className="h-10 rounded-xl border border-slate-200 bg-white px-4 text-sm outline-none focus:border-blue-500 transition-all"
+               />
+            </div>
+            <div className="flex flex-col gap-1.5">
+               <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Número</span>
+               <input
+                 type="text"
+                 value={shared.phone}
+                 onChange={(e) => onChangeSharedContact({ ...shared, phone: e.target.value })}
+                 placeholder="119..."
+                 className="h-10 rounded-xl border border-slate-200 bg-white px-4 text-sm outline-none focus:border-blue-500"
+               />
+            </div>
+            <div className="flex flex-col gap-1.5">
+               <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Empresa</span>
+               <input
+                 type="text"
+                 value={shared.company}
+                 onChange={(e) => onChangeSharedContact({ ...shared, company: e.target.value })}
+                 className="h-10 rounded-xl border border-slate-200 bg-white px-4 text-sm outline-none focus:border-blue-500"
+               />
+            </div>
           </div>
         ) : (
-          <div className="mt-4 rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-5 text-sm text-slate-500">
-            O contato compartilhado fica desativado ate voce marcar a opcao acima.
+          <div className="flex flex-col items-center justify-center rounded-3xl border border-dashed border-slate-200 bg-slate-50/20 py-10 opacity-60">
+             <div className="text-3xl mb-2">📇</div>
+             <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Contato Desativado</p>
           </div>
         )}
       </section>
+
+      {/* Library Modal */}
+      {isLibraryOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-md">
+          <div className="relative flex h-[85vh] w-full max-w-6xl flex-col overflow-hidden rounded-[40px] bg-white shadow-2xl animate-in zoom-in-95 duration-200">
+             <div className="flex items-center justify-between bg-slate-50/80 px-8 py-6 backdrop-blur-sm border-b border-slate-100">
+                <div>
+                   <h2 className="text-xl font-bold tracking-tight text-slate-900">Minha Biblioteca de Ativos</h2>
+                   <p className="text-xs font-medium text-slate-500">Selecione um ou mais arquivos para anexar ao seu disparo.</p>
+                </div>
+                <button 
+                   type="button"
+                   onClick={() => setIsLibraryOpen(false)}
+                   className="h-12 w-12 rounded-2xl bg-white border border-slate-200 text-slate-400 hover:text-slate-900 hover:bg-slate-50 transition-all flex items-center justify-center shadow-sm"
+                >
+                   ✕
+                </button>
+             </div>
+             
+             <div className="flex-1 overflow-hidden p-8">
+                <MediaManager 
+                  allowMultiple 
+                  onSelect={handleLibrarySelect} 
+                />
+             </div>
+             
+             <div className="px-8 py-6 bg-slate-50 border-t border-slate-100 flex items-center justify-end">
+                <button 
+                  type="button"
+                  onClick={() => setIsLibraryOpen(false)}
+                  className="px-6 py-3 rounded-2xl border border-slate-200 bg-white text-sm font-bold text-slate-600 hover:bg-slate-50 transition-all mr-3"
+                >
+                  Cancelar
+                </button>
+                <button 
+                   type="button"
+                   onClick={() => setIsLibraryOpen(false)}
+                   className="px-8 py-3 rounded-2xl bg-blue-600 text-sm font-bold text-white shadow-lg shadow-blue-200 hover:bg-blue-700 transition-all"
+                >
+                   Entendido
+                </button>
+             </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
