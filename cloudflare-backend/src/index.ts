@@ -10,6 +10,7 @@ import { presenceRoutes } from './routes/presence'
 import { uploadRoutes } from './routes/uploads'
 import { instanceLabRoutes } from './routes/instanceLab'
 import { profileSettingsRoutes } from './routes/profileSettings'
+import { historyRoutes } from './routes/history'
 
 const app = new Hono<{ Bindings: Bindings; Variables: AppVariables }>()
 
@@ -38,6 +39,7 @@ app.route('/api', profileSettingsRoutes)
 app.route('/api', presenceRoutes)
 app.route('/api', uploadRoutes)
 app.route('/api', instanceLabRoutes)
+app.route('/api', historyRoutes)
 
 app.notFound((c) => c.json({ error: 'Rota nao encontrada no backend Cloudflare.' }, 404))
 app.onError((error, c) => {
