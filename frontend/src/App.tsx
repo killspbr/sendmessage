@@ -364,6 +364,11 @@ function App() {
 
   // Carrega configurações globais de integração (IA / Evolution) de app_settings
   useEffect(() => {
+    if (!currentUser?.id) {
+      setGlobalSettings(null)
+      return
+    }
+
     const loadGlobalSettings = async () => {
       try {
         const data = await apiFetch('/api/settings')
@@ -394,12 +399,15 @@ function App() {
           setGlobalSettings(null)
         }
       } catch (e) {
+        if (e instanceof Error && e.message === 'AUTH_EXPIRED') {
+          return
+        }
         logError('globalSettings.load', 'Erro inesperado ao carregar app_settings', e)
       }
     }
 
     void loadGlobalSettings()
-  }, [])
+  }, [currentUser?.id])
 
   const {
     loading: permissionsLoading,
