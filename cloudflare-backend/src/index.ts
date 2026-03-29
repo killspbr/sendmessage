@@ -64,6 +64,8 @@ app.use('*', async (c, next) => {
 
   const db = getDb(c.env)
   c.set('db', db)
+  // Garante o esquema em background ou na primeira requisição. 
+  // O ensureCloudflareSchema possui trava interna para rodar apenas uma vez por isolate.
   await ensureCloudflareSchema(db)
   await next()
 })

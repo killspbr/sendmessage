@@ -1,4 +1,4 @@
-﻿import type { Campaign, Contact, ContactList, SendHistoryItem, CampaignSendLog } from '../types'
+import type { Campaign, Contact, ContactList, SendHistoryItem, CampaignSendLog } from '../types'
 
 type DashboardPageProps = {
   // Dados
@@ -20,13 +20,31 @@ type DashboardPageProps = {
   hasEvolutionConfigured: boolean
   activeUserPresence?: import('../types').ActiveUserPresenceSnapshot | null
   showAdminPresenceCard?: boolean
+  warmerPairs?: any[]
 
   // Handlers
   onNavigate: (page: 'dashboard' | 'contacts' | 'campaigns' | 'settings') => void
   onCreateCampaign: () => void
   onEditCampaign: (campaign: Campaign) => void
+  onNavigateToWarmer?: () => void
   // Permissões (opcional)
   can?: (code: string) => boolean
+}
+
+const Badge = ({ children, variant = 'secondary' }: { children: React.ReactNode, variant?: 'success' | 'warning' | 'error' | 'info' | 'secondary' }) => {
+  const styles = {
+    success: 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20',
+    warning: 'bg-amber-500/10 text-amber-600 border-amber-500/20',
+    error: 'bg-red-500/10 text-red-600 border-red-500/20',
+    info: 'bg-blue-500/10 text-blue-600 border-blue-500/20',
+    secondary: 'bg-slate-500/10 text-slate-600 border-slate-500/20'
+  }
+
+  return (
+    <span className={`px-1.5 py-0.5 rounded-full border text-[9px] font-semibold tracking-tight ${styles[variant]}`}>
+      {children}
+    </span>
+  )
 }
 
 export function DashboardPage({
@@ -44,9 +62,11 @@ export function DashboardPage({
   hasEvolutionConfigured,
   activeUserPresence,
   showAdminPresenceCard,
+  warmerPairs,
   onNavigate,
   onCreateCampaign,
   onEditCampaign,
+  onNavigateToWarmer,
   can,
 }: DashboardPageProps) {
   const canViewDashboard = !can || can('dashboard.view')
@@ -205,91 +225,93 @@ export function DashboardPage({
 
       {/* KPIs principais */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-        <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-3 flex flex-col gap-1">
+        <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 flex flex-col gap-1 transition-all hover:border-emerald-200">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] text-slate-500">Total de contatos</span>
-            <span className="h-6 w-6 rounded-lg bg-emerald-500/10 text-emerald-600 flex items-center justify-center text-[12px]" aria-hidden="true">
-              [CTT]
+            <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-widest">Contatos</span>
+            <span className="px-2 py-0.5 rounded-lg bg-emerald-500 text-white font-bold text-[9px] shadow-sm shadow-emerald-200" aria-hidden="true">
+              CTT
             </span>
           </div>
-          <span className="text-2xl font-semibold text-slate-900">
+          <span className="text-3xl font-bold tracking-tight text-slate-900 mt-1">
             {Object.values(contactsByList).reduce((acc, list) => acc + list.length, 0)}
           </span>
-          <span className="text-[10px] text-slate-400">Em todas as listas</span>
+          <span className="text-[10px] text-slate-400 font-medium">Cadastrados em todas as listas</span>
         </div>
-        <div className="bg-white rounded-2xl border border-emerald-100 shadow-sm p-3 flex flex-col gap-1">
+
+        <div className="bg-white rounded-2xl border border-emerald-100 shadow-sm p-4 flex flex-col gap-1 transition-all hover:border-emerald-300">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] text-slate-500">Lista atual</span>
-            <span className="h-6 w-6 rounded-lg bg-emerald-500/10 text-emerald-600 flex items-center justify-center text-[12px]" aria-hidden="true">
-              [LST]
+            <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-widest">Lista Ativa</span>
+            <span className="px-2 py-0.5 rounded-lg bg-emerald-600 text-white font-bold text-[9px] shadow-sm shadow-emerald-200" aria-hidden="true">
+              LST
             </span>
           </div>
-          <span className="text-2xl font-semibold text-slate-900">{contacts.length}</span>
-          <span className="text-[11px] text-emerald-600">
-            {lists.find((l) => l.id === currentListId)?.name}
+          <span className="text-3xl font-bold tracking-tight text-slate-900 mt-1">{contacts.length}</span>
+          <span className="text-[11px] text-emerald-600 font-semibold truncate">
+            {lists.find((l) => l.id === currentListId)?.name || 'Sem seleção'}
           </span>
         </div>
-        <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-3 flex flex-col gap-1">
+
+        <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 flex flex-col gap-1 transition-all hover:border-sky-200">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] text-slate-500">Listas de contatos</span>
-            <span className="h-6 w-6 rounded-lg bg-sky-500/10 text-sky-600 flex items-center justify-center text-[12px]" aria-hidden="true">
-              [CMP]
+            <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-widest">Campanhas</span>
+            <span className="px-2 py-0.5 rounded-lg bg-sky-500 text-white font-bold text-[9px] shadow-sm shadow-sky-200" aria-hidden="true">
+              CMP
             </span>
           </div>
-          <span className="text-2xl font-semibold text-slate-900">{lists.length}</span>
-          <span className="text-[10px] text-slate-400">Inclui lista padrao e personalizadas</span>
+          <span className="text-3xl font-bold tracking-tight text-slate-900 mt-1">{campaigns.length}</span>
+          <span className="text-[10px] text-slate-400 font-medium">Recentes e agendadas</span>
         </div>
-        <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-3 flex flex-col gap-1">
+
+        <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 flex flex-col gap-1 transition-all hover:border-amber-200">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] text-slate-500">Campanhas cadastradas</span>
-            <span className="h-6 w-6 rounded-lg bg-amber-500/10 text-amber-600 flex items-center justify-center text-[12px]" aria-hidden="true">
-              📣
+            <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-widest">Programados</span>
+            <span className="px-2 py-0.5 rounded-lg bg-amber-500 text-white font-bold text-[9px] shadow-sm shadow-amber-200" aria-hidden="true">
+              PRG
             </span>
           </div>
-          <span className="text-2xl font-semibold text-slate-900">{campaigns.length}</span>
-          <span className="text-[10px] text-slate-400">
-            {campaigns.filter((c) => c.status === 'agendada').length} agendadas -{' '}
-            {campaigns.filter((c) => c.status === 'enviada').length} enviadas
+          <span className="text-3xl font-bold tracking-tight text-slate-900 mt-1">
+            {campaigns.filter((c) => c.status === 'agendada').length}
+          </span>
+          <span className="text-[10px] text-slate-400 font-medium font-semibold text-amber-600">
+            Aguardando disparo
           </span>
         </div>
+
         <div
-          className={`bg-white rounded-2xl border shadow-sm p-3 flex flex-col gap-1 ${recentSuccessRate == null
+          className={`lg:col-span-1 bg-white rounded-2xl border shadow-sm p-4 flex flex-col gap-1 transition-all ${recentSuccessRate == null
             ? 'border-slate-100'
             : recentSuccessRate >= 90
-              ? 'border-emerald-200'
+              ? 'border-emerald-200 hover:border-emerald-300'
               : recentSuccessRate >= 70
-                ? 'border-amber-200'
-                : 'border-rose-200'
+                ? 'border-amber-200 hover:border-amber-300'
+                : 'border-rose-200 hover:border-rose-300'
             }`}
         >
           <div className="flex items-center justify-between">
+            <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-widest">Taxa de Sucesso</span>
             <span
-              className="text-[11px] text-slate-500"
-              title="Calculado com base nos ultimos 10 registros de envio: percentual de envios com status OK em relacao ao total (OK / total)."
-            >
-              Qualidade dos envios recentes
-            </span>
-            <span
-              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium ${recentSuccessRate == null
-                ? 'bg-slate-500/10 text-slate-600'
+              className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg text-[9px] font-bold ${recentSuccessRate == null
+                ? 'bg-slate-100 text-slate-500'
                 : recentSuccessRate >= 90
-                  ? 'bg-emerald-500/10 text-emerald-700'
+                  ? 'bg-emerald-100 text-emerald-700'
                   : recentSuccessRate >= 70
-                    ? 'bg-amber-500/10 text-amber-700'
-                    : 'bg-rose-500/10 text-rose-700'
+                    ? 'bg-amber-100 text-amber-700'
+                    : 'bg-rose-100 text-rose-700'
                 }`}
             >
               {recentSuccessRate == null
-                ? 'Sem dados'
-                : `${recentQualityLabel} - ${Math.round(recentSuccessRate)}% OK`}
+                ? 'N/A'
+                : `${Math.round(recentSuccessRate)}%`}
             </span>
           </div>
+          <span className="text-3xl font-bold tracking-tight text-slate-900 mt-1">
+             {recentSuccessRate == null ? '...' : recentQualityLabel}
+          </span>
           {recentSuccessRate == null ? (
-            <span className="text-[10px] text-slate-400">Nenhum disparo registrado ainda.</span>
+            <span className="text-[10px] text-slate-400">Calculando metricas...</span>
           ) : (
-            <span className="text-[10px] text-slate-400">
-              Considerando ate os ultimos {recentHistory.length} disparos: {recentTotals.total} contato(s),{' '}
-              {recentTotals.errors} com erro.
+            <span className="text-[10px] text-slate-400 font-medium">
+              Ultimos {recentHistory.length} envios registrados.
             </span>
           )}
         </div>
@@ -342,6 +364,57 @@ export function DashboardPage({
         </section>
       )}
 
+      {/* Status do Maturador (Laboratório) */}
+      {warmerPairs && warmerPairs.length > 0 && (
+        <section className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 flex flex-col gap-3 transition-all hover:border-violet-100 group">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-xl bg-violet-500/10 text-violet-600 flex items-center justify-center text-lg">
+                🧬
+              </div>
+              <div>
+                <h2 className="text-xs font-semibold text-slate-800">Status da Maturação (Laboratório)</h2>
+                <p className="text-[11px] text-slate-500">Aquecimento preventivo de chips via IA Gemini.</p>
+              </div>
+            </div>
+            <button 
+              onClick={onNavigateToWarmer}
+              className="text-[10px] font-bold text-violet-600 bg-violet-50 px-3 py-1.5 rounded-xl hover:bg-violet-100 transition-colors"
+            >
+              Ver Detalhes 🧬
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+            {warmerPairs.slice(0, 3).map((pair: any) => (
+              <div key={pair.id} className="rounded-xl border border-slate-100 bg-slate-50/50 p-2.5 flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 mb-1">
+                    <div className={`w-1.5 h-1.5 rounded-full ${pair.status === 'active' ? 'bg-emerald-500 animate-pulse' : 'bg-slate-300'}`} />
+                    <span className="text-[11px] font-bold text-slate-800 truncate">{pair.name || `${pair.instance_a_id} ↔ ${pair.instance_b_id}`}</span>
+                  </div>
+                  <div className="text-[10px] text-slate-500">
+                    {pair.sent_today > 0 ? `${pair.sent_today} msg hoje` : 'Nenhuma msg hoje'}
+                  </div>
+                </div>
+                <div className="text-right shrink-0">
+                   <div className={`text-[9px] font-bold px-1.5 py-0.5 rounded-lg inline-block uppercase tracking-wider ${
+                     pair.last_run_status_actual === 'completed' ? 'bg-emerald-100 text-emerald-700' :
+                     pair.last_run_status_actual === 'failed' ? 'bg-rose-100 text-rose-700' :
+                     'bg-slate-200 text-slate-600'
+                   }`}>
+                     {pair.last_run_status_actual || 'INATIVO'}
+                   </div>
+                   <div className="text-[8px] text-slate-400 mt-0.5">
+                     {pair.last_run_finished_at ? new Date(pair.last_run_finished_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '-'}
+                   </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
       {/* Historico global de disparos */}
       <section className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 flex flex-col gap-2">
         <div className="flex items-center justify-between">
@@ -367,12 +440,12 @@ export function DashboardPage({
                 <div className="flex flex-col min-w-0">
                   <div className="flex items-center gap-1.5 min-w-0">
                     <span
-                      className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-medium border ${item.ok
-                        ? 'bg-emerald-50 text-emerald-700 border-emerald-100'
-                        : 'bg-rose-50 text-rose-700 border-rose-100'
+                      className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-bold border shadow-sm ${item.ok
+                        ? 'bg-emerald-500/10 text-emerald-700 border-emerald-200/50 shadow-emerald-600/5'
+                        : 'bg-rose-500/10 text-rose-700 border-rose-200/50 shadow-rose-600/5'
                         }`}
                     >
-                      {item.ok ? 'OK' : 'Erro'}
+                      {item.ok ? 'OK' : 'ERRO'}
                     </span>
                     <span className="font-medium text-slate-800 truncate max-w-[220px]">
                       {item.campaignName}
@@ -642,18 +715,22 @@ export function DashboardPage({
                   <span className="font-medium text-slate-800 truncate max-w-[260px]">
                     {camp.name}
                   </span>
-                  <span className="text-[10px] text-slate-500 flex items-center gap-1">
-                    <span>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    <Badge variant={
+                      camp.status === 'enviada' ? 'success' :
+                        camp.status === 'enviada_com_erros' ? 'warning' :
+                          camp.status === 'agendada' ? 'info' : 'secondary'
+                    }>
                       {camp.status === 'enviada'
-                        ? 'Campanha enviada'
+                        ? 'Enviada'
                         : camp.status === 'enviada_com_erros'
-                          ? 'Campanha enviada com erros'
+                          ? 'Com Erros'
                           : camp.status === 'agendada'
-                            ? 'Campanha agendada'
-                            : 'Rascunho de campanha'}
-                    </span>
+                            ? 'Agendada'
+                            : 'Rascunho'}
+                    </Badge>
                     <span className="text-slate-400">·</span>
-                    <span>
+                    <span className="text-[10px] text-slate-500">
                       {camp.channels.includes('whatsapp') && 'WhatsApp'}
                       {camp.channels.includes('whatsapp') && camp.channels.includes('email') && ' · '}
                       {camp.channels.includes('email') && 'Email'}
@@ -661,10 +738,10 @@ export function DashboardPage({
                     {camp.createdAt && (
                       <>
                         <span className="text-slate-400">·</span>
-                        <span>{camp.createdAt}</span>
+                        <span className="text-[10px] text-slate-500">{camp.createdAt}</span>
                       </>
                     )}
-                  </span>
+                  </div>
                 </div>
                 <button
                   type="button"

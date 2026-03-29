@@ -1,7 +1,7 @@
 import type { Pool } from 'pg'
 
 const ensureAttempted = new Set<string>()
-const ENABLE_RUNTIME_DDL = false
+const ENABLE_RUNTIME_DDL = true
 
 function normalizeErrorMessage(error: unknown) {
   return String((error as { message?: unknown })?.message || error || '').toLowerCase()

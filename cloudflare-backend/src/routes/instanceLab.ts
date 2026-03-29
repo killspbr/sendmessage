@@ -2,7 +2,7 @@ import { Hono } from 'hono'
 import type { Bindings, AppVariables } from '../types'
 import { authenticateToken, checkAdmin } from '../lib/auth'
 import { getDb } from '../lib/db'
-import { toEvolutionNumber } from '../lib/messageUtils'
+import { toEvolutionNumber, ensureAbsoluteUrl } from '../lib/messageUtils'
 import { runSchemaBestEffort } from '../lib/runtimeSchema'
 
 const DEFAULT_DELAY_SECONDS = 5
@@ -37,6 +37,119 @@ function clampNumber(value: unknown, min: number, max: number, fallback: number)
 
 function pickTextMessage(index: number) {
   return LAB_TEXT_MESSAGES[index % LAB_TEXT_MESSAGES.length]
+}
+
+async function sendPresence({
+  evolutionUrl,
+  apiKey,
+  instanceName,
+  toPhone,
+  presence
+}: {
+  evolutionUrl: string
+  apiKey: string
+  instanceName: string
+  toPhone: string
+  presence: 'composing' | 'recording' | 'paused'
+}) {
+  const number = toEvolutionNumber(toPhone)
+  if (!number) return
+  
+  try {
+    await postEvolution(`${evolutionUrl}/chat/sendPresence/${safeTrim(instanceName)}`, apiKey, {
+      number,
+      presence
+    })
+  } catch (err) {
+    console.warn(`[InstanceLab] Falha ao enviar presenca ${presence} para ${instanceName}:`, (err as any)?.message || String(err))
+  }
+}
+
+async function generateLabMessage({
+  db,
+  userId,
+  env,
+  fromPhone,
+  toPhone,
+  pairId,
+}: {
+  db: ReturnType<typeof getDb>
+  userId: string
+  env: Bindings
+  fromPhone: string
+  toPhone: string
+  pairId: string
+}): Promise<string> {
+  try {
+    const access = await resolveGeminiAccess(userId, db, env)
+    if (!access.apiKey) return pickTextMessage(Math.floor(Math.random() * 10))
+
+    // Busca as ultimas 5 mensagens para dar contexto a IA
+    const history = await db.query(
+      `SELECT from_phone, content_summary
+         FROM warmer_logs
+        WHERE warmer_id = $1
+          AND message_type = 'text'
+        ORDER BY sent_at DESC
+        LIMIT 5`,
+      [pairId]
+    )
+
+    const contextStr = history.rows
+      .reverse()
+      .map((r: any) => `${r.from_phone === fromPhone ? 'Eu' : 'Outro'}: ${r.content_summary}`)
+      .join('\n')
+
+    const prompt = `
+Você é um usuário de WhatsApp participando de uma conversa informal e rápida para validar a conexão.
+Histórico recente:
+${contextStr || '(Sem histórico ainda)'}
+
+Gere a PRÓXIMA mensagem curta (máximo 15 palavras), informal, em Português do Brasil. 
+Não use emojis excessivos. Seja natural como um humano.
+`.trim()
+
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${access.apiKey}`
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: { temperature: 0.9, maxOutputTokens: 60 }
+      })
+    })
+
+    if (!res.ok) throw new Error('Falha Gemini')
+    const data: any = await res.json()
+    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim()
+    return text || pickTextMessage(Math.floor(Math.random() * 10))
+  } catch {
+    return pickTextMessage(Math.floor(Math.random() * 10))
+  }
+}
+
+async function resolveGeminiAccess(userId: string, db: ReturnType<typeof getDb>, env: Bindings) {
+  // Logic based on ai.ts
+  const [profileResult, settingsResult] = await Promise.all([
+    db.query('SELECT use_global_ai, ai_api_key FROM user_profiles WHERE id = $1 LIMIT 1', [userId]),
+    db.query('SELECT global_ai_api_key FROM app_settings ORDER BY id DESC LIMIT 1'),
+  ])
+
+  const profile = profileResult.rows[0] || {}
+  const settings = settingsResult.rows[0] || {}
+  const useGlobalAi = profile.use_global_ai ?? true
+  const userAiKey = String(profile.ai_api_key || '').trim()
+  const globalAiKey = String(settings.global_ai_api_key || '').trim()
+
+  if (!useGlobalAi && userAiKey) return { apiKey: userAiKey }
+  
+  const pooled = await db.query(
+    `SELECT api_key FROM gemini_api_keys WHERE status = 'ativa' AND requests_count < 20 ORDER BY requests_count ASC LIMIT 1`
+  )
+  if (pooled.rows[0]?.api_key) return { apiKey: pooled.rows[0].api_key }
+  
+  if (useGlobalAi && globalAiKey) return { apiKey: globalAiKey }
+  return { apiKey: String(env.GEMINI_API_KEY || '').trim() }
 }
 
 function normalizeEvolutionBaseUrl(url: unknown) {
@@ -97,7 +210,7 @@ async function getTableColumns(db: ReturnType<typeof getDb>, tableName: string) 
     [tableName]
   )
 
-  const columns = new Set<string>(result.rows.map((row) => String(row.column_name)))
+  const columns = new Set<string>(result.rows.map((row: any) => String(row.column_name)))
   tableColumnsCache.set(cacheKey, {
     columns,
     expiresAt: now + COLUMN_CACHE_TTL_MS,
@@ -116,10 +229,12 @@ async function tableExists(db: ReturnType<typeof getDb>, tableName: string) {
 }
 
 async function ensureInstanceLabSchema(db: ReturnType<typeof getDb>) {
+  const UUID_GEN = "(md5(random()::text || clock_timestamp()::text)::uuid)"
   await runSchemaBestEffort(async () => {
     await db.query(`
       CREATE TABLE IF NOT EXISTS warmer_configs (
-        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        id UUID PRIMARY KEY DEFAULT ${UUID_GEN},
+        user_id UUID,
         name TEXT,
         instance_a_id TEXT NOT NULL,
         instance_b_id TEXT NOT NULL,
@@ -139,10 +254,11 @@ async function ensureInstanceLabSchema(db: ReturnType<typeof getDb>) {
         updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
       )
     `)
+    await db.query(`ALTER TABLE warmer_configs ADD COLUMN IF NOT EXISTS user_id UUID`)
 
     await db.query(`
       CREATE TABLE IF NOT EXISTS warmer_runs (
-        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        id UUID PRIMARY KEY DEFAULT ${UUID_GEN},
         warmer_id UUID NOT NULL REFERENCES warmer_configs(id) ON DELETE CASCADE,
         initiated_by UUID REFERENCES users(id) ON DELETE SET NULL,
         status TEXT NOT NULL DEFAULT 'queued' CHECK (status IN ('queued', 'running', 'completed', 'failed')),
@@ -285,6 +401,7 @@ async function sendMedia({
   mediaUrl,
   mediaType,
   caption,
+  baseUrl,
 }: {
   evolutionUrl: string
   apiKey: string
@@ -293,17 +410,20 @@ async function sendMedia({
   mediaUrl: string
   mediaType: 'image' | 'document'
   caption: string
+  baseUrl?: string
 }) {
   const number = toEvolutionNumber(toPhone)
   if (!number) throw new Error('Telefone de destino invalido para o laboratorio.')
 
+  const finalMediaUrl = baseUrl ? ensureAbsoluteUrl(mediaUrl, baseUrl) : mediaUrl
+
   return postEvolution(`${evolutionUrl}/message/sendMedia/${safeTrim(instanceName)}`, apiKey, {
     number,
     mediatype: mediaType,
-    mimetype: inferMimeTypeFromUrl(mediaUrl, mediaType),
-    fileName: inferFileNameFromUrl(mediaUrl, mediaType === 'document' ? 'documento' : 'imagem'),
+    mimetype: inferMimeTypeFromUrl(finalMediaUrl, mediaType),
+    fileName: inferFileNameFromUrl(finalMediaUrl, mediaType === 'document' ? 'documento' : 'imagem'),
     caption: safeTrim(caption),
-    media: mediaUrl,
+    media: finalMediaUrl,
   })
 }
 
@@ -313,24 +433,29 @@ async function sendAudio({
   instanceName,
   toPhone,
   audioUrl,
+  baseUrl,
 }: {
   evolutionUrl: string
   apiKey: string
   instanceName: string
   toPhone: string
   audioUrl: string
+  baseUrl?: string
 }) {
   const number = toEvolutionNumber(toPhone)
   if (!number) throw new Error('Telefone de destino invalido para o laboratorio.')
 
+  const finalAudioUrl = baseUrl ? ensureAbsoluteUrl(audioUrl, baseUrl) : audioUrl
+
   return postEvolution(`${evolutionUrl}/message/sendWhatsAppAudio/${safeTrim(instanceName)}`, apiKey, {
     number,
-    audio: audioUrl,
+    audio: finalAudioUrl,
   })
 }
 
 type PairRecord = {
   id: string
+  user_id: string
   instance_a_id: string
   instance_b_id: string
   phone_a: string
@@ -455,6 +580,7 @@ async function executeRunStep({
   stepIndex,
   stepsTotal,
   preferredStartSide,
+  baseUrl,
 }: {
   db: ReturnType<typeof getDb>
   runId: string
@@ -464,6 +590,7 @@ async function executeRunStep({
   stepIndex: number
   stepsTotal: number
   preferredStartSide: 'a' | 'b' | null
+  baseUrl?: string
 }) {
   const payloads = buildStepPayloads(pair)
   const direction = resolveDirection(pair, preferredStartSide, stepIndex)
@@ -475,26 +602,64 @@ async function executeRunStep({
     let contentSummary = ''
 
     if (payload.type === 'text') {
-      contentSummary = textContent
+      const runData = await db.query('SELECT initiated_by FROM warmer_runs WHERE id = $1', [runId])
+      const userId = runData.rows[0]?.initiated_by || pair.user_id || ''
+
+      const dynamicMessage = await generateLabMessage({
+        db,
+        userId,
+        env: (db as any).env || {}, // Fallback se env não estiver no DB proxy
+        fromPhone: direction.fromPhone,
+        toPhone: direction.toPhone,
+        pairId: pair.id
+      })
+
+      contentSummary = dynamicMessage
+      
+      // Simula digitacao antes de enviar texto
+      await sendPresence({
+        evolutionUrl,
+        apiKey,
+        instanceName: direction.fromInstance,
+        toPhone: direction.toPhone,
+        presence: 'composing'
+      })
+      // Aguarda um tempo proporcional ao tamanho da mensagem (ex: 150ms por caractere, min 1.5s, max 8s)
+      const typingTime = Math.min(8000, Math.max(1500, dynamicMessage.length * 150))
+      await wait(typingTime)
+
       responseMeta = await sendText({
         evolutionUrl,
         apiKey,
         instanceName: direction.fromInstance,
         toPhone: direction.toPhone,
-        text: textContent,
+        text: dynamicMessage,
       })
     } else if (payload.type === 'audio') {
       contentSummary = `Audio de teste: ${inferFileNameFromUrl(payload.url, 'audio.mp3')}`
+      
+      // Simula gravacao de audio
+      await sendPresence({
+        evolutionUrl,
+        apiKey,
+        instanceName: direction.fromInstance,
+        toPhone: direction.toPhone,
+        presence: 'recording'
+      })
+      await wait(Math.random() * 3000 + 2000) // 2 a 5 segundos de "gravacao"
+
       responseMeta = await sendAudio({
         evolutionUrl,
         apiKey,
         instanceName: direction.fromInstance,
         toPhone: direction.toPhone,
         audioUrl: String(payload.url || ''),
+        baseUrl,
       })
     } else {
       const isDocument = payload.type === 'document'
       contentSummary = `${isDocument ? 'Documento' : 'Imagem'} de teste: ${inferFileNameFromUrl(payload.url, 'arquivo')}`
+      
       responseMeta = await sendMedia({
         evolutionUrl,
         apiKey,
@@ -502,7 +667,8 @@ async function executeRunStep({
         toPhone: direction.toPhone,
         mediaUrl: String(payload.url || ''),
         mediaType: payload.type,
-        caption: isDocument ? '' : `Laboratorio de instancias ${stepIndex + 1}/${stepsTotal}`,
+        caption: isDocument ? '' : `Laboratório de instâncias ${stepIndex + 1}/${stepsTotal}`,
+        baseUrl,
       })
     }
 
@@ -534,7 +700,7 @@ async function executeRunStep({
   }
 }
 
-async function executeLabRun(env: Bindings, runId: string) {
+async function executeLabRun(env: Bindings, runId: string, baseUrl?: string) {
   if (ACTIVE_RUNS.has(runId)) return
   ACTIVE_RUNS.add(runId)
 
@@ -557,6 +723,7 @@ async function executeLabRun(env: Bindings, runId: string) {
          r.step_delay_seconds,
          r.preferred_start_side,
          w.id,
+         w.user_id,
          w.instance_a_id,
          w.instance_b_id,
          w.phone_a,
@@ -591,6 +758,7 @@ async function executeLabRun(env: Bindings, runId: string) {
 
     const pair: PairRecord = {
       id: String(row.id),
+      user_id: String(row.user_id || ''),
       instance_a_id: String(row.instance_a_id || ''),
       instance_b_id: String(row.instance_b_id || ''),
       phone_a: String(row.phone_a || ''),
@@ -637,10 +805,15 @@ async function executeLabRun(env: Bindings, runId: string) {
         stepIndex,
         stepsTotal: totalSteps,
         preferredStartSide: run.preferred_start_side,
+        baseUrl,
       })
 
       await db.query('UPDATE warmer_runs SET steps_completed = $1 WHERE id = $2', [stepIndex + 1, run.id])
-      if (stepIndex < totalSteps - 1) await wait(delaySeconds * 1000)
+      if (stepIndex < totalSteps - 1) {
+        // Atraso randomizado entre etapas (80% a 120% do configurado) para parecer mais humano
+        const randomizedDelay = delaySeconds * (0.8 + Math.random() * 0.4)
+        await wait(randomizedDelay * 1000)
+      }
     }
 
     await db.query(
@@ -740,12 +913,13 @@ async function createRunRecord(
     ? overrides.preferredStartSide
     : null
 
+  const runId = crypto.randomUUID()
   const insertResult = await db.query(
     `INSERT INTO warmer_runs (
-      warmer_id, initiated_by, status, steps_total, step_delay_seconds, preferred_start_side
-    ) VALUES ($1, $2, 'queued', $3, $4, $5)
+      id, warmer_id, initiated_by, status, steps_total, step_delay_seconds, preferred_start_side
+    ) VALUES ($1, $2, $3, 'queued', $4, $5, $6)
     RETURNING *`,
-    [pairId, initiatedBy || null, stepsTotal, stepDelaySeconds, preferredStartSide]
+    [runId, pairId, initiatedBy || null, stepsTotal, stepDelaySeconds, preferredStartSide]
   )
 
   return insertResult.rows[0]
@@ -842,14 +1016,17 @@ instanceLabRoutes.post('/admin/warmer', authenticateToken, checkAdmin, async (c)
     return c.json({ error: 'Preencha instancias e telefones dos dois lados.' }, 400)
   }
 
+  const pairId = crypto.randomUUID()
   const result = await db.query(
     `INSERT INTO warmer_configs (
-      name, instance_a_id, instance_b_id, phone_a, phone_b, status,
+      id, user_id, name, instance_a_id, instance_b_id, phone_a, phone_b, status,
       default_delay_seconds, default_messages_per_run,
       sample_image_url, sample_document_url, sample_audio_url, notes
-    ) VALUES ($1,$2,$3,$4,$5,'active',$6,$7,$8,$9,$10,$11)
+    ) VALUES ($1,$2,$3,$4,$5,$6,$7,'active',$8,$9,$10,$11,$12,$13)
     RETURNING *`,
     [
+      pairId,
+      c.get('user')?.id,
       safeTrim(body.name) || null,
       instanceA,
       instanceB,
@@ -973,12 +1150,23 @@ instanceLabRoutes.post('/admin/warmer/:id/force', authenticateToken, checkAdmin,
   const db = getDb(c.env)
   await ensureInstanceLabSchema(db)
 
+  const warmerId = safeTrim(c.req.param('id'))
   try {
-    const run = await createRunRecord(db, safeTrim(c.req.param('id')), user?.id || null)
-    runInBackground(c, executeLabRun(c.env, String(run.id)))
+    // Verificacao explicita antes de rodar
+    const check = await db.query('SELECT id FROM warmer_configs WHERE id = $1 LIMIT 1', [warmerId])
+    if (!check.rows[0]) {
+      return c.json({ error: `Par de instancia ${warmerId} nao encontrado.` }, 404)
+    }
+
+    const run = await createRunRecord(db, warmerId, user?.id || null)
+    runInBackground(c, executeLabRun(c.env, String(run.id), new URL(c.req.url).origin))
     return c.json({ success: true, run })
   } catch (error) {
-    return c.json({ error: toErrorMessage(error) }, 400)
+    console.error(`[InstanceLab] Erro ao forcar rodada para ${warmerId}:`, error)
+    return c.json({ 
+      error: toErrorMessage(error),
+      technical: String(error)
+    }, 400)
   }
 })
 
@@ -995,7 +1183,7 @@ instanceLabRoutes.post('/admin/warmer/:id/manual', authenticateToken, checkAdmin
       stepDelaySeconds: 1,
       preferredStartSide: side,
     })
-    runInBackground(c, executeLabRun(c.env, String(run.id)))
+    runInBackground(c, executeLabRun(c.env, String(run.id), new URL(c.req.url).origin))
     return c.json({
       success: true,
       run,

@@ -68,3 +68,10 @@ export function htmlToWhatsapp(html: unknown) {
     .replace(/\n{3,}/g, '\n\n')
     .trim()
 }
+export function ensureAbsoluteUrl(url: unknown, baseUrl: string) {
+  const raw = String(url || '').trim()
+  if (!raw) return ''
+  if (raw.startsWith('http://') || raw.startsWith('https://')) return raw
+  if (raw.startsWith('/')) return `${baseUrl.replace(/\/+$/, '')}${raw}`
+  return `${baseUrl.replace(/\/+$/, '')}/${raw}`
+}

@@ -578,6 +578,7 @@ function App() {
   }, [currentUser?.id, currentPage, can])
 
 
+
   const [sendingCampaignId, setSendingCampaignId] = useState<string | null>(null)
   const [sendingCurrentIndex, setSendingCurrentIndex] = useState<number>(0)
   const [sendingTotal, setSendingTotal] = useState<number>(0)
@@ -586,6 +587,7 @@ function App() {
 
   const [sendIntervalMinSeconds, setSendIntervalMinSeconds] = useState<number>(30)
   const [sendIntervalMaxSeconds, setSendIntervalMaxSeconds] = useState<number>(90)
+  const [warmerPairs, setWarmerPairs] = useState<any[]>([])
 
   const {
     sendHistory,
@@ -596,6 +598,29 @@ function App() {
     setCampaignSendLog,
     reloadContactSendHistory,
   } = useSendHistory({ effectiveUserId })
+
+  useEffect(() => {
+    if (!currentUser?.id || currentPage !== 'dashboard' || !can('admin.users')) {
+      setWarmerPairs([])
+      return
+    }
+
+    const loadWarmerStatus = async () => {
+      try {
+        const data = await apiFetch('/api/admin/warmer')
+        setWarmerPairs(data || [])
+      } catch (e) {
+        logError('warmer.loadStatus', 'Erro ao carregar status do maturador', e)
+      }
+    }
+
+    void loadWarmerStatus()
+    const interval = setInterval(() => {
+      void loadWarmerStatus()
+    }, 45000)
+
+    return () => clearInterval(interval)
+  }, [currentUser?.id, currentPage, can])
 
 
   useEffect(() => {
@@ -3108,17 +3133,19 @@ function App() {
                 hasEvolutionConfigured={(!!userSettings?.evolution_url || !!globalSettings?.evolution_api_url) && (!!userSettings?.evolution_instance || !!globalSettings?.evolution_shared_instance)}
                 activeUserPresence={activeUserPresence}
                 showAdminPresenceCard={can('admin.users')}
+                warmerPairs={warmerPairs}
                 onNavigate={setCurrentPage}
-                  onCreateCampaign={() => {
-                    setCurrentPage('campaigns')
-                    setEditingCampaignId(null)
-                    resetCampaignComposerState()
-                    setNewCampaignListId(lists[0]?.id || '')
-                    setCampaignEditorOpen(true)
-                  }}
-                onEditCampaign={(camp) => {
+                onNavigateToWarmer={() => setCurrentPage('warmer')}
+                onEditCampaign={(campaign: Campaign) => {
                   setCurrentPage('campaigns')
-                  handleStartEditCampaign(camp)
+                  handleStartEditCampaign(campaign)
+                }}
+                onCreateCampaign={() => {
+                  setCurrentPage('campaigns')
+                  setEditingCampaignId(null)
+                  resetCampaignComposerState()
+                  setNewCampaignListId(lists[0]?.id || '')
+                  setCampaignEditorOpen(true)
                 }}
                 can={can}
               />
@@ -3152,7 +3179,7 @@ function App() {
                 geminiApiKey={geminiApiKey}
                 isBackfillingAddress={isBackfillingAddress}
                 payloadPreview={payloadPreview}
-                onSelectList={(id) => setCurrentListId(id)}
+                onSelectList={(id: string) => setCurrentListId(id)}
                 onCreateList={handleCreateList}
                 onRenameCurrentList={handleRenameCurrentList}
                 onDeleteCurrentList={handleDeleteCurrentList}

@@ -1,4 +1,4 @@
-import { htmlToWhatsapp, resolveTemplate, toEvolutionNumber } from './messageUtils'
+import { ensureAbsoluteUrl, htmlToWhatsapp, resolveTemplate, toEvolutionNumber } from './messageUtils'
 
 const MAX_MEDIA_ITEMS = 5
 const INTRA_CONTACT_DELAY_MS = 1000
@@ -252,14 +252,14 @@ function arrayBufferToBase64(buffer: ArrayBuffer) {
   return btoa(binary)
 }
 
-async function resolveMediaBody(fetchImpl: typeof fetch, media: MediaItem, resolvedUrl: string) {
+async function resolveMediaBody(fetchImpl: typeof fetch, media: MediaItem, resolvedUrl: string, baseUrl?: string) {
   if (media.sourceType !== 'asset' || media.mediaType === 'document') {
-    return resolvedUrl
+    return baseUrl ? ensureAbsoluteUrl(resolvedUrl, baseUrl) : resolvedUrl
   }
 
   const response = await fetchImpl(resolvedUrl)
   if (!response.ok) {
-    throw new Error(`Falha ao carregar o arquivo do servidor: ${await response.text().catch(() => 'erro desconhecido')}`)
+    throw new Error(`Falha ao carregar o arquivo do servidor (${response.status}): ${await response.text().catch(() => 'corpo indisponivel')}`)
   }
   return arrayBufferToBase64(await response.arrayBuffer())
 }
@@ -280,6 +280,7 @@ async function sendEvolutionMedia({
   media,
   resolvedUrl,
   caption,
+  baseUrl,
 }: {
   fetchImpl: typeof fetch
   evolutionUrl: string
@@ -289,8 +290,9 @@ async function sendEvolutionMedia({
   media: MediaItem
   resolvedUrl: string
   caption: string
+  baseUrl?: string
 }) {
-  const mediaBody = await resolveMediaBody(fetchImpl, media, resolvedUrl)
+  const mediaBody = await resolveMediaBody(fetchImpl, media, resolvedUrl, baseUrl)
   const fileName = resolveMediaFileName(media)
   const mimeType = inferMimeType(media)
 
@@ -314,6 +316,7 @@ async function sendEvolutionAudio({
   number,
   media,
   resolvedUrl,
+  baseUrl,
 }: {
   fetchImpl: typeof fetch
   evolutionUrl: string
@@ -322,8 +325,9 @@ async function sendEvolutionAudio({
   number: string
   media: MediaItem
   resolvedUrl: string
+  baseUrl?: string
 }) {
-  const audioBody = await resolveMediaBody(fetchImpl, media, resolvedUrl)
+  const audioBody = await resolveMediaBody(fetchImpl, media, resolvedUrl, baseUrl)
   await postEvolutionWithRetry(fetchImpl, `${evolutionUrl}/message/sendWhatsAppAudio/${evolutionInstance}`, evolutionApiKey, {
     number,
     audio: audioBody,
@@ -382,6 +386,7 @@ export async function executeWhatsappCampaignDelivery({
   campaign,
   contact,
   messageOverride,
+  baseUrl,
 }: {
   fetchImpl?: typeof fetch
   evolutionUrl: string
@@ -390,6 +395,7 @@ export async function executeWhatsappCampaignDelivery({
   campaign: Campaign
   contact: Contact
   messageOverride?: string
+  baseUrl?: string
 }) {
   const evolutionNumber = toEvolutionNumber(contact.phone)
   if (!evolutionNumber) throw new Error('Contato sem telefone valido para envio no formato Evolution.')
@@ -429,6 +435,7 @@ export async function executeWhatsappCampaignDelivery({
           number: evolutionNumber,
           media,
           resolvedUrl,
+          baseUrl,
         })
       } else {
         await sendEvolutionMedia({
@@ -444,6 +451,7 @@ export async function executeWhatsappCampaignDelivery({
             safeTrim(resolveTemplate(media.caption || '', contact)),
             attachMessage
           ),
+          baseUrl,
         })
       }
       result.mediaSent += 1

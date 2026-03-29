@@ -14,7 +14,7 @@ export type Bindings = {
 }
 
 export type AppVariables = {
-  db: Pool
+  db: { query: (text: string, params?: any[]) => Promise<any> }
   user?: {
     id: string
     email?: string

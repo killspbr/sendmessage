@@ -1,7 +1,9 @@
-import { Pool } from 'pg'
+import pg from 'pg'
+const { Client, Pool } = pg as any
 import type { Bindings } from '../types'
 
-let pool: Pool | null = null
+// Not using global pool because Cloudflare isolates don't always handle it well with Hyperdrive.
+// Instead, we use Hyperdrive's built-in pooling by opening/closing connections quickly or using a very slim wrapper.
 
 function wait(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms))
@@ -42,67 +44,71 @@ function isReadOnlyQuery(queryText: unknown) {
   )
 }
 
-function withTimeout<T>(promise: Promise<T>, timeoutMs: number) {
-  return new Promise<T>((resolve, reject) => {
-    const timer = setTimeout(() => {
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number) {
+  let timer: any
+  const timeoutPromise = new Promise<T>((_, reject) => {
+    timer = setTimeout(() => {
       const timeoutError = new Error(`DB_QUERY_TIMEOUT after ${timeoutMs}ms`)
       ;(timeoutError as any).code = 'DB_QUERY_TIMEOUT'
       reject(timeoutError)
     }, timeoutMs)
-
-    promise
-      .then((result) => resolve(result))
-      .catch((error) => reject(error))
-      .finally(() => clearTimeout(timer))
   })
+
+  try {
+    return await Promise.race([promise, timeoutPromise])
+  } finally {
+    clearTimeout(timer)
+  }
 }
 
+let dbInstance: { query: (text: string, params?: any[]) => Promise<any> } | null = null
+
 export function getDb(env: Bindings) {
-  if (pool) return pool
+  if (dbInstance) return dbInstance
 
   const connectionString = env.HYPERDRIVE?.connectionString || env.DATABASE_URL
   if (!connectionString) {
     throw new Error('DATABASE_URL ou binding HYPERDRIVE nao configurado.')
   }
 
-  pool = new Pool({
-    connectionString,
-    max: 5,
-    idleTimeoutMillis: 30000,
-    connectionTimeoutMillis: 15000,
-    idle_in_transaction_session_timeout: 60000,
-    keepAlive: true,
-  } as any)
+  dbInstance = {
+    async query(text: string, params?: any[]) {
+      const isReadOnly = isReadOnlyQuery(text)
+      const maxAttempts = isReadOnly ? 2 : 1
+      let lastError: any = null
 
-  ;(pool as any).on?.('error', (error: unknown) => {
-    console.error('[DB] Erro no pool PostgreSQL:', error)
-  })
+      for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+        const client = new Client({
+          connectionString,
+          connectionTimeoutMillis: 5000,
+        })
 
-  const originalQuery = (pool as any).query.bind(pool)
-  ;(pool as any).query = async (...args: any[]) => {
-    let lastError: unknown = null
-    const queryText = args[0]
-    const isReadOnly = isReadOnlyQuery(queryText)
-    const maxAttempts = isReadOnly ? 3 : 1
+        try {
+          // Connect phase
+          await withTimeout(client.connect(), 6000)
 
-    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-      try {
-        const execution = originalQuery(...args)
-        return await withTimeout(execution, isReadOnly ? 12000 : 15000)
-      } catch (error) {
-        lastError = error
-        if (!isRetryableConnectionError(error) || attempt >= maxAttempts) {
-          throw error
+          // Query phase
+          const result = await withTimeout(client.query(text, params), isReadOnly ? 8000 : 10000)
+          
+          // Cleanup
+          client.end().catch(() => {})
+          return result
+        } catch (error) {
+          client.end().catch(() => {})
+          lastError = error
+          
+          if (!isRetryableConnectionError(error) || attempt >= maxAttempts) {
+            throw error
+          }
+
+          const delay = 100 + attempt * 200
+          console.warn(`[DB] Latencia/Instabilidade detectada (${attempt}/${maxAttempts}). Retentando em ${delay}ms...`)
+          await wait(delay)
         }
-
-        const delay = 350 + attempt * 450
-        console.warn(`[DB] Falha transitoria de conexao (tentativa ${attempt}/${maxAttempts}). Retentando em ${delay}ms...`)
-        await wait(delay)
       }
+      throw lastError || new Error('Falha de banco.')
     }
-
-    throw lastError || new Error('Falha desconhecida de banco.')
   }
 
-  return pool
+  return dbInstance
 }

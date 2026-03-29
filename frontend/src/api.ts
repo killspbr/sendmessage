@@ -2,7 +2,7 @@
  * Utilitario para chamadas API ao backend proprio.
  */
 
-const API_URL = import.meta.env.VITE_API_URL ||
+export const API_URL = import.meta.env.VITE_API_URL ||
   (import.meta.env.PROD
     ? 'https://sendmessage-backend.claudio-rodrigues-seconci.workers.dev'
     : 'http://localhost:4000')

@@ -4,7 +4,7 @@ import { authenticateToken } from '../lib/auth'
 import { getDb } from '../lib/db'
 import { executeWhatsappCampaignDelivery, validateCampaignDeliveryPayload } from '../lib/campaignDelivery'
 import { buildContactSendHistoryEntry, insertContactSendHistory } from '../lib/sendHistory'
-import { toEvolutionNumber } from '../lib/messageUtils'
+import { toEvolutionNumber, ensureAbsoluteUrl } from '../lib/messageUtils'
 import { runSchemaBestEffort } from '../lib/runtimeSchema'
 
 const ALLOWED_CHANNELS = new Set(['whatsapp', 'email'])
@@ -45,10 +45,11 @@ function normalizeDeliveryPayload(input: unknown) {
 }
 
 async function ensureCampaignsTable(db: ReturnType<typeof getDb>) {
+  const UUID_GEN = "(md5(random()::text || clock_timestamp()::text)::uuid)"
   await runSchemaBestEffort(async () => {
     await db.query(`
       CREATE TABLE IF NOT EXISTS campaigns (
-        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        id UUID PRIMARY KEY DEFAULT ${UUID_GEN},
         user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
         name TEXT NOT NULL,
         status TEXT NOT NULL DEFAULT 'rascunho',
@@ -72,10 +73,11 @@ async function ensureCampaignsTable(db: ReturnType<typeof getDb>) {
 }
 
 async function ensureContactHistoryTable(db: ReturnType<typeof getDb>) {
+  const UUID_GEN = "(md5(random()::text || clock_timestamp()::text)::uuid)"
   await runSchemaBestEffort(async () => {
     await db.query(`
       CREATE TABLE IF NOT EXISTS contact_send_history (
-        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        id UUID PRIMARY KEY DEFAULT ${UUID_GEN},
         user_id UUID REFERENCES users(id) ON DELETE CASCADE,
         campaign_id UUID,
         campaign_name TEXT,
@@ -160,13 +162,15 @@ campaignRoutes.post('/campaigns', authenticateToken, async (c) => {
   if (!listName) return c.json({ error: 'Lista da campanha é obrigatória.' }, 400)
   if (!message) return c.json({ error: 'Mensagem da campanha é obrigatória.' }, 400)
 
+  const campaignId = crypto.randomUUID()
   const result = await db.query(
     `INSERT INTO campaigns (
-      user_id, name, status, channels, list_name, message, variations,
+      id, user_id, name, status, channels, list_name, message, variations,
       interval_min_seconds, interval_max_seconds, delivery_payload
-    ) VALUES ($1,$2,$3,$4::jsonb,$5,$6,$7::jsonb,$8,$9,$10::jsonb)
+    ) VALUES ($1,$2,$3,$4,$5::jsonb,$6,$7,$8::jsonb,$9,$10,$11::jsonb)
     RETURNING *`,
     [
+      campaignId,
       userId,
       name,
       status || 'rascunho',
@@ -336,6 +340,7 @@ campaignRoutes.post('/campaigns/:id/send', authenticateToken, async (c) => {
         evolutionInstance: evolution.evolutionInstance,
         campaign,
         contact,
+        baseUrl: new URL(c.req.url).origin,
       })
 
       const historyEntry = buildContactSendHistoryEntry({

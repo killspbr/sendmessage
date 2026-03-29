@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { apiFetch, apiUpload } from '../../api'
+import { apiFetch, apiUpload, API_URL } from '../../api'
 import type {
   CampaignChannel,
   CampaignMediaItem,
@@ -82,7 +82,7 @@ export function CampaignDeliveryComposer({
     updateMediaItem(itemId, {
       sourceType: 'asset',
       mediaType: file.mediaType,
-      url: file.publicUrl,
+      url: file.publicUrl.startsWith('http') ? file.publicUrl : `${API_URL}${file.publicUrl}`,
       assetId: file.id,
       assetName: normalizeDisplayText(file.originalName),
       mimeType: file.mimeType,
@@ -128,13 +128,13 @@ export function CampaignDeliveryComposer({
       setUploadProgress(100)
       await loadFiles()
 
-      const incoming = Array.isArray(response?.items) ? response.items : []
+      const incoming = Array.isArray(response) ? response : response ? [response] : []
       const firstUploaded = incoming[0]
       if (firstUploaded) {
         updateMediaItem(targetItemId, {
           sourceType: 'asset',
           mediaType: firstUploaded.mediaType,
-          url: firstUploaded.publicUrl,
+          url: firstUploaded.publicUrl.startsWith('http') ? firstUploaded.publicUrl : `${API_URL}${firstUploaded.publicUrl}`,
           assetId: firstUploaded.id,
           assetName: normalizeDisplayText(firstUploaded.originalName),
           mimeType: firstUploaded.mimeType,
@@ -202,7 +202,7 @@ export function CampaignDeliveryComposer({
           ) : (
             mediaItems.map((item, index) => {
               const compatibleFiles = serverFiles.filter(
-                (file) => file.mediaType === item.mediaType && file.isAvailable
+                (file) => file.mediaType === item.mediaType && file.isAvailable !== false
               )
               const selectedAsset = item.assetId
                 ? serverFiles.find((file) => file.id === item.assetId)
@@ -371,7 +371,7 @@ export function CampaignDeliveryComposer({
                         </div>
                       ) : null}
 
-                      {usingAssetLibrary && selectedAsset && !selectedAsset.isAvailable ? (
+                      {usingAssetLibrary && selectedAsset && selectedAsset.isAvailable === false ? (
                         <div className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
                           {selectedAsset.availabilityReason || 'Este arquivo nao esta mais disponivel no servidor. Reenvie para a biblioteca e selecione novamente.'}
                         </div>

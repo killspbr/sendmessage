@@ -1,0 +1,166 @@
+[
+  {
+    "id": "4155209d-51c1-4405-a5d8-796215efbe79",
+    "name": "teste",
+    "delivery_payload": {
+      "version": 1,
+      "whatsapp": {
+        "blocks": [
+          {
+            "type": "text",
+            "content": "<p>tstesdfsd</p>"
+          },
+          {
+            "type": "media",
+            "items": [
+              {
+                "id": "media-1774726055966-rhd2qs",
+                "url": "https://lh3.googleusercontent.com/gps-cs-s/AHVAwepHkPO5iqCGiwqj-qKJGkSiNG8Ki4OMRqUkzraJKxuny68-7I9PsDpsOvkCM_M1afgpG6sUk71LSeUHylv7VNrkQ21jEcV2_F_Oy2WvH2CAu9Bsuke3K874-n8vUZlxgBvBuYrP9A=w289-h312-n-k-no",
+                "assetId": "",
+                "caption": "",
+                "mimeType": "",
+                "assetName": "",
+                "mediaType": "image",
+                "sourceType": "url"
+              },
+              {
+                "id": "media-1774726078679-76deyh",
+                "url": "https://clrodrigues-sendmessage-backend.rsybpi.easypanel.host/api/uploads/public/b77a364fe8099f8d4a767cb76d33d2945f9c/1774722309843-94887d59c1e5-CataI-logo-de-produtos-T-T-e-Friato.pdf.pdf",
+                "assetId": "ed41b68f-4c97-42e5-bb5c-96f3c6732602",
+                "caption": "",
+                "mimeType": "application/pdf",
+                "assetName": "Cataílogo de produtos T&T e Friato.pdf.pdf",
+                "mediaType": "document",
+                "sizeBytes": 33742361,
+                "sourceType": "asset"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "4c4e1d48-8fa9-42f4-a50c-89fc5f6db162",
+    "name": "Psicossociais",
+    "delivery_payload": {
+      "version": 1,
+      "whatsapp": {
+        "blocks": [
+          {
+            "type": "text",
+            "content": "<p>👋 Olá! Somos da CL Rodrigues Segurança do Trabalho e Higiene Ocupacional. Sabemos que a segurança dos seus colaboradores e a conformidade da sua empresa são prioridades, mas a complexidade da legislação pode ser um desafio, não é mesmo? 🤯</p><p>Pensando nisso, queremos te apresentar soluções práticas e eficientes para você proteger sua equipe e manter seu negócio em dia, sem dores de cabeça! 👷‍♀️👷‍♂️</p><p>Com a CL Rodrigues, você garante:</p><ul><li><p>✅ <strong>Tranquilidade</strong> com as normas de segurança;</p></li><li><p>✅ <strong>Proteção efetiva</strong> para seus trabalhadores;</p></li><li><p>✅ <strong>Conformidade legal</strong>, evitando multas e problemas futuros.</p></li></ul><p>Que tal um bate-papo rápido para descobrirmos como podemos ajudar sua empresa a ser ainda mais segura e produtiva? 😊 Responda \"QUERO SABER MAIS\" e vamos juntos proteger o que mais importa!</p>"
+          },
+          {
+            "type": "media",
+            "items": [
+              {
+                "id": "media-1774702316106-37i9al",
+                "url": "https://clrodrigues.com.br/media/blog/psicossocial.jpeg",
+                "assetId": "",
+                "caption": "",
+                "mimeType": "",
+                "assetName": "",
+                "mediaType": "image",
+                "sourceType": "url"
+              },
+              {
+                "id": "media-1774716266773-6bkbpe",
+                "url": "https://clrodrigues-sendmessage-backend.rsybpi.easypanel.host/api/uploads/public/c125f00d9b61899be96afa3eb603117783d6/1774718711183-d289bd7500c0-CV_claudio_de_azevedo_rodrigues.pdf",
+                "assetId": "9a94da3f-adf5-4f03-b3c3-42a96c6270a1",
+                "caption": "",
+                "mimeType": "application/pdf",
+                "assetName": "CV_claudio_de_azevedo_rodrigues.pdf",
+                "mediaType": "document",
+                "sizeBytes": 166930,
+                "sourceType": "asset"
+              }
+            ]
+          },
+          {
+            "type": "contact",
+            "contact": {
+              "url": "https://clrodrigues.com.br",
+              "email": "claudio.rodrigues@clrodrigues.com.br",
+              "phone": "11930792728",
+              "company": "CL Rodrigues SST+HO",
+              "fullName": "Eng° Claudio Rodrigues"
+            }
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "e0483bab-cb84-421e-91fb-6ffef83182aa",
+    "name": "LTCAT",
+    "delivery_payload": null
+  },
+  {
+    "id": "97de3547-788e-47a9-aef7-7dd9250c0635",
+    "name": "Exposição da sua empresa sem LTCAT",
+    "delivery_payload": null
+  },
+  {
+    "id": "7915acdc-5686-41c2-8ad8-87cf937e6965",
+    "name": "Campanha Alpha",
+    "delivery_payload": {
+      "version": 1,
+      "whatsapp": {
+        "blocks": [
+          {
+            "type": "text",
+            "content": "<p>Olá, tudo bem? 👋</p><p>Me chamo TONY e trabalho na T&amp;T Distribuidora, representante da Friato Alimentos aqui em Fortaleza.</p><p>Temos um mix bem completo com cortes bovinos 🥩 e frango 🍗 (inteiro, cortes, temperados e empanados), além de linguiças, industrializados, pão de alho, queijo coalho e muito mais — tudo com ótima qualidade e alto giro.</p><p>Trabalhamos com preços competitivos e condições que ajudam a aumentar sua margem. 🔥</p><p>Se fizer sentido pra você, já posso adiantar seu cadastro e te passar as condições. 🤝</p><p>Dá uma olhada no nosso catálogo completo abaixo 👇</p>"
+          },
+          {
+            "type": "media",
+            "items": [
+              {
+                "id": "media-1774718886979-2gi6at",
+                "url": "https://friato.com.br/themes/friato/assets/images/jpg/default.jpg",
+                "assetId": "",
+                "caption": "",
+                "mimeType": "",
+                "assetName": "",
+                "mediaType": "image",
+                "sourceType": "url"
+              },
+              {
+                "id": "media-1774722302446-o27nwd",
+                "url": "https://clrodrigues-sendmessage-backend.rsybpi.easypanel.host/api/uploads/public/b77a364fe8099f8d4a767cb76d33d2945f9c/1774722309843-94887d59c1e5-CataI-logo-de-produtos-T-T-e-Friato.pdf.pdf",
+                "assetId": "ed41b68f-4c97-42e5-bb5c-96f3c6732602",
+                "caption": "",
+                "mimeType": "application/pdf",
+                "assetName": "Cataílogo de produtos T&T e Friato.pdf.pdf",
+                "mediaType": "document",
+                "sizeBytes": 33742361,
+                "sourceType": "asset"
+              },
+              {
+                "id": "media-1774722325622-c6n82h",
+                "url": "https://clrodrigues-sendmessage-backend.rsybpi.easypanel.host/api/uploads/public/7d07824a31c89387b10344eb49e0953626dc/1774722331861-fd5d185883be-ApresentaA-A-o.mp3",
+                "assetId": "22681c16-3ade-47c0-b36e-00643b6a6c88",
+                "caption": "",
+                "mimeType": "audio/mpeg",
+                "assetName": "ApresentaÃ§Ã£o.mp3",
+                "mediaType": "audio",
+                "sizeBytes": 339957,
+                "sourceType": "asset"
+              }
+            ]
+          },
+          {
+            "type": "contact",
+            "contact": {
+              "url": "https://frigato.com.br",
+              "email": "cleverstone@tt.com.br",
+              "phone": "8591590956",
+              "company": "T&T Distribuidora",
+              "fullName": "Consultor Clevistone"
+            }
+          }
+        ]
+      }
+    }
+  }
+]

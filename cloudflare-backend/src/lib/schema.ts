@@ -1,6 +1,6 @@
 import type { Pool } from 'pg'
 
-const ENABLE_RUNTIME_SCHEMA_ENSURE = false
+const ENABLE_RUNTIME_SCHEMA_ENSURE = true
 let schemaEnsureAttempted = false
 
 function isSkippableSchemaError(error: unknown) {
@@ -9,14 +9,16 @@ function isSkippableSchemaError(error: unknown) {
     message.includes('permission denied') ||
     message.includes('must be owner') ||
     message.includes('insufficient privilege') ||
-    message.includes('gen_random_uuid') && message.includes('does not exist')
+    (message.includes('gen_random_uuid') && message.includes('does not exist'))
   )
 }
 
-export async function ensureCloudflareSchema(db: Pool) {
+export async function ensureCloudflareSchema(db: any) {
   if (!ENABLE_RUNTIME_SCHEMA_ENSURE) return
   if (schemaEnsureAttempted) return
   schemaEnsureAttempted = true
+
+  const UUID_GEN = "(md5(random()::text || clock_timestamp()::text)::uuid)"
 
   try {
     await db.query(`
@@ -42,7 +44,7 @@ export async function ensureCloudflareSchema(db: Pool) {
 
     await db.query(`
       CREATE TABLE IF NOT EXISTS user_uploaded_files (
-        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        id UUID PRIMARY KEY DEFAULT ${UUID_GEN},
         user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
         original_name TEXT NOT NULL,
         stored_name TEXT NOT NULL,
@@ -70,8 +72,32 @@ export async function ensureCloudflareSchema(db: Pool) {
     `)
 
     await db.query(`
+      CREATE TABLE IF NOT EXISTS warmer_configs (
+        id UUID PRIMARY KEY DEFAULT ${UUID_GEN},
+        user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        name TEXT,
+        instance_a_id TEXT NOT NULL,
+        instance_b_id TEXT NOT NULL,
+        phone_a TEXT NOT NULL,
+        phone_b TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'paused', 'error')),
+        default_delay_seconds INTEGER DEFAULT 5,
+        default_messages_per_run INTEGER DEFAULT 4,
+        sample_image_url TEXT,
+        sample_document_url TEXT,
+        sample_audio_url TEXT,
+        notes TEXT,
+        last_run_status TEXT,
+        last_run_error TEXT,
+        last_run_at TIMESTAMP WITH TIME ZONE,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      )
+    `)
+
+    await db.query(`
       CREATE TABLE IF NOT EXISTS warmer_runs (
-        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        id UUID PRIMARY KEY DEFAULT ${UUID_GEN},
         warmer_id UUID NOT NULL REFERENCES warmer_configs(id) ON DELETE CASCADE,
         initiated_by UUID REFERENCES users(id) ON DELETE SET NULL,
         status TEXT NOT NULL DEFAULT 'queued' CHECK (status IN ('queued', 'running', 'completed', 'failed')),
@@ -83,6 +109,26 @@ export async function ensureCloudflareSchema(db: Pool) {
         started_at TIMESTAMP WITH TIME ZONE,
         finished_at TIMESTAMP WITH TIME ZONE,
         created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      )
+    `)
+
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS warmer_logs (
+        id BIGSERIAL PRIMARY KEY,
+        warmer_id UUID NOT NULL REFERENCES warmer_configs(id) ON DELETE CASCADE,
+        run_id UUID REFERENCES warmer_runs(id) ON DELETE SET NULL,
+        from_phone TEXT NOT NULL,
+        to_phone TEXT NOT NULL,
+        from_instance TEXT,
+        to_instance TEXT,
+        message_type TEXT DEFAULT 'text',
+        payload_type TEXT,
+        content_summary TEXT,
+        ok BOOLEAN DEFAULT true,
+        provider_status INTEGER,
+        response_time_ms INTEGER,
+        error_detail TEXT,
+        sent_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
       )
     `)
   } catch (error) {

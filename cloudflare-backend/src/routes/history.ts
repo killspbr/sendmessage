@@ -10,10 +10,11 @@ function getAuthenticatedUserId(c: { get: (key: 'user') => { id?: string } | und
 }
 
 async function ensureHistoryTables(db: ReturnType<typeof getDb>) {
+  const UUID_GEN = "(md5(random()::text || clock_timestamp()::text)::uuid)"
   await runSchemaBestEffort(async () => {
     await db.query(`
       CREATE TABLE IF NOT EXISTS contact_send_history (
-        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        id UUID PRIMARY KEY DEFAULT ${UUID_GEN},
         user_id UUID REFERENCES users(id) ON DELETE CASCADE,
         campaign_id UUID,
         campaign_name TEXT,
@@ -44,7 +45,7 @@ async function ensureHistoryTables(db: ReturnType<typeof getDb>) {
 
     await db.query(`
       CREATE TABLE IF NOT EXISTS campaign_history (
-        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        id UUID PRIMARY KEY DEFAULT ${UUID_GEN},
         user_id UUID REFERENCES users(id) ON DELETE CASCADE,
         campaign_id UUID,
         status TEXT,
@@ -72,8 +73,10 @@ historyRoutes.post('/history', authenticateToken, async (c) => {
   await ensureHistoryTables(db)
   const body = await c.req.json().catch(() => ({} as Record<string, unknown>))
 
+  const historyId = crypto.randomUUID()
   const result = await db.query(
     `INSERT INTO contact_send_history (
+      id,
       user_id,
       campaign_id,
       campaign_name,
@@ -89,9 +92,10 @@ historyRoutes.post('/history', authenticateToken, async (c) => {
       payload_raw,
       delivery_summary
     )
-    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13::jsonb,$14::jsonb)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14::jsonb,$15::jsonb)
     RETURNING *`,
     [
+      historyId,
       userId,
       body.campaign_id ?? null,
       body.campaign_name ?? null,
@@ -186,8 +190,10 @@ historyRoutes.post('/campaigns/history', authenticateToken, async (c) => {
   await ensureHistoryTables(db)
   const body = await c.req.json().catch(() => ({} as Record<string, unknown>))
 
+  const historyId = crypto.randomUUID()
   const result = await db.query(
     `INSERT INTO campaign_history (
+      id,
       user_id,
       campaign_id,
       status,
@@ -195,9 +201,10 @@ historyRoutes.post('/campaigns/history', authenticateToken, async (c) => {
       total,
       error_count,
       run_at
-    ) VALUES ($1,$2,$3,$4,$5,$6,$7)
+    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
     RETURNING *`,
     [
+      historyId,
       userId,
       body.campaign_id ?? null,
       body.status ?? null,

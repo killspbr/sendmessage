@@ -110,7 +110,7 @@ function getDeliveryStatusMeta(entry: ContactSendHistoryItem) {
   if (entry.status === 207 || entry.providerStatus === 'partial') {
     return {
       label: 'Parcial',
-      className: 'bg-amber-50 text-amber-700 border border-amber-200',
+      className: 'bg-amber-500/10 text-amber-700 border border-amber-200/50 shadow-sm shadow-amber-600/10 px-2 py-0.5 rounded-full',
       title: entry.errorDetail || 'O envio principal saiu, mas houve falha em parte da entrega composta.',
     }
   }
@@ -118,14 +118,14 @@ function getDeliveryStatusMeta(entry: ContactSendHistoryItem) {
   if (entry.ok) {
     return {
       label: 'Enviado',
-      className: 'bg-emerald-50 text-emerald-700 border border-emerald-200',
+      className: 'bg-emerald-500/10 text-emerald-700 border border-emerald-200/50 shadow-sm shadow-emerald-600/10 px-2 py-0.5 rounded-full',
       title: 'Entrega concluída sem erros registrados.',
     }
   }
 
   return {
     label: 'Erro',
-    className: 'bg-rose-50 text-rose-700 border border-rose-200',
+    className: 'bg-rose-500/10 text-rose-700 border border-rose-200/50 shadow-sm shadow-rose-600/10 px-2 py-0.5 rounded-full',
     title: entry.errorDetail || 'Falha no envio.',
   }
 }
@@ -799,19 +799,16 @@ export function CampaignsPage({
                 )
               })()}
 
-              {/* Indicador de envio em andamento */}
               {sendingCampaignId && (() => {
                 const sendingCamp = campaigns.find((c) => c.id === sendingCampaignId)
                 const min = sendingCamp?.intervalMinSeconds ?? 30
                 const max = sendingCamp?.intervalMaxSeconds ?? 90
 
                 return (
-                  <div className="rounded-lg border border-emerald-200 bg-emerald-50/70 px-3 py-2 flex flex-col gap-1 text-[11px] text-emerald-900">
+                  <div className="rounded-lg border border-emerald-200 bg-emerald-50/70 px-3 py-2 flex flex-col gap-1 text-[11px] text-emerald-900 shadow-sm shadow-emerald-600/5">
                     <div className="flex items-center justify-between">
                       <span className="font-semibold">
-                        Envio em andamento: {
-                          campaigns.find((c) => c.id === sendingCampaignId)?.name || 'Campanha'
-                        }
+                        Envio em andamento: {sendingCamp?.name || 'Campanha'}
                       </span>
                       <span className="text-[10px]">
                         {sendingCurrentIndex} de {sendingTotal} contatos
@@ -821,25 +818,20 @@ export function CampaignsPage({
                       <div
                         className="h-full bg-emerald-500 transition-all duration-300"
                         style={{
-                          width:
-                            sendingTotal > 0
-                              ? `${Math.min(100, Math.max(0, (sendingCurrentIndex / sendingTotal) * 100))}%`
-                              : '0%',
+                          width: sendingTotal > 0 ? `${Math.min(100, (sendingCurrentIndex / sendingTotal) * 100)}%` : '0%',
                         }}
                       />
                     </div>
                     <div className="flex flex-col gap-0.5 text-[10px] mt-0.5">
                       <div className="flex items-center justify-between">
                         <span>
-                          Intervalo automático entre disparos: entre {min}s e {max}s por contato.
+                          Intervalo automático: entre {min}s e {max}s por contato.
                         </span>
                         <span>Erros: {sendingErrors}</span>
                       </div>
                       {sendingNextDelaySeconds != null && sendingNextDelaySeconds > 0 && (
-                        <div className="flex items-center justify-between text-emerald-800">
-                          <span>
-                            Próximo envio em <strong>{sendingNextDelaySeconds}s</strong>
-                          </span>
+                        <div className="mt-1 font-bold text-emerald-700">
+                           Próximo disparo em {sendingNextDelaySeconds}s...
                         </div>
                       )}
                     </div>
@@ -847,430 +839,260 @@ export function CampaignsPage({
                 )
               })()}
 
-              {/* Lista de campanhas */}
-              {campaigns.map((camp) => (
-                <div key={camp.id} className="flex flex-col gap-2">
-                  <div
-                    className="flex items-center justify-between rounded-lg border border-slate-100 bg-slate-50 px-3 py-2 cursor-pointer hover:bg-slate-100 transition"
-                    onClick={() => onSetReportCampaignId(reportCampaignId === camp.id ? null : camp.id)}
-                  >
-                    <div className="flex flex-col">
-                      <span className="text-[11px] font-medium text-slate-800 flex items-center gap-1">
-                        <span>{camp.name}</span>
-                        <span className="text-[10px] font-normal text-slate-500">
-                          ({camp.intervalMinSeconds ?? 30}~{camp.intervalMaxSeconds ?? 90}s)
-                        </span>
-                      </span>
-                      <span className="text-[10px] text-slate-400">
-                        {camp.listName} • {camp.createdAt}
-                      </span>
-                      <span className="text-[10px] text-slate-400">
-                        {(() => {
-                          const log = campaignSendLog[camp.id]
-                          if (log) {
-                            return `Último envio: ${log.lastOk ? 'OK' : `Erro ${log.lastErrorCount > 0 ? 500 : 0}`
-                              } · ${log.lastRunAt}`
-                          }
+              <div className="grid gap-4">
+                {campaigns.map((camp) => {
+                  const log = campaignSendLog[camp.id]
+                  const hasErrors = !!log && log.lastErrorCount > 0 && !log.lastOk
+                  const isSending = sendingCampaignId === camp.id
+                  const progressDone = isSending ? sendingCurrentIndex : 0
+                  const progressTotal = isSending ? sendingTotal : 0
+                  const progressPercent = progressTotal > 0 ? Math.round((progressDone / progressTotal) * 100) : 0
 
-                          const historyForCamp = sendHistory.filter(
-                            (h) => h.campaignId === camp.id,
-                          )
-                          if (historyForCamp.length > 0) {
-                            const total = historyForCamp.reduce((acc, h) => acc + h.total, 0)
-                            const errors = historyForCamp.reduce((acc, h) => acc + h.errorCount, 0)
-                            const successes = total - errors
-                            return `Histórico: ${successes} sucesso(s), ${errors} erro(s), total ${total}`
-                          }
-
-                          return 'Nenhum disparo registrado para esta campanha.'
-                        })()}
-                      </span>
-                      <span className="text-[10px] text-slate-500 mt-0.5 line-clamp-2">
-                        {(() => {
-                          const plain = htmlToText(camp.message || '')
-                          if (!plain) return 'Sem pré-visualização de conteúdo.'
-                          return plain.length > 180 ? `${plain.slice(0, 180)}…` : plain
-                        })()}
-                      </span>
-                    </div>
-                    <div className="flex flex-wrap items-center gap-1.5 md:gap-2 justify-end md:justify-start">
-                      {camp.channels.map((ch) => (
-                        <span
-                          key={ch}
-                          className={`text-[10px] px-2 py-0.5 rounded-full border ${ch === 'whatsapp'
-                            ? 'bg-emerald-50 text-emerald-700 border-emerald-100'
-                            : 'bg-sky-50 text-sky-700 border-sky-100'
-                            }`}
-                        >
-                          {ch === 'whatsapp' ? 'WhatsApp' : 'Email'}
-                        </span>
-                      ))}
-                      {(() => {
-                        const log = campaignSendLog[camp.id]
-                        const hasErrors = !!log && log.lastErrorCount > 0 && !log.lastOk
-                        const baseClasses = 'text-[10px] px-2 py-0.5 rounded-full border '
-
-                        if (camp.status === 'enviada' && hasErrors) {
-                          return (
-                            <span
-                              className={
-                                baseClasses + 'bg-amber-50 text-amber-800 border-amber-200'
-                              }
-                              title={`Último envio com erros · ${log.lastErrorCount} contato(s) com falha`}
-                            >
-                              Enviada com erros
-                            </span>
-                          )
-                        }
-
-                        if (camp.status === 'enviada') {
-                          return (
-                            <span
-                              className={
-                                baseClasses + 'bg-emerald-50 text-emerald-700 border-emerald-100'
-                              }
-                              title={log?.lastRunAt ? `Último envio em ${log.lastRunAt}` : undefined}
-                            >
-                              Enviada
-                            </span>
-                          )
-                        }
-
-                        if (camp.status === 'agendada') {
-                          return (
-                            <span
-                              className={
-                                baseClasses + 'bg-sky-50 text-sky-700 border-sky-100'
-                              }
-                            >
-                              Agendada
-                            </span>
-                          )
-                        }
-
-                        return (
-                          <span
-                            className={
-                              baseClasses + 'bg-amber-50 text-amber-700 border-amber-100'
-                            }
-                          >
-                            Rascunho
-                          </span>
-                        )
-                      })()}
-                      {canSendCampaign && (
-                        <button
-                          type="button"
-                          className="text-[10px] px-2 py-0.5 rounded-md border border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed"
-                          onClick={(e) => { e.stopPropagation(); onRequestSendCampaign(camp) }}
-                          disabled={!canSendCampaign}
-                        >
-                          Disparar
-                        </button>
-                      )}
-                      {canSendCampaign && (
-                        <button
-                          type="button"
-                          className="text-[10px] px-2 py-0.5 rounded-md border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 whitespace-nowrap"
-                          onClick={(e) => { e.stopPropagation(); openScheduleModal(camp.id) }}
-                        >
-                          ⏰ Agendar Pro
-                        </button>
-                      )}
-                      {(() => {
-                        const { pendingContacts, contactsForList } = getPendingContacts(camp)
-                        const sentCount = contactsForList.length - pendingContacts.length
-                        if (sentCount > 0 && pendingContacts.length > 0 && canSendCampaign) {
-                          return (
-                            <button
-                              type="button"
-                              className="text-[10px] px-2 py-0.5 rounded-md border border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100 whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed"
-                              onClick={(e) => { e.stopPropagation(); onContinueCampaign(camp) }}
-                              title={`${pendingContacts.length} contato(s) ainda não receberam esta campanha com sucesso. Somente esses serão reenviados.`}
-                              disabled={!canSendCampaign}
-                            >
-                              Reenviar pendentes ({pendingContacts.length})
-                            </button>
-                          )
-                        }
-                        return null
-                      })()}
-                      {canCreateCampaign && (
-                        <button
-                          type="button"
-                          className="text-[10px] px-2 py-0.5 rounded-md border border-slate-300 text-slate-600 hover:bg-slate-100 whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed"
-                          onClick={(e) => { e.stopPropagation(); onDuplicateCampaign(camp) }}
-                          disabled={!canCreateCampaign}
-                        >
-                          Duplicar
-                        </button>
-                      )}
-                      {canEditCampaign && (
-                        <button
-                          type="button"
-                          className="text-[10px] px-2 py-0.5 rounded-md border border-slate-300 text-slate-600 hover:bg-slate-100 whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed"
-                          onClick={(e) => { e.stopPropagation(); onStartEditCampaign(camp) }}
-                          disabled={!canEditCampaign}
-                        >
-                          Editar
-                        </button>
-                      )}
-                      {canDeleteCampaign && (
-                        <button
-                          type="button"
-                          className="text-[10px] px-2 py-0.5 rounded-md border border-red-200 bg-red-50 text-red-600 hover:bg-red-100 whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed"
-                          onClick={(e) => { e.stopPropagation(); onDeleteCampaign(camp.id) }}
-                          disabled={!canDeleteCampaign}
-                        >
-                          Excluir
-                        </button>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Relatório de envios da campanha */}
-                  {reportCampaignId === camp.id && (
-                    <div className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-[11px]">
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="font-semibold text-slate-800">Relatório de envios</span>
-                        <div className="flex items-center gap-2">
-                          <div className="inline-flex rounded-full border border-slate-200 bg-slate-50 p-[1px] text-[9px]">
-                            <button
-                              type="button"
-                              className={`px-2 py-0.5 rounded-full ${reportViewMode === 'all'
-                                ? 'bg-white text-slate-800 shadow-sm'
-                                : 'text-slate-500'
-                                }`}
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                onSetReportViewMode('all')
-                              }}
-                            >
-                              Todos
-                            </button>
-                            <button
-                              type="button"
-                              className={`px-2 py-0.5 rounded-full ${reportViewMode === 'last'
-                                ? 'bg-white text-slate-800 shadow-sm'
-                                : 'text-slate-500'
-                                }`}
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                onSetReportViewMode('last')
-                              }}
-                            >
-                              Último envio
-                            </button>
-                          </div>
-                          <button
-                            type="button"
-                            className="text-[10px] text-slate-500 hover:text-slate-700"
-                            onClick={(e) => { e.stopPropagation(); onSetReportCampaignId(null) }}
-                          >
-                            Fechar
-                          </button>
-                        </div>
-                      </div>
-                      {(() => {
-                        const allEntries = contactSendHistory
-                          .filter((h) => h.campaignId === camp.id)
-                          .slice()
-                          .sort((a, b) => getHistoryTime(b) - getHistoryTime(a))
-
-                        let entries = allEntries
-
-                        if (reportViewMode === 'last' && allEntries.length > 0) {
-                          const lastRunAt = allEntries[0].runAt
-                          entries = allEntries.filter((e) => e.runAt === lastRunAt)
-                        }
-                        if (entries.length === 0) {
-                          return (
-                            <p className="text-slate-400 text-[10px]">Nenhum envio registrado para esta campanha.</p>
-                          )
-                        }
-                        const successCount = entries.filter((e) => e.ok && e.status < 300).length
-                        const errorCount = entries.filter((e) => !e.ok).length
-
-                        const handleExportCsv = (e: React.MouseEvent<HTMLButtonElement>) => {
-                          e.stopPropagation()
-                          if (entries.length === 0) return
-
-                          const header = [
-                            'campanha',
-                            'contato',
-                            'telefone',
-                            'canal',
-                            'status_entrega',
-                            'status_ok',
-                            'texto_enviado',
-                            'midias_enviadas',
-                            'midias_com_falha',
-                            'contato_compartilhado',
-                            'contato_com_falha',
-                            'erro_detalhe',
-                            'data_hora',
-                          ]
-
-                          const rows = entries.map((entry) => [
-                            camp.name,
-                            entry.contactName,
-                            entry.phoneKey,
-                            entry.channel,
-                            entry.providerStatus || (entry.ok ? 'sent' : 'error'),
-                            entry.ok ? '1' : '0',
-                            entry.deliverySummary?.sentText ? '1' : '0',
-                            String(entry.deliverySummary?.mediaSent || 0),
-                            String(entry.deliverySummary?.mediaFailed || 0),
-                            entry.deliverySummary?.contactSent ? '1' : '0',
-                            entry.deliverySummary?.contactFailed ? '1' : '0',
-                            entry.errorDetail || '',
-                            entry.runAt,
-                          ])
-
-                          const csvLines = [
-                            header.join(';'),
-                            ...rows.map((cols) =>
-                              cols
-                                .map((value) => {
-                                  const safe = (value ?? '').toString().replace(/"/g, '""')
-                                  return safe.includes(';') || safe.includes('"') || safe.includes('\n')
-                                    ? `"${safe}` + '"'
-                                    : safe
-                                })
-                                .join(';'),
-                            ),
-                          ]
-
-                          const blob = new Blob([csvLines.join('\n')], {
-                            type: 'text/csv;charset=utf-8;',
-                          })
-                          const url = URL.createObjectURL(blob)
-                          const link = document.createElement('a')
-                          const fileNameBase = camp.name || 'campanha'
-                          const fileName = `relatorio-${fileNameBase}`
-                            .toLowerCase()
-                            .replace(/\s+/g, '-')
-                            .replace(/[^a-z0-9\-]/g, '')
-                          link.href = url
-                          link.setAttribute('download', `${fileName}.csv`)
-                          document.body.appendChild(link)
-                          link.click()
-                          document.body.removeChild(link)
-                          URL.revokeObjectURL(url)
-                        }
-                        return (
-                          <>
-                            <div className="flex items-center justify-between gap-3 mb-2 text-[10px]">
-                              <div className="flex items-center gap-3">
-                                <span className="text-emerald-700">✓ {successCount} sucesso(s)</span>
-                                <span className="text-red-600">✗ {errorCount} erro(s)</span>
-                                <span className="text-slate-500">Total: {entries.length}</span>
+                  const { pendingContacts, contactsForList } = getPendingContacts(camp)
+                  const totalContacts = contactsForList.length
+                  const sentCount = totalContacts - pendingContacts.length
+                  
+                  return (
+                    <article 
+                      key={camp.id} 
+                      className={`group relative overflow-hidden rounded-3xl border transition-all duration-300 hover:shadow-lg ${
+                        isSending ? 'border-emerald-200 bg-emerald-50/30 ring-1 ring-emerald-500/20 shadow-emerald-500/5' : 'border-slate-200 bg-white'
+                      }`}
+                    >
+                      <div className="flex flex-col p-5">
+                        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                          <div className="flex-1 space-y-2">
+                            <div className="flex flex-wrap items-center gap-2">
+                              {(() => {
+                                if (isSending) return <span className="flex h-2 w-2 rounded-full bg-emerald-500 animate-ping" />
+                                if (camp.status === 'agendada') return <span className="flex h-2 w-2 rounded-full bg-sky-500" />
+                                if (camp.status === 'enviada') return <span className="flex h-2 w-2 rounded-full bg-slate-300" />
+                                return <span className="flex h-2 w-2 rounded-full bg-slate-200" />
+                              })()}
+                              <h3 className="text-base font-bold text-slate-900 group-hover:text-emerald-700 transition-colors">
+                                {camp.name}
+                              </h3>
+                              
+                              <div className="flex flex-wrap gap-1.5">
+                                <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                                  {camp.listName} • {totalContacts} contatos
+                                </span>
+                                {camp.channels.map((ch) => (
+                                  <span key={ch} className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
+                                    ch === 'whatsapp' ? 'bg-emerald-100 text-emerald-700' : 'bg-sky-100 text-sky-700'
+                                  }`}>
+                                    {ch}
+                                  </span>
+                                ))}
+                                {(() => {
+                                  if (isSending) return <span className="rounded-full bg-emerald-500 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white">Enviando...</span>
+                                  if (camp.status === 'enviada' && hasErrors) return <span className="rounded-full bg-rose-100 text-rose-700 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider">Erros detectados</span>
+                                  if (camp.status === 'enviada') return <span className="rounded-full bg-slate-100 text-slate-500 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider">Concluída</span>
+                                  if (camp.status === 'agendada') return <span className="rounded-full bg-sky-100 text-sky-700 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider">Agendada</span>
+                                  return <span className="rounded-full bg-slate-200 text-slate-600 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider">Rascunho</span>
+                                })()}
                               </div>
+                            </div>
+
+                            <p className="text-[11px] text-slate-500 line-clamp-1 italic">
+                              Criada em {new Date(camp.createdAt).toLocaleDateString('pt-BR')} • {camp.intervalMinSeconds ?? 30}~{camp.intervalMaxSeconds ?? 90}s de intervalo
+                            </p>
+                          </div>
+
+                          <div className="flex flex-wrap gap-2 lg:justify-end">
+                            {canSendCampaign && !isSending && (
                               <button
                                 type="button"
-                                className="px-2 py-0.5 rounded-md border border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100 text-[10px]"
-                                onClick={handleExportCsv}
+                                className="rounded-xl bg-slate-900 px-4 py-2 text-xs font-bold text-white transition hover:bg-emerald-600"
+                                onClick={() => onRequestSendCampaign(camp)}
                               >
-                                Exportar CSV
+                                {sentCount > 0 ? 'Disparar Novamente' : 'Disparar'}
                               </button>
+                            )}
+                            {canSendCampaign && camp.status === 'rascunho' && (
+                              <button
+                                type="button"
+                                className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-bold text-slate-700 transition hover:bg-slate-50"
+                                onClick={() => openScheduleModal(camp.id)}
+                              >
+                                Agendar
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-bold text-slate-700 transition hover:bg-slate-50"
+                              onClick={() => onSetReportCampaignId(reportCampaignId === camp.id ? null : camp.id)}
+                            >
+                              {reportCampaignId === camp.id ? 'Fechar Relatório' : 'Relatório'}
+                            </button>
+                            
+                            <div className="relative group/more">
+                              <button className="rounded-xl border border-slate-200 p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-50">
+                                ⚙️
+                              </button>
+                              <div className="absolute right-0 top-full mt-2 hidden w-44 flex-col rounded-2xl border border-slate-200 bg-white p-2 shadow-xl group-hover/more:flex z-[20]">
+                                {canCreateCampaign && (
+                                  <button onClick={() => onDuplicateCampaign(camp)} className="flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50">
+                                    <span>📑</span> Duplicar
+                                  </button>
+                                )}
+                                {canEditCampaign && (
+                                  <button onClick={() => onStartEditCampaign(camp)} className="flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50">
+                                    <span>✏️</span> Editar
+                                  </button>
+                                )}
+                                {canDeleteCampaign && (
+                                  <button onClick={() => onDeleteCampaign(camp.id)} className="flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-medium text-rose-600 hover:bg-rose-50">
+                                    <span>🗑️</span> Excluir
+                                  </button>
+                                )}
+                              </div>
                             </div>
-                            <div className="max-h-48 overflow-y-auto border-t border-slate-100 pt-1">
-                              <table className="w-full text-[10px]">
-                                <thead className="sticky top-0 bg-white">
-                                  <tr className="text-left text-slate-500">
-                                    <th className="py-1 pr-2">Contato</th>
-                                    <th className="py-1 pr-2">Telefone</th>
-                                    <th className="py-1 pr-2">Canal</th>
-                                    <th className="py-1 pr-2">Status</th>
-                                    <th className="py-1 pr-2">Entrega</th>
-                                    <th className="py-1">Data/Hora</th>
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  {entries.map((entry) => (
-                                    <tr key={entry.id} className="border-t border-slate-50">
-                                      <td className="py-1 pr-2 text-slate-700">{entry.contactName}</td>
-                                      <td className="py-1 pr-2 text-slate-500">{entry.phoneKey}</td>
-                                      <td className="py-1 pr-2">
-                                        <span className="inline-flex items-center">
-                                          {entry.channel === 'whatsapp' ? '📱' : '✉️'}
-                                        </span>
-                                      </td>
-                                      <td className="py-1 pr-2">
-                                        <div className="flex items-center gap-1.5">
-                                          <span
-                                            className={`px-1.5 py-0.5 rounded-full text-[9px] font-medium cursor-help flex items-center justify-center ${entry.ok
-                                              ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                                              : 'bg-red-50 text-red-700 border border-red-200'
-                                              }`}
-                                            title={
-                                              entry.ok
-                                                ? 'Mensagem enviada.'
-                                                : entry.channel === 'email'
-                                                  ? 'Erro no envio, verifique o endereço de e-mail.'
-                                                  : 'Erro no envio, verifique o telefone.'
-                                            }
-                                          >
-                                            <span aria-hidden="true">💬</span>
-                                          </span>
-                                        </div>
-                                      </td>
-                                      <td className="py-1 text-slate-500">{entry.runAt}</td>
-                                    </tr>
-                                  ))}
-                                </tbody>
-                              </table>
-                            </div>
-                            <div className="mt-3 grid gap-2">
-                              {entries
-                                .filter((entry) => entry.deliverySummary || entry.errorDetail)
-                                .slice(0, 8)
-                                .map((entry) => {
-                                  const statusMeta = getDeliveryStatusMeta(entry)
-                                  const deliveryParts = buildDeliveryDetailParts(entry)
+                          </div>
+                        </div>
 
-                                  return (
-                                    <div
-                                      key={`${entry.id}-detail`}
-                                      className="rounded-xl border border-slate-100 bg-slate-50/70 px-3 py-2"
-                                    >
-                                      <div className="flex flex-wrap items-center gap-2 text-[10px]">
-                                        <span className="font-semibold text-slate-700">{entry.contactName}</span>
-                                        <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-medium ${statusMeta.className}`}>
-                                          {statusMeta.label}
-                                        </span>
-                                        <span className="text-slate-400">{entry.runAt}</span>
-                                      </div>
-                                      <div className="mt-1 flex flex-wrap gap-1">
-                                        {deliveryParts.length > 0 ? deliveryParts.map((part) => (
-                                          <span
-                                            key={`${entry.id}-summary-${part}`}
-                                            className="px-1.5 py-0.5 rounded-full bg-white border border-slate-200 text-[9px] text-slate-600"
-                                          >
-                                            {part}
-                                          </span>
-                                        )) : (
-                                          <span className="text-[9px] text-slate-400">Sem detalhe estruturado</span>
-                                        )}
-                                      </div>
-                                      {entry.errorDetail ? (
-                                        <p className="mt-1 text-[9px] text-rose-600">{entry.errorDetail}</p>
-                                      ) : null}
-                                    </div>
-                                  )
-                                })}
+                        {isSending && (
+                          <div className="mt-5 space-y-2">
+                            <div className="flex items-center justify-between text-[11px] font-bold uppercase tracking-wider">
+                              <span className="text-emerald-700">Enviando para {progressDone} de {progressTotal} contatos</span>
+                              <span className="text-emerald-700">{progressPercent}%</span>
                             </div>
-                          </>
-                        )
-                      })()}
-                    </div>
-                  )}
-                </div>
-              ))}
+                            <div className="h-1.5 w-full overflow-hidden rounded-full bg-emerald-100">
+                              <div 
+                                className="h-full bg-emerald-500 transition-all duration-500" 
+                                style={{ width: `${progressPercent}%` }}
+                              />
+                            </div>
+                          </div>
+                        )}
+
+                        <div className="mt-4 rounded-2xl border border-slate-100 bg-slate-50/50 p-4">
+                          <p className="text-[11px] leading-relaxed text-slate-600 line-clamp-2">
+                             {htmlToText(camp.message || '') || 'Sem conteúdo textual registrado.'}
+                          </p>
+                          <div className="mt-3 flex items-center justify-between text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                             <span>
+                               {log?.lastRunAt ? `Último envio: ${log.lastRunAt}` : 'Nenhum envio registrado'}
+                             </span>
+                             {sentCount > 0 && pendingContacts.length > 0 && canSendCampaign && !isSending && (
+                               <button
+                                 onClick={() => onContinueCampaign(camp)}
+                                 className="text-amber-600 hover:text-amber-700 underline underline-offset-2"
+                               >
+                                 Continuar pendentes ({pendingContacts.length})
+                               </button>
+                             )}
+                          </div>
+                        </div>
+
+                        {/* Relatório de envios da campanha */}
+                        {reportCampaignId === camp.id && (
+                          <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4 text-[11px]">
+                            <div className="flex items-center justify-between mb-4">
+                              <h4 className="font-bold text-slate-800">Relatório Detalhado</h4>
+                              <div className="flex items-center gap-2">
+                                <div className="inline-flex rounded-xl border border-slate-200 bg-slate-50 p-1 text-[9px]">
+                                  <button
+                                    type="button"
+                                    className={`px-3 py-1 rounded-lg transition-all ${reportViewMode === 'all' ? 'bg-white text-slate-800 shadow-sm font-bold' : 'text-slate-500'}`}
+                                    onClick={() => onSetReportViewMode('all')}
+                                  >
+                                    Todos
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className={`px-3 py-1 rounded-lg transition-all ${reportViewMode === 'last' ? 'bg-white text-slate-800 shadow-sm font-bold' : 'text-slate-500'}`}
+                                    onClick={() => onSetReportViewMode('last')}
+                                  >
+                                    Último
+                                  </button>
+                                </div>
+                                <button
+                                  type="button"
+                                  className="h-7 w-7 flex items-center justify-center rounded-lg border border-slate-200 text-slate-400 hover:text-rose-500 transition-colors"
+                                  onClick={() => onSetReportCampaignId(null)}
+                                >
+                                  ✕
+                                </button>
+                              </div>
+                            </div>
+
+                            {(() => {
+                              const allEntries = contactSendHistory
+                                .filter((h) => h.campaignId === camp.id)
+                                .slice()
+                                .sort((a, b) => getHistoryTime(b) - getHistoryTime(a))
+
+                              let entries = allEntries
+                              if (reportViewMode === 'last' && allEntries.length > 0) {
+                                const lastRunAt = allEntries[0].runAt
+                                entries = allEntries.filter((e) => e.runAt === lastRunAt)
+                              }
+
+                              if (entries.length === 0) {
+                                return (
+                                  <div className="flex flex-col items-center justify-center py-8 text-slate-400">
+                                    <span className="text-2xl mb-2">📊</span>
+                                    <p>Nenhum envio registrado.</p>
+                                  </div>
+                                )
+                              }
+
+                              const successCount = entries.filter((e) => e.ok && (!e.status || e.status < 300)).length
+                              const errorCount = entries.length - successCount
+
+                              return (
+                                <div className="space-y-4">
+                                  <div className="flex items-center gap-4 text-[10px] font-bold uppercase tracking-wider">
+                                    <span className="text-emerald-600">✓ {successCount} SUCESSOS</span>
+                                    <span className="text-rose-600">✗ {errorCount} ERROS</span>
+                                    <span className="text-slate-400">Total: {entries.length}</span>
+                                  </div>
+
+                                  <div className="max-h-60 overflow-y-auto rounded-xl border border-slate-100">
+                                    <table className="w-full text-left">
+                                      <thead className="sticky top-0 bg-slate-50 text-[9px] font-bold uppercase tracking-widest text-slate-400">
+                                        <tr>
+                                          <th className="p-2">Contato</th>
+                                          <th className="p-2">Canal</th>
+                                          <th className="p-2">Status</th>
+                                          <th className="p-2">Data</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody className="divide-y divide-slate-50">
+                                        {entries.slice(0, 50).map((entry) => (
+                                          <tr key={entry.id} className="hover:bg-slate-50/50">
+                                            <td className="p-2 font-medium text-slate-700">
+                                              {entry.contactName}
+                                              <div className="text-[9px] font-normal text-slate-400">{entry.phoneKey}</div>
+                                            </td>
+                                            <td className="p-2">{entry.channel === 'whatsapp' ? '📱' : '✉️'}</td>
+                                            <td className="p-2">
+                                              <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase ${
+                                                entry.ok ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'
+                                              }`}>
+                                                {entry.ok ? 'Enviado' : 'Falha'}
+                                              </span>
+                                            </td>
+                                            <td className="p-2 text-slate-400 text-[9px]">{entry.runAt}</td>
+                                          </tr>
+                                        ))}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                </div>
+                              )
+                            })()}
+                          </div>
+                        )}
+                      </div>
+                    </article>
+                  )
+                })}
+              </div>
             </div>
-          )
-        )}
-      </section>
+          )}
+        </section>
 
       {/* Modal de Agendamento Profissional */}
       {showScheduleModal && (

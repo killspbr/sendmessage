@@ -1,5 +1,5 @@
 import React from 'react'
-import { apiFetch, apiUpload } from '../api'
+import { apiFetch, apiUpload, API_URL } from '../api'
 import type { UploadedUserFile, UserLimitSnapshot } from '../types'
 import { normalizeDisplayText } from '../utils/textEncoding'
 
@@ -199,13 +199,13 @@ export function UserSettingsPage({
 
       setUploadProgress(100)
 
-      if (response?.limits) {
-        setLimits(response.limits)
-      }
+      // Atualiza a lista local com os novos arquivos sem depender apenas do reload total
+      const newFiles = Array.isArray(response) ? response : [response]
+      setFiles(prev => [...newFiles, ...prev])
 
       await Promise.all([loadFiles(), loadLimits()])
       setUploadMessage(`${selectedFiles.length} arquivo(s) enviado(s) com sucesso.`)
-      event.target.value = ''
+      if (fileInputRef.current) fileInputRef.current.value = ''
     } catch (error: any) {
       setUploadMessage(error?.message || 'Falha ao enviar arquivos.')
     } finally {
@@ -288,8 +288,8 @@ export function UserSettingsPage({
           </SectionCard>
 
           <SectionCard
-            title="Meus arquivos"
-            description="Envie e gerencie imagens, PDF, PPTX, WAV, MP3 e MP4 para reutilizar nas campanhas. Cada arquivo pode ter ate 50 MB."
+            title="Meus ativos na nuvem"
+            description="Gerencie imagens, vídeos, áudios e documentos para suas campanhas. Limite de 50MB por arquivo."
             accent="bg-fuchsia-500"
           >
             <div className="space-y-4">
@@ -344,44 +344,87 @@ export function UserSettingsPage({
               ) : null}
 
               {filesLoading ? (
-                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-500">
-                  Carregando arquivos...
+                <div className="flex flex-col items-center justify-center rounded-3xl border border-slate-100 bg-slate-50/50 py-12">
+                  <div className="h-8 w-8 animate-spin rounded-full border-4 border-fuchsia-500 border-t-transparent" />
+                  <p className="mt-4 text-xs font-semibold uppercase tracking-widest text-slate-400">Sincronizando arquivos...</p>
                 </div>
               ) : files.length === 0 ? (
-                <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-500">
-                  Você ainda não enviou arquivos para o servidor.
+                <div className="flex flex-col items-center justify-center rounded-3xl border border-dashed border-slate-200 bg-slate-50/50 py-12 text-center">
+                  <div className="text-3xl mb-3 opacity-30">☁️</div>
+                  <p className="text-sm font-medium text-slate-500">Sua biblioteca está vazia.</p>
+                  <p className="text-xs text-slate-400 mt-1">Comece enviando mídias para usar em disparos.</p>
                 </div>
               ) : (
-                <div className="grid gap-3">
-                  {files.map((file) => (
-                    <div key={file.id} className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-                      <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-                        <div className="min-w-0">
-                          <div className="truncate text-sm font-semibold text-slate-800">{normalizeDisplayText(file.originalName)}</div>
-                          <div className="mt-1 text-xs text-slate-500">
-                            {file.mimeType} • {formatBytes(file.sizeBytes)} • {new Date(file.createdAt).toLocaleString('pt-BR')}
+                <div className="grid gap-4 sm:grid-cols-2">
+                  {files.map((file) => {
+                    const isImage = file.mimeType.startsWith('image/')
+                    const isVideo = file.mimeType.startsWith('video/')
+                    const isAudio = file.mimeType.startsWith('audio/')
+                    const isPdf = file.mimeType.includes('pdf')
+                    
+                    const icon = isImage ? '🖼️' : isVideo ? '🎥' : isAudio ? '🎵' : isPdf ? '📄' : '📝'
+                    const publicUrl = file.publicUrl.startsWith('http') ? file.publicUrl : `${API_URL}${file.publicUrl}`
+
+                    return (
+                      <div key={file.id} className="group relative flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition-all hover:border-fuchsia-300 hover:shadow-md">
+                        {isImage ? (
+                          <div className="aspect-video w-full overflow-hidden bg-slate-100">
+                             <img src={publicUrl} alt={file.originalName} className="h-full w-full object-cover transition-transform group-hover:scale-105" />
+                          </div>
+                        ) : (
+                          <div className="flex aspect-video w-full items-center justify-center bg-slate-100 text-4xl">
+                            {icon}
+                          </div>
+                        )}
+                        
+                        <div className="p-4">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0 flex-1">
+                              <h3 title={file.originalName} className="truncate text-sm font-bold text-slate-800">
+                                {normalizeDisplayText(file.originalName)}
+                              </h3>
+                              <p className="mt-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                                {formatBytes(file.sizeBytes)} • {file.extension.toUpperCase()}
+                              </p>
+                            </div>
+                            <div className="flex shrink-0 gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  navigator.clipboard.writeText(publicUrl)
+                                  setUploadMessage('Link copiado!')
+                                  setTimeout(() => setUploadMessage(null), 2000)
+                                }}
+                                className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-900 text-white transition hover:bg-slate-700"
+                                title="Copiar URL pública"
+                              >
+                                🔗
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteFile(file.id)}
+                                className="flex h-8 w-8 items-center justify-center rounded-lg bg-rose-500 text-white transition hover:bg-rose-600"
+                                title="Excluir arquivo"
+                              >
+                                🗑️
+                              </button>
+                            </div>
+                          </div>
+                          
+                          <div className="mt-3 flex gap-2">
+                            <a
+                              href={publicUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="flex-1 rounded-xl bg-slate-100 py-2 text-center text-[10px] font-bold uppercase tracking-widest text-slate-600 transition hover:bg-slate-200"
+                            >
+                              {file.canInline ? 'Abrir' : 'Baixar'}
+                            </a>
                           </div>
                         </div>
-                        <div className="flex flex-wrap gap-2">
-                          <a
-                            href={file.publicUrl}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100"
-                          >
-                            {file.canInline ? 'Visualizar' : 'Abrir'}
-                          </a>
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteFile(file.id)}
-                            className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700 hover:bg-rose-100"
-                          >
-                            Excluir
-                          </button>
-                        </div>
                       </div>
-                    </div>
-                  ))}
+                    )
+                  })}
                 </div>
               )}
             </div>
