@@ -30,18 +30,8 @@ async function signAuthToken(env: Bindings, payload: { id: string; email: string
     .sign(getJwtSecret(env))
 }
 
-const ALLOWED_ORIGINS = new Set([
-  'https://sendmessage-frontend.pages.dev',
-  'http://localhost:5173',
-  'http://localhost:3000',
-  'http://localhost:4173',
-])
-
 function attachCorsForAllowedOrigin(c: any) {
-  const origin = String(c.req.header('origin') || '')
-  if (!ALLOWED_ORIGINS.has(origin)) return
-  c.header('Access-Control-Allow-Origin', origin)
-  c.header('Vary', 'Origin')
+  c.header('Access-Control-Allow-Origin', '*')
 }
 
 authRoutes.post('/auth/signup', async (c) => {

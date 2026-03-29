@@ -22,25 +22,15 @@ import { extractMapsRoutes } from './routes/extractMaps'
 import { emailWebhookRoutes } from './routes/emailWebhook'
 
 const app = new Hono<{ Bindings: Bindings; Variables: AppVariables }>()
-const ALLOWED_ORIGINS = new Set([
-  'https://sendmessage-frontend.pages.dev',
-  'http://localhost:5173',
-  'http://localhost:3000',
-  'http://localhost:4173',
-])
 
 app.use('*', cors({
-  origin: [...ALLOWED_ORIGINS],
+  origin: '*',
   allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
 }))
 
 app.options('*', (c) => {
-  const origin = c.req.header('origin') || ''
-  if (ALLOWED_ORIGINS.has(origin)) {
-    c.header('Access-Control-Allow-Origin', origin)
-    c.header('Vary', 'Origin')
-  }
+  c.header('Access-Control-Allow-Origin', '*')
   c.header('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS')
   c.header('Access-Control-Allow-Headers', 'Content-Type,Authorization,X-Requested-With,Accept,Origin')
   return c.body(null, 204)
@@ -79,11 +69,7 @@ app.route('/api', emailWebhookRoutes)
 app.notFound((c) => c.json({ error: 'Rota nao encontrada no backend Cloudflare.' }, 404))
 app.onError((error, c) => {
   console.error('[CloudflareBackend] Erro nao tratado:', error)
-  const origin = c.req.header('origin') || ''
-  if (ALLOWED_ORIGINS.has(origin)) {
-    c.header('Access-Control-Allow-Origin', origin)
-    c.header('Vary', 'Origin')
-  }
+  c.header('Access-Control-Allow-Origin', '*')
   const technical =
     typeof (error as any)?.message === 'string'
       ? (error as any).message
