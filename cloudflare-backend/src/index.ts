@@ -23,16 +23,41 @@ import { emailWebhookRoutes } from './routes/emailWebhook'
 
 const app = new Hono<{ Bindings: Bindings; Variables: AppVariables }>()
 
-app.use('*', cors({
-  origin: '*',
-  allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
-}))
+const CORS_HEADERS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type,Authorization,X-Requested-With,Accept,Origin',
+}
+
+app.use('*', cors({ origin: '*' }))
+
+app.use('*', async (c, next) => {
+  try {
+    await next()
+    Object.entries(CORS_HEADERS).forEach(([key, value]) => c.res.headers.set(key, value))
+  } catch (error) {
+    console.error('[CloudflareBackend] Erro capturado no guard global:', error)
+    return new Response(
+      JSON.stringify({
+        error: 'Erro interno no backend Cloudflare.',
+        technical:
+          typeof (error as any)?.message === 'string'
+            ? (error as any).message
+            : String(error || 'Erro interno'),
+      }),
+      {
+        status: 500,
+        headers: {
+          ...CORS_HEADERS,
+          'Content-Type': 'application/json; charset=utf-8',
+        },
+      }
+    )
+  }
+})
 
 app.options('*', (c) => {
-  c.header('Access-Control-Allow-Origin', '*')
-  c.header('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS')
-  c.header('Access-Control-Allow-Headers', 'Content-Type,Authorization,X-Requested-With,Accept,Origin')
+  Object.entries(CORS_HEADERS).forEach(([key, value]) => c.header(key, value))
   return c.body(null, 204)
 })
 
@@ -69,12 +94,11 @@ app.route('/api', emailWebhookRoutes)
 app.notFound((c) => c.json({ error: 'Rota nao encontrada no backend Cloudflare.' }, 404))
 app.onError((error, c) => {
   console.error('[CloudflareBackend] Erro nao tratado:', error)
-  c.header('Access-Control-Allow-Origin', '*')
   const technical =
     typeof (error as any)?.message === 'string'
       ? (error as any).message
       : String(error || 'Erro interno')
-  return c.json({ error: 'Erro interno no backend Cloudflare.', technical }, 500)
+  return c.json({ error: 'Erro interno no backend Cloudflare.', technical }, 500, CORS_HEADERS)
 })
 
 export default app
