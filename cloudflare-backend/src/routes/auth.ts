@@ -74,6 +74,9 @@ authRoutes.post('/auth/login', async (c) => {
   const body = await c.req.json().catch(() => ({} as any))
   const email = String(body?.email || '').trim().toLowerCase()
   const password = String(body?.password || '')
+  if (!email || !password) {
+    return c.json({ error: 'Credenciais invalidas.' }, 400)
+  }
 
   const db = getDb(c.env)
   const result = await db.query('SELECT * FROM users WHERE email = $1 LIMIT 1', [email])
@@ -83,7 +86,12 @@ authRoutes.post('/auth/login', async (c) => {
     return c.json({ error: 'Credenciais invalidas.' }, 400)
   }
 
-  const validPassword = await bcrypt.compare(password, user.password_hash)
+  const passwordHash = typeof user.password_hash === 'string' ? user.password_hash : ''
+  if (!passwordHash) {
+    return c.json({ error: 'Credenciais invalidas.' }, 400)
+  }
+
+  const validPassword = await bcrypt.compare(password, passwordHash)
   if (!validPassword) {
     return c.json({ error: 'Credenciais invalidas.' }, 400)
   }

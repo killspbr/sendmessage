@@ -62,6 +62,16 @@ app.route('/api', emailWebhookRoutes)
 app.notFound((c) => c.json({ error: 'Rota nao encontrada no backend Cloudflare.' }, 404))
 app.onError((error, c) => {
   console.error('[CloudflareBackend] Erro nao tratado:', error)
+  const origin = c.req.header('origin') || ''
+  if (
+    origin === 'https://sendmessage-frontend.pages.dev' ||
+    origin === 'http://localhost:5173' ||
+    origin === 'http://localhost:3000' ||
+    origin === 'http://localhost:4173'
+  ) {
+    c.header('Access-Control-Allow-Origin', origin)
+    c.header('Vary', 'Origin')
+  }
   return c.json({ error: 'Erro interno no backend Cloudflare.' }, 500)
 })
 
