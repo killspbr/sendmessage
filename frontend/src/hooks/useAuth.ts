@@ -18,6 +18,11 @@ export function useAuth(): UseAuthResult {
     const [currentUser, setCurrentUser] = useState<any | null>(null)
 
     useEffect(() => {
+        let isMounted = true
+        const hardStopTimer = window.setTimeout(() => {
+            if (isMounted) setAuthLoading(false)
+        }, 15000)
+
         const checkAuth = async () => {
             const token = localStorage.getItem('auth_token')
             const storedUser = localStorage.getItem('auth_user')
@@ -43,10 +48,14 @@ export function useAuth(): UseAuthResult {
                     }
                 }
             }
-            setAuthLoading(false)
+            if (isMounted) setAuthLoading(false)
         }
 
         void checkAuth()
+        return () => {
+            isMounted = false
+            window.clearTimeout(hardStopTimer)
+        }
     }, [])
 
 

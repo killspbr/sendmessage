@@ -18,6 +18,20 @@ function createAuthExpiredError(status: number) {
   return authError
 }
 
+async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs = 12000) {
+  const controller = new AbortController()
+  const timeout = window.setTimeout(() => controller.abort(), timeoutMs)
+
+  try {
+    return await fetch(url, {
+      ...init,
+      signal: controller.signal,
+    })
+  } finally {
+    window.clearTimeout(timeout)
+  }
+}
+
 export async function apiFetch(endpoint: string, options: RequestInit = {}) {
   const token = localStorage.getItem('auth_token')
   const isFormData = typeof FormData !== 'undefined' && options.body instanceof FormData
@@ -38,7 +52,7 @@ export async function apiFetch(endpoint: string, options: RequestInit = {}) {
 
   for (let attempt = 1; attempt <= (canRetry ? 2 : 1); attempt += 1) {
     try {
-      response = await fetch(`${API_URL}${endpoint}`, {
+      response = await fetchWithTimeout(`${API_URL}${endpoint}`, {
         ...options,
         headers,
       })
