@@ -6,16 +6,25 @@ import type { Bindings, AppVariables } from '../types'
 export const statusRoutes = new Hono<{ Bindings: Bindings; Variables: AppVariables }>()
 
 export const CURRENT_VERSION = {
-  commit: 'R2-Bypass-v1.1.2',
-  timestamp: '2026-03-29T20:36:00-03:00',
-  message: 'Atualização Crítica: Bypass R2 para Envio de PDFs e Áudios Nativos (v1.1.2)',
+  commit: 'R2-Bypass-v1.1.3',
+  timestamp: '2026-03-29T20:49:00-03:00',
+  message: 'Atualização Crítica: Bypass R2 Database (Resolução 1042 Loopback Limit) (v1.1.3)',
 }
 
 statusRoutes.get('/version', (c) => {
-  return c.json({
-    ...CURRENT_VERSION,
-    check_time: new Date().toISOString(),
-  })
+  return c.json({ ...CURRENT_VERSION, status: 'ONLINE', time: new Date().toISOString() })
+})
+
+statusRoutes.get('/debug-errors', async (c) => {
+  try {
+    const { getDb } = await import('../lib/db');
+    const db = getDb(c.env);
+    if (!db) return c.json({ error: "No DB" }, 500);
+    const result = await db.query('SELECT status, provider_status, error_detail, payload_raw FROM contact_send_history ORDER BY run_at DESC LIMIT 5');
+    return c.json(result.rows);
+  } catch(e: any) {
+    return c.json({ error: e.message }, 500);
+  }
 })
 
 statusRoutes.get('/_migration-status', (c) => {

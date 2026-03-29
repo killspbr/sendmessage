@@ -255,7 +255,8 @@ function arrayBufferToBase64(buffer: ArrayBuffer) {
 async function resolveMediaBody(fetchImpl: typeof fetch, media: MediaItem, resolvedUrl: string, baseUrl?: string, env?: any) {
   // Se for explicitamente um asset ou se a URL aponta fisicamente pro nosso backend, 
   // tentamos resgatar direto do R2 ou via loopback HTTP e enviamos como Base64 (Data URI).
-  // Isso impede que a Evolution API tome Block 403 (Cloudflare WAF / Bot Fight Mode).
+  // Isso impede que a Evolution API tome Block 403 (Cloudflare WAF / Bot Fight Mode)
+  // e contorna o erro 1042 (Fetch Loopback limit) de Workers consultando a si mesmos via HTTP.
   const isInternal = resolvedUrl.includes('sendmessage-backend') || media.sourceType === 'asset'
 
   if (!isInternal) {
@@ -266,20 +267,29 @@ async function resolveMediaBody(fetchImpl: typeof fetch, media: MediaItem, resol
   let base64Data: string;
 
   try {
-    // Tenta bypass super rapido e fail-safe direto pelo bucket R2
-    if (env?.UPLOADS_BUCKET) {
-      const match = resolvedUrl.match(/\/uploads\/public\/([^/?#]+)/)
-      const filename = match ? decodeURIComponent(match[1]) : null
-      if (filename) {
-        const object = await env.UPLOADS_BUCKET.get(filename)
-        if (object) {
-          base64Data = arrayBufferToBase64(await object.arrayBuffer())
-          return `data:${mimeType};base64,${base64Data}`
+    // Tenta bypass super rapido e fail-safe direto pelo bucket R2 usando BD para achar o path
+    if (env?.UPLOADS_BUCKET && env?.db) {
+      // Formato da Rota: /api/uploads/public/:token/:storedName
+      const match = resolvedUrl.match(/\/uploads\/public\/([^/?#]+)\/([^/?#]+)/)
+      const token = match ? decodeURIComponent(match[1]) : null
+      const storedName = match ? decodeURIComponent(match[2]) : null
+      
+      if (token && storedName) {
+        const fileResult = await env.db.query(
+          `SELECT storage_path FROM user_uploaded_files WHERE public_token = $1 AND stored_name = $2 AND deleted_at IS NULL LIMIT 1`,
+          [token, storedName]
+        )
+        if (fileResult.rows[0]?.storage_path) {
+          const object = await env.UPLOADS_BUCKET.get(fileResult.rows[0].storage_path)
+          if (object) {
+            base64Data = arrayBufferToBase64(await object.arrayBuffer())
+            return `data:${mimeType};base64,${base64Data}`
+          }
         }
       }
     }
   } catch (err) {
-    console.warn('[Delivery] Bypass R2 falhou, caindo para HTTP:', err)
+    console.warn('[Delivery] Bypass R2 via DB falhou, caindo para HTTP:', err)
   }
 
   const response = await fetchImpl(resolvedUrl)

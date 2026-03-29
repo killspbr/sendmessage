@@ -463,7 +463,7 @@ campaignRoutes.post('/campaigns/:id/send', authenticateToken, async (c) => {
         campaign,
         contact,
         baseUrl: new URL(c.req.url).origin,
-        env: c.env,
+        env: { ...c.env, db },
       })
 
       const historyEntry = buildContactSendHistoryEntry({
