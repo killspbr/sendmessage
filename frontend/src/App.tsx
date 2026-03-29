@@ -465,7 +465,7 @@ function App() {
     } catch { }
   }, [debugEnabled])
 
-  // currentListId agora vem do hook useListsWithSupabase; mantemos apenas a persistência
+  // currentListId agora vem do hook useListsWithbanco; mantemos apenas a persistência
   const [currentPage, setCurrentPage] = useState<SidebarPage>(() => {
     try {
       const stored = localStorage.getItem('sendmessage_currentPage') as SidebarPage
@@ -1106,7 +1106,7 @@ function App() {
       resetCampaignComposerState()
       setCampaignEditorOpen(false)
     } catch (e) {
-      console.error('Erro inesperado ao salvar campanha no Supabase', e)
+      console.error('Erro inesperado ao salvar campanha no banco', e)
       setLastMoveMessage('Erro inesperado ao salvar a campanha no banco.')
     }
   }
@@ -1202,7 +1202,7 @@ function App() {
 
         const mapped: Contact[] = (data ?? []).map((row: any, index: number) => ({
           id: index + 1,
-          supabaseId: row.id.toString(),
+          databaseId: row.id.toString(),
           name: row.name ?? '',
           phone: row.phone ?? '',
           category: row.category ?? '',
@@ -1507,7 +1507,7 @@ function App() {
     setSendingNextDelaySeconds(null)
     setSendingCampaignId(null)
 
-    // Recarrega histórico do Supabase para refletir exatamente os envios persistidos
+    // Recarrega histórico do banco para refletir exatamente os envios persistidos
     await reloadContactSendHistory()
   }
 
@@ -1872,15 +1872,15 @@ function App() {
 
     const current = contactsByList[currentListId] ?? []
     const existing = current.find((c) => c.id === id)
-    const supabaseId = existing?.supabaseId // No backend esse é o ID (uuid ou serial)
+    const databaseId = existing?.databaseId // No backend esse é o ID (uuid ou serial)
 
-    if (!supabaseId) {
+    if (!databaseId) {
       setLastMoveMessage('Não foi possível identificar o contato no banco para exclusão.')
       return
     }
 
     try {
-      await apiFetch(`/api/contacts/${supabaseId}`, {
+      await apiFetch(`/api/contacts/${databaseId}`, {
         method: 'DELETE'
       })
 
@@ -2123,13 +2123,13 @@ function App() {
       if (editingContactId != null) {
         // Edição de contato existente
         const existing = current.find((c) => c.id === editingContactId)
-        const supabaseId = existing?.supabaseId
-        if (!supabaseId) {
+        const databaseId = existing?.databaseId
+        if (!databaseId) {
           setLastMoveMessage('Não foi possível identificar o contato no banco para edição.')
           return
         }
 
-        const data = await apiFetch(`/api/contacts/${supabaseId}`, {
+        const data = await apiFetch(`/api/contacts/${databaseId}`, {
           method: 'PUT',
           body: JSON.stringify({
             name,
@@ -2150,7 +2150,7 @@ function App() {
 
         const updatedContact: Contact = {
           id: existing.id,
-          supabaseId: String(savedContact.id),
+          databaseId: String(savedContact.id),
           name: savedContact.name ?? '',
           phone: savedContact.phone ?? '',
           category: savedContact.category ?? '',
@@ -2190,7 +2190,7 @@ function App() {
         const maxId = current.reduce((max, c) => (c.id > max ? c.id : max), 0)
         const next: Contact = {
           id: maxId + 1,
-          supabaseId: String(savedContact.id),
+          databaseId: String(savedContact.id),
           name: savedContact.name ?? '',
           phone: savedContact.phone ?? '',
           category: savedContact.category ?? '',
@@ -2229,7 +2229,7 @@ function App() {
     const byPhone = new Map(current.map((c) => [normalizePhone(c.phone), c]))
 
     const toInsert: Contact[] = []
-    const toUpdate: { supabaseId: string; data: Contact }[] = []
+    const toUpdate: { databaseId: string; data: Contact }[] = []
 
     // Processa conflitos: quando o usuário escolhe "arquivo", atualizamos o contato existente
     if (importConflicts) {
@@ -2238,10 +2238,10 @@ function App() {
         if (!key) return
 
         const existing = byPhone.get(key)
-        if (!existing || !existing.supabaseId) return
+        if (!existing || !existing.databaseId) return
 
         if (conflict.resolution === 'file') {
-          toUpdate.push({ supabaseId: existing.supabaseId, data: conflict.incoming })
+          toUpdate.push({ databaseId: existing.databaseId, data: conflict.incoming })
         }
         // se resolução for "existing", não fazemos nada no banco
       })
@@ -2269,12 +2269,12 @@ function App() {
     try {
       // 1) Atualiza contatos existentes
       for (const item of toUpdate) {
-        const { supabaseId, data } = item
+        const { databaseId, data } = item
         const phoneDigits = normalizePhone(data.phone)
         const ratingNumber = Number(formatRating(data.rating) || 0)
 
         try {
-          await apiFetch(`/api/contacts/${supabaseId}`, {
+          await apiFetch(`/api/contacts/${databaseId}`, {
             method: 'PUT',
             body: JSON.stringify({
               name: data.name ?? '',
@@ -2321,7 +2321,7 @@ function App() {
 
         const mapped: Contact[] = (data ?? []).map((row: any, index: number) => ({
           id: index + 1,
-          supabaseId: row.id,
+          databaseId: row.id,
           name: row.name ?? '',
           phone: row.phone ?? '',
           category: row.category ?? '',
@@ -2534,8 +2534,8 @@ function App() {
       await apiFetch('/api/campaigns', { method: 'DELETE' })
       await apiFetch('/api/lists', { method: 'DELETE' })
 
-      // 2) Recria listas do backup no Supabase
-      const listIdMap = new Map<string, string>() // oldId -> newSupabaseId
+      // 2) Recria listas do backup no banco
+      const listIdMap = new Map<string, string>() // oldId -> newdatabaseId
 
       if (Array.isArray(d.lists)) {
         for (const old of d.lists as any[]) {
@@ -2555,7 +2555,7 @@ function App() {
         }
       }
 
-      // 3) Recria contatos do backup no Supabase
+      // 3) Recria contatos do backup no banco
       const contactsByListFromBackup = (d.contactsByList ?? {}) as Record<string, any[]>
 
       for (const [oldListId, contactsFromBackup] of Object.entries(contactsByListFromBackup)) {
@@ -2586,7 +2586,7 @@ function App() {
         }
       }
 
-      // 4) Recria campanhas do backup no Supabase
+      // 4) Recria campanhas do backup no banco
       if (Array.isArray(d.campaigns)) {
         for (const camp of d.campaigns as any[]) {
           try {
@@ -2662,14 +2662,14 @@ function App() {
       if (d.sendIntervalMinSeconds != null) setSendIntervalMinSeconds(d.sendIntervalMinSeconds)
       if (d.sendIntervalMaxSeconds != null) setSendIntervalMaxSeconds(d.sendIntervalMaxSeconds)
 
-      // Limpa contatos em memória; serão recarregados do Supabase ao trocar de lista
+      // Limpa contatos em memória; serão recarregados do banco ao trocar de lista
       setContactsByList({})
 
       setImportPreview(null)
-      setLastMoveMessage('Dados importados com sucesso para o Supabase.')
+      setLastMoveMessage('Dados importados com sucesso para o banco.')
     } catch (e) {
-      console.error('Erro inesperado ao importar dados para o Supabase', e)
-      setLastMoveMessage('Erro inesperado ao importar dados para o Supabase.')
+      console.error('Erro inesperado ao importar dados para o banco', e)
+      setLastMoveMessage('Erro inesperado ao importar dados para o banco.')
     }
   }
 

@@ -930,7 +930,7 @@ export function CampaignsPage({
                               <button className="rounded-xl border border-slate-200 p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-50">
                                 ⚙️
                               </button>
-                              <div className="absolute right-0 top-full mt-2 hidden w-44 flex-col rounded-2xl border border-slate-200 bg-white p-2 shadow-xl group-hover/more:flex z-[20]">
+                              <div className="absolute right-0 top-full mt-2 hidden w-44 flex-col rounded-2xl border border-slate-200 bg-white p-2 shadow-xl group-hover/more:flex z-[20] before:content-[''] before:absolute before:inset-x-0 before:-top-3 before:h-3">
                                 {canCreateCampaign && (
                                   <button onClick={() => onDuplicateCampaign(camp)} className="flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50">
                                     <span>📑</span> Duplicar

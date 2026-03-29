@@ -44,8 +44,11 @@ function normalizeDeliveryPayload(input: unknown) {
   return input
 }
 
+let tableCreated = false
+
 async function ensureCampaignsTable(db: ReturnType<typeof getDb>) {
-  const UUID_GEN = "(md5(random()::text || clock_timestamp()::text)::uuid)"
+  if (tableCreated) return
+  const UUID_GEN = "gen_random_uuid()"
   await runSchemaBestEffort(async () => {
     await db.query(`
       CREATE TABLE IF NOT EXISTS campaigns (
@@ -70,10 +73,14 @@ async function ensureCampaignsTable(db: ReturnType<typeof getDb>) {
         ON campaigns(user_id, created_at DESC)
     `)
   }, 'campaigns')
+  tableCreated = true
 }
 
+let historyTableCreated = false
+
 async function ensureContactHistoryTable(db: ReturnType<typeof getDb>) {
-  const UUID_GEN = "(md5(random()::text || clock_timestamp()::text)::uuid)"
+  if (historyTableCreated) return
+  const UUID_GEN = "gen_random_uuid()"
   await runSchemaBestEffort(async () => {
     await db.query(`
       CREATE TABLE IF NOT EXISTS contact_send_history (
@@ -96,6 +103,7 @@ async function ensureContactHistoryTable(db: ReturnType<typeof getDb>) {
       )
     `)
   }, 'campaigns-history')
+  historyTableCreated = true
 }
 
 async function resolveEvolutionConfigForUser(userId: string, db: ReturnType<typeof getDb>) {

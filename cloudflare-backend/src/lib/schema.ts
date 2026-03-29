@@ -18,7 +18,7 @@ export async function ensureCloudflareSchema(db: any) {
   if (schemaEnsureAttempted) return
   schemaEnsureAttempted = true
 
-  const UUID_GEN = "(md5(random()::text || clock_timestamp()::text)::uuid)"
+  const UUID_GEN = "gen_random_uuid()"
 
   try {
     await db.query(`

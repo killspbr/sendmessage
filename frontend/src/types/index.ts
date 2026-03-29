@@ -2,7 +2,7 @@
 
 export type Contact = {
   id: number
-  supabaseId?: string
+  databaseId?: string
   name: string
   phone: string
   category: string
@@ -121,33 +121,41 @@ export type CampaignSendLog = {
 
 export type PageType = 'dashboard' | 'contacts' | 'campaigns' | 'schedules' | 'settings' | 'reports' | 'admin'
 
-// Tipos auxiliares para linhas do Supabase (apenas campos usados no App)
+// Tipos auxiliares para linhas do banco (apenas campos usados no App)
 
-export type SupabaseContactSendHistoryRow = {
+export type DatabaseContactSendHistoryRow = {
   id: string
   user_id: string
   campaign_id: string
   campaign_name: string
   contact_name: string
   phone_key: string
-  channel: CampaignChannel
+  channel: string
   ok: boolean
-  status: number | null
-  run_at: string | null
+  status: number
+  webhook_ok: boolean
+  provider_status: string
+  error_detail: string
+  payload_raw: any
+  delivery_summary: any
+  run_at: string
+  created_at: string
 }
 
-export type SupabaseCampaignRow = {
+export type DatabaseCampaignRow = {
   id: string
   user_id: string
-  name: string | null
-  status: CampaignStatus | null
-  channels: CampaignChannel[] | null
-  list_name: string | null
-  created_at: string | null
-  message: string | null
-  interval_min_seconds: number | null
-  interval_max_seconds: number | null
-  delivery_payload: CampaignDeliveryPayload | null
+  name: string
+  status: string
+  channels: any
+  list_name: string
+  message: string
+  variations: any
+  interval_min_seconds: number
+  interval_max_seconds: number
+  delivery_payload: any
+  created_at: string
+  updated_at: string
 }
 
 export type UploadedUserFile = {
