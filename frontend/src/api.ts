@@ -40,7 +40,12 @@ export async function apiFetch(endpoint: string, options: RequestInit = {}) {
   const token = localStorage.getItem('auth_token')
   const isFormData = typeof FormData !== 'undefined' && options.body instanceof FormData
   const method = String(options.method || 'GET').toUpperCase()
-  const canRetry = method === 'GET' || endpoint === '/api/auth/presence' || endpoint === '/api/auth/me'
+  const isLoginEndpoint = endpoint === '/api/auth/login'
+  const canRetry =
+    method === 'GET' ||
+    endpoint === '/api/auth/presence' ||
+    endpoint === '/api/auth/me' ||
+    isLoginEndpoint
   const isAuthCriticalEndpoint =
     endpoint === '/api/auth/login' ||
     endpoint === '/api/auth/signup' ||

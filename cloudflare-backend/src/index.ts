@@ -34,24 +34,19 @@ app.use('*', cors({ origin: '*' }))
 app.use('*', async (c, next) => {
   try {
     await next()
-    Object.entries(CORS_HEADERS).forEach(([key, value]) => c.res.headers.set(key, value))
   } catch (error) {
     console.error('[CloudflareBackend] Erro capturado no guard global:', error)
-    return new Response(
-      JSON.stringify({
+    return c.json(
+      {
         error: 'Erro interno no backend Cloudflare.',
         technical:
           typeof (error as any)?.message === 'string'
             ? (error as any).message
             : String(error || 'Erro interno'),
-      }),
-      {
-        status: 500,
-        headers: {
-          ...CORS_HEADERS,
-          'Content-Type': 'application/json; charset=utf-8',
-        },
       }
+      ,
+      500,
+      CORS_HEADERS
     )
   }
 })
