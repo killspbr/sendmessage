@@ -16,6 +16,7 @@ import { campaignRoutes } from './routes/campaigns'
 import { extensionRoutes } from './routes/extension'
 import { scheduleRoutes } from './routes/schedules'
 import { aiRoutes } from './routes/ai'
+import { adminOpsRoutes } from './routes/adminOps'
 
 const app = new Hono<{ Bindings: Bindings; Variables: AppVariables }>()
 
@@ -50,6 +51,7 @@ app.route('/api', campaignRoutes)
 app.route('/api', extensionRoutes)
 app.route('/api', scheduleRoutes)
 app.route('/api', aiRoutes)
+app.route('/api', adminOpsRoutes)
 
 app.notFound((c) => c.json({ error: 'Rota nao encontrada no backend Cloudflare.' }, 404))
 app.onError((error, c) => {
