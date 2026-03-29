@@ -92,9 +92,14 @@ export async function apiFetch(endpoint: string, options: RequestInit = {}) {
     throw fetchError instanceof Error ? fetchError : new Error(String(fetchError || 'Falha de rede'))
   }
 
-  if (response.status === 401 || response.status === 403) {
+  if (response.status === 401) {
     clearAuthStorage()
     throw createAuthExpiredError(response.status)
+  }
+
+  if (response.status === 403) {
+    const errorData = await response.json().catch(() => ({}))
+    throw new Error(errorData.error || 'Acesso negado.')
   }
 
   if (!response.ok) {

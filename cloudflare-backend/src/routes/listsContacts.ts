@@ -68,17 +68,32 @@ async function ensureListsAndContactsTables(db: ReturnType<typeof getDb>) {
 export const listsContactsRoutes = new Hono<{ Bindings: Bindings; Variables: AppVariables }>()
 
 listsContactsRoutes.get('/lists', authenticateToken, async (c) => {
-  const userId = getAuthenticatedUserId(c)
-  if (!userId) return c.json({ error: 'Acesso negado.' }, 401)
-  const db = getDb(c.env)
-  await ensureListsAndContactsTables(db)
+  try {
+    const userId = getAuthenticatedUserId(c)
+    if (!userId) return c.json({ error: 'Acesso negado.' }, 401)
+    const db = getDb(c.env)
+    await ensureListsAndContactsTables(db)
 
-  const result = await db.query(
-    'SELECT * FROM lists WHERE user_id = $1 ORDER BY name ASC',
-    [userId]
-  )
+    const result = await db.query(
+      'SELECT * FROM lists WHERE user_id = $1 ORDER BY name ASC',
+      [userId]
+    )
 
-  return c.json(result.rows)
+    return c.json(result.rows)
+  } catch (error) {
+    const technical =
+      typeof (error as any)?.message === 'string'
+        ? (error as any).message
+        : String(error || 'Erro interno')
+    console.error('[lists.get] Falha ao carregar listas:', technical)
+    return c.json(
+      {
+        error: 'Erro ao carregar listas.',
+        technical,
+      },
+      500
+    )
+  }
 })
 
 listsContactsRoutes.post('/lists', authenticateToken, async (c) => {
