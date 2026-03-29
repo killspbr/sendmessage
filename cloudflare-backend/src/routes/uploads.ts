@@ -8,42 +8,55 @@ import { ensureCloudflareSchema } from '../lib/schema'
 export const uploadRoutes = new Hono<{ Bindings: Bindings; Variables: AppVariables }>()
 
 function mapFileRow(row: any) {
+  if (!row) return null
   return {
     id: row.id,
-    originalName: row.original_name,
+    originalName: row.original_name || 'Sem nome',
     storedName: row.stored_name,
-    mimeType: row.mime_type,
-    extension: row.extension,
-    mediaType: row.media_type,
-    sizeBytes: Number(row.size_bytes),
+    mimeType: row.mime_type || 'application/octet-stream',
+    extension: row.extension || '',
+    mediaType: row.media_type || 'document',
+    sizeBytes: Number(row.size_bytes || 0),
     createdAt: row.created_at,
     publicUrl: `/api/uploads/public/${row.public_token}/${row.stored_name}`,
     isAvailable: true,
     canInline: ['image', 'video', 'document'].includes(row.media_type) && row.mime_type !== 'application/pdf', 
-    // PDF usually better as iframe or new tab, but for 'image' / 'audio' it's fine
   }
 }
 
 uploadRoutes.get('/files', authenticateToken, async (c) => {
   const user = c.get('user')
   if (!user?.id) return c.json({ error: 'Acesso negado.' }, 401)
+
   const db = getDb(c.env)
   try {
-    // Garante que o esquema exista antes de tentar listar (caso ainda nao tenha sido garantido)
+    // Garante que o esquema exista antes de listar
     await ensureCloudflareSchema(db)
     
+    // Log para depuração de 500 no backend
+    console.log('[Uploads] Listando arquivos para o usuário:', user.id)
+
     const result = await db.query(
-      `SELECT *
+      `SELECT id, user_id, original_name, stored_name, mime_type, extension, media_type, size_bytes, public_token, created_at
          FROM user_uploaded_files
-        WHERE user_id = $1
+        WHERE user_id = $1::uuid
           AND deleted_at IS NULL
         ORDER BY created_at DESC`,
       [user.id]
     )
-    return c.json(result.rows.map(mapFileRow))
-  } catch (error) {
-    console.error('[Uploads] Erro ao listar arquivos:', error)
-    return c.json({ error: 'Erro ao listar arquivos do banco de dados.', technical: String(error) }, 500)
+
+    console.log(`[Uploads] Encontrados ${result.rows.length} arquivos para o usuário.`)
+
+    const files = result.rows.map(mapFileRow)
+    return c.json(files)
+  } catch (error: any) {
+    console.error('[Uploads] Erro critico ao listar arquivos:', error)
+    return c.json({ 
+      error: 'Erro ao listar arquivos do banco de dados.', 
+      message: error?.message || String(error),
+      code: error?.code || 'UNKNOWN',
+      technical: String(error?.stack || error)
+    }, 500)
   }
 })
 
