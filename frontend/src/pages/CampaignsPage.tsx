@@ -1097,9 +1097,12 @@ export function CampaignsPage({
                                                   {entry.ok ? 'Enviado' : 'Falha'}
                                                 </span>
                                                 {entry.errorDetail && (
-                                                  <span className="text-[8px] text-rose-400 max-w-[120px] truncate" title={entry.errorDetail}>
-                                                    {entry.errorDetail}
-                                                  </span>
+                                                  <div className="mt-1 flex flex-col gap-1 p-2 rounded-lg bg-rose-50/50 border border-rose-100/50 max-w-[280px]">
+                                                    <span className="text-[10px] font-bold text-rose-600 uppercase">Erro técnico:</span>
+                                                    <span className="text-[9px] text-rose-500 leading-tight break-words whitespace-pre-wrap">
+                                                      {entry.errorDetail}
+                                                    </span>
+                                                  </div>
                                                 )}
                                               </div>
                                             </td>

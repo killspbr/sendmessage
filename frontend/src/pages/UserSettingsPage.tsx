@@ -190,11 +190,13 @@ export function UserSettingsPage({
       await loadLimits()
       setUploadMessage(`${selectedFiles.length} arquivo(s) enviados com sucesso.`)
 
-      // Refresh com atraso para dar tempo ao DB de propagar
+      // Refresh da galeria: aguarda propagação no DB e então remonta o MediaManager.
+      // Os recentUploads continuam visíveis como fallback caso o refresh falhe.
       setTimeout(() => {
-        setRecentUploads([])
         setMediaKey(prev => prev + 1)
-      }, 1200)
+        // Limpa os uploads otimísticos depois que o MediaManager teve tempo de carregar do servidor
+        setTimeout(() => setRecentUploads([]), 3000)
+      }, 2000)
 
       if (fileInputRef.current) fileInputRef.current.value = ''
     } catch (error: any) {
@@ -277,7 +279,13 @@ export function UserSettingsPage({
               </div>
 
               <div className="h-[600px]">
-                <MediaManager key={mediaKey} externalFiles={recentUploads} />
+                <MediaManager 
+                  key={mediaKey} 
+                  externalFiles={recentUploads} 
+                  onFilesDeleted={(ids) => {
+                    setRecentUploads(prev => prev.filter(f => !ids.includes(f.id)))
+                  }}
+                />
               </div>
             </div>
           </SectionCard>

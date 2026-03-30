@@ -5,6 +5,7 @@ import { normalizeDisplayText } from '../../utils/textEncoding'
 
 interface MediaManagerProps {
   onSelect?: (files: UploadedUserFile[]) => void
+  onFilesDeleted?: (ids: string[]) => void
   allowMultiple?: boolean
   initialSelected?: string[]
   externalFiles?: UploadedUserFile[]
@@ -12,12 +13,14 @@ interface MediaManagerProps {
 
 export const MediaManager: React.FC<MediaManagerProps> = ({
   onSelect,
+  onFilesDeleted,
   allowMultiple = false,
   initialSelected = [],
   externalFiles = [],
 }) => {
   const [files, setFiles] = React.useState<UploadedUserFile[]>([])
   const [loading, setLoading] = React.useState(true)
+  const [loadError, setLoadError] = React.useState<string | null>(null)
   const [searchTerm, setSearchTerm] = React.useState('')
   const [filterType, setFilterType] = React.useState<'all' | 'image' | 'video' | 'audio' | 'document'>('all')
   const [selectedIds, setSelectedIds] = React.useState<Set<string>>(new Set(initialSelected))
@@ -28,12 +31,20 @@ export const MediaManager: React.FC<MediaManagerProps> = ({
 
   const loadFiles = async () => {
     setLoading(true)
+    setLoadError(null)
     try {
-      // Cache-buster para garantir dados frescos do servidor
       const data = await apiFetch(`/api/files?_t=${Date.now()}`)
-      setFiles(Array.isArray(data) ? data : [])
-    } catch (err) {
-      console.error('Falha ao carregar arquivos:', err)
+      if (Array.isArray(data)) {
+        setFiles(data)
+      } else {
+        // Se o servidor retornou algo inesperado, preserva os arquivos existentes
+        console.warn('[MediaManager] Resposta inesperada do servidor:', data)
+        setLoadError('Resposta inesperada do servidor.')
+      }
+    } catch (err: any) {
+      console.error('[MediaManager] Falha ao carregar arquivos:', err)
+      // IMPORTANTE: NÃO limpa os arquivos existentes em caso de erro
+      setLoadError(err?.message || 'Falha ao carregar arquivos do servidor.')
     } finally {
       setLoading(false)
     }
@@ -83,6 +94,7 @@ export const MediaManager: React.FC<MediaManagerProps> = ({
       })
       setFiles(prev => prev.filter(f => !selectedIds.has(f.id)))
       setSelectedIds(new Set())
+      if (onFilesDeleted) onFilesDeleted(ids)
     } catch (err) {
       alert('Erro ao excluir arquivos.')
     } finally {
@@ -174,7 +186,22 @@ export const MediaManager: React.FC<MediaManagerProps> = ({
 
       {/* Grid */}
       <div className="flex-1 overflow-y-auto p-4">
-        {loading ? (
+        {/* Banner de erro (não bloqueia a galeria) */}
+        {loadError && (
+          <div className="mb-3 flex items-center justify-between rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5">
+            <div className="flex items-center gap-2 text-xs text-amber-700">
+              <span>⚠️</span>
+              <span className="font-medium">Falha ao atualizar galeria: {loadError}</span>
+            </div>
+            <button
+              onClick={() => void loadFiles()}
+              className="rounded-lg bg-amber-100 px-3 py-1 text-[10px] font-bold uppercase text-amber-800 hover:bg-amber-200 transition"
+            >
+              Tentar novamente
+            </button>
+          </div>
+        )}
+        {loading && files.length === 0 ? (
           <div className="flex h-64 flex-col items-center justify-center opacity-50">
             <div className="h-8 w-8 animate-spin rounded-full border-2 border-blue-500 border-t-transparent" />
             <span className="mt-4 text-xs font-bold uppercase tracking-widest text-slate-400">Carregando Biblioteca...</span>
