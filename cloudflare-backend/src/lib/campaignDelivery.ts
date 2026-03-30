@@ -254,60 +254,6 @@ function arrayBufferToBase64(buffer: ArrayBuffer) {
   return btoa(binary)
 }
 
-async function resolveMediaBody(fetchImpl: typeof fetch, media: MediaItem, resolvedUrl: string, baseUrl?: string, env?: any) {
-  // Se ja vier como Data URI (resolvido pelo mediaResolver), retorna tal qual.
-  // A Evolution API aceita Data URIs completos (data:mime;base64,...) no campo "media".
-  if (resolvedUrl.startsWith('data:')) {
-    return resolvedUrl
-  }
-
-  // Se não for interno (URL externa), deixa a Evolution API baixar via URL
-  const isInternal = resolvedUrl.includes('sendmessage-backend') || media.sourceType === 'asset'
-  if (!isInternal) {
-    return baseUrl ? ensureAbsoluteUrl(resolvedUrl, baseUrl) : resolvedUrl
-  }
-
-  // Previne loopback e erro 1042: tenta ler direto do R2
-  const mimeType = inferMimeType(media)
-  if (env?.UPLOADS_BUCKET && env?.db) {
-    const match = resolvedUrl.match(/\/uploads\/public\/([^/?#]+)\/([^/?#]+)/)
-    const token = match ? decodeURIComponent(match[1]) : null
-    const storedName = match ? decodeURIComponent(match[2]) : null
-
-    if (token && storedName) {
-      try {
-        const fileResult = await env.db.query(
-          `SELECT storage_path FROM user_uploaded_files WHERE public_token = $1 AND stored_name = $2 AND deleted_at IS NULL LIMIT 1`,
-          [token, storedName]
-        )
-        const storagePath = fileResult.rows[0]?.storage_path
-        if (storagePath) {
-          if (storagePath.startsWith('/app/storage/')) {
-            throw new Error(`[OBSOLETE_FILE] Arquivo '${storedName}' obsoleto.`)
-          }
-          const object = await env.UPLOADS_BUCKET.get(storagePath)
-          if (object) {
-            const base64 = arrayBufferToBase64(await object.arrayBuffer())
-            return `data:${mimeType};base64,${base64}`
-          }
-        }
-      } catch (err: any) {
-        if (err.message && err.message.includes('[OBSOLETE_FILE]')) throw err
-        console.warn('[Delivery] Bypass R2 falhou:', err.message)
-      }
-    }
-  }
-
-  // Fallback final: tenta baixar via HTTP (pode falhar por WAF/Loopback)
-  const response = await fetchImpl(resolvedUrl)
-  if (!response.ok) {
-    throw new Error(`Falha ao carregar arquivo interno (${response.status})`)
-  }
-  const base64 = arrayBufferToBase64(await response.arrayBuffer())
-  return `data:${mimeType};base64,${base64}`
-}
-
-
 function buildMediaCaption(messageText: string, mediaCaption: string, attachMessage: boolean) {
   const parts: string[] = []
   if (attachMessage && safeTrim(messageText)) parts.push(safeTrim(messageText))
@@ -322,10 +268,8 @@ async function sendEvolutionMedia({
   evolutionInstance,
   number,
   media,
-  resolvedUrl,
+  mediaUrl,
   caption,
-  baseUrl,
-  env,
 }: {
   fetchImpl: typeof fetch
   evolutionUrl: string
@@ -333,25 +277,23 @@ async function sendEvolutionMedia({
   evolutionInstance: string
   number: string
   media: MediaItem
-  resolvedUrl: string
+  mediaUrl: string
   caption: string
-  baseUrl?: string
-  env?: any
 }) {
-  const mediaBody = await resolveMediaBody(fetchImpl, media, resolvedUrl, baseUrl, env)
   const fileName = resolveMediaFileName(media)
   const mimeType = inferMimeType(media)
 
-  const legacyPayload = {
+  // Payload identico ao instanceLab.sendMedia que funciona via Postman
+  const payload = {
     number,
     mediatype: media.mediaType,
     mimetype: mimeType,
     fileName,
     caption,
-    media: mediaBody,
+    media: mediaUrl,
   }
 
-  await postEvolutionWithRetry(fetchImpl, `${evolutionUrl}/message/sendMedia/${evolutionInstance}`, evolutionApiKey, legacyPayload)
+  await postEvolutionWithRetry(fetchImpl, `${evolutionUrl}/message/sendMedia/${evolutionInstance}`, evolutionApiKey, payload)
 }
 
 async function sendEvolutionAudio({
@@ -360,27 +302,22 @@ async function sendEvolutionAudio({
   evolutionApiKey,
   evolutionInstance,
   number,
-  media,
-  resolvedUrl,
-  baseUrl,
-  env,
+  mediaUrl,
 }: {
   fetchImpl: typeof fetch
   evolutionUrl: string
   evolutionApiKey: string
   evolutionInstance: string
   number: string
-  media: MediaItem
-  resolvedUrl: string
-  baseUrl?: string
-  env?: any
+  mediaUrl: string
 }) {
-  const audioBody = await resolveMediaBody(fetchImpl, media, resolvedUrl, baseUrl, env)
+  // Payload identico ao instanceLab.sendAudio
   await postEvolutionWithRetry(fetchImpl, `${evolutionUrl}/message/sendWhatsAppAudio/${evolutionInstance}`, evolutionApiKey, {
     number,
-    audio: audioBody,
+    audio: mediaUrl,
   })
 }
+
 
 function resolveSharedContact(sharedContact: any, contact: Contact) {
   if (!sharedContact) return null
@@ -494,6 +431,10 @@ export async function executeWhatsappCampaignDelivery({
     const resolved = resolvedUrlMap.get(media.id)
     if (!resolved) return
 
+    // Usa a URL ORIGINAL da midia (nao o Data URI da pre-validacao)
+    // A Evolution API baixa o arquivo diretamente via HTTP
+    const originalUrl = safeTrim(resolveTemplate(media.url, contact))
+
     try {
       if (media.mediaType === 'audio') {
         await sendEvolutionAudio({
@@ -502,10 +443,7 @@ export async function executeWhatsappCampaignDelivery({
           evolutionApiKey,
           evolutionInstance,
           number: evolutionNumber,
-          media,
-          resolvedUrl: resolved.url,
-          baseUrl,
-          env,
+          mediaUrl: originalUrl,
         })
       } else {
         await sendEvolutionMedia({
@@ -515,14 +453,12 @@ export async function executeWhatsappCampaignDelivery({
           evolutionInstance,
           number: evolutionNumber,
           media,
-          resolvedUrl: resolved.url,
+          mediaUrl: originalUrl,
           caption: buildMediaCaption(
             messageText,
             safeTrim(resolveTemplate(media.caption || '', contact)),
             attachMessage
           ),
-          baseUrl,
-          env,
         })
       }
       result.mediaSent += 1
