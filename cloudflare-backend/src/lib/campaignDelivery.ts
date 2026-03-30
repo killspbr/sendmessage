@@ -255,20 +255,19 @@ function arrayBufferToBase64(buffer: ArrayBuffer) {
 }
 
 async function resolveMediaBody(fetchImpl: typeof fetch, media: MediaItem, resolvedUrl: string, baseUrl?: string, env?: any) {
-  // Se ja vier como Data URI (resolvido pelo mediaResolver), apenas extraímos o conteúdo que a Evolution API espera
+  // Se ja vier como Data URI (resolvido pelo mediaResolver), retorna tal qual.
+  // A Evolution API aceita Data URIs completos (data:mime;base64,...) no campo "media".
   if (resolvedUrl.startsWith('data:')) {
-    const base64Match = resolvedUrl.match(/base64,(.*)$/)
-    if (base64Match) return base64Match[1]
-    return resolvedUrl // Fallback se não for base64
+    return resolvedUrl
   }
 
-  // Se não for interno (URL externa de verdade), deixa a Evolution API lidar com o download via URL
+  // Se não for interno (URL externa), deixa a Evolution API baixar via URL
   const isInternal = resolvedUrl.includes('sendmessage-backend') || media.sourceType === 'asset'
   if (!isInternal) {
     return baseUrl ? ensureAbsoluteUrl(resolvedUrl, baseUrl) : resolvedUrl
   }
 
-  // Previne loopback e erro 1042: tenta ler direto do R2 se tivermos as credenciais
+  // Previne loopback e erro 1042: tenta ler direto do R2
   const mimeType = inferMimeType(media)
   if (env?.UPLOADS_BUCKET && env?.db) {
     const match = resolvedUrl.match(/\/uploads\/public\/([^/?#]+)\/([^/?#]+)/)
@@ -288,7 +287,8 @@ async function resolveMediaBody(fetchImpl: typeof fetch, media: MediaItem, resol
           }
           const object = await env.UPLOADS_BUCKET.get(storagePath)
           if (object) {
-            return arrayBufferToBase64(await object.arrayBuffer())
+            const base64 = arrayBufferToBase64(await object.arrayBuffer())
+            return `data:${mimeType};base64,${base64}`
           }
         }
       } catch (err: any) {
@@ -303,8 +303,10 @@ async function resolveMediaBody(fetchImpl: typeof fetch, media: MediaItem, resol
   if (!response.ok) {
     throw new Error(`Falha ao carregar arquivo interno (${response.status})`)
   }
-  return arrayBufferToBase64(await response.arrayBuffer())
+  const base64 = arrayBufferToBase64(await response.arrayBuffer())
+  return `data:${mimeType};base64,${base64}`
 }
+
 
 function buildMediaCaption(messageText: string, mediaCaption: string, attachMessage: boolean) {
   const parts: string[] = []
