@@ -101,6 +101,7 @@ export type ContactSendHistoryItem = {
     contactSent: boolean
     contactFailed: boolean
     errors: string[]
+    mediaDetails?: Array<{ id: string; type: string; status: 'sent' | 'failed' | 'skipped'; error?: string }>
   }
 }
 

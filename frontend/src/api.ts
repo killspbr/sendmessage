@@ -156,70 +156,86 @@ type ApiUploadOptions = {
   onProgress?: (progress: { loaded: number; total: number; percent: number }) => void
 }
 
-export function apiUpload(endpoint: string, body: FormData, options: ApiUploadOptions = {}) {
-  const token = localStorage.getItem('auth_token')
+export async function apiUpload(endpoint: string, body: FormData, options: ApiUploadOptions = {}, maxRetries = 2) {
+  let attempt = 0
+  
+  const execute = () => {
+    const token = localStorage.getItem('auth_token')
+    return new Promise<any>((resolve, reject) => {
+      const xhr = new XMLHttpRequest()
+      xhr.open(options.method || 'POST', `${API_URL}${endpoint}`)
+      xhr.responseType = 'text'
 
-  return new Promise<any>((resolve, reject) => {
-    const xhr = new XMLHttpRequest()
-    xhr.open(options.method || 'POST', `${API_URL}${endpoint}`)
-    xhr.responseType = 'text'
+      if (token) {
+        xhr.setRequestHeader('Authorization', `Bearer ${token}`)
+      }
 
-    if (token) {
-      xhr.setRequestHeader('Authorization', `Bearer ${token}`)
-    }
-
-    Object.entries(options.headers || {}).forEach(([key, value]) => {
-      xhr.setRequestHeader(key, value)
-    })
-
-    xhr.upload.onprogress = (event) => {
-      if (!event.lengthComputable || !options.onProgress) return
-
-      options.onProgress({
-        loaded: event.loaded,
-        total: event.total,
-        percent: Math.min(100, Math.round((event.loaded / event.total) * 100)),
+      Object.entries(options.headers || {}).forEach(([key, value]) => {
+        xhr.setRequestHeader(key, value)
       })
-    }
 
-    xhr.onerror = () => {
-      reject(new Error('Falha de rede durante o upload.'))
-    }
+      xhr.upload.onprogress = (event) => {
+        if (!event.lengthComputable || !options.onProgress) return
 
-    xhr.onload = () => {
-      const rawResponse = xhr.responseText || ''
-      let parsedResponse: any = null
+        options.onProgress({
+          loaded: event.loaded,
+          total: event.total,
+          percent: Math.min(100, Math.round((event.loaded / event.total) * 100)),
+        })
+      }
 
-      if (rawResponse) {
-        try {
-          parsedResponse = JSON.parse(rawResponse)
-        } catch {
-          parsedResponse = null
+      xhr.onerror = () => {
+        reject({ type: 'network', error: new Error('Falha de rede durante o upload.') })
+      }
+
+      xhr.onload = () => {
+        const rawResponse = xhr.responseText || ''
+        let parsedResponse: any = null
+
+        if (rawResponse) {
+          try {
+            parsedResponse = JSON.parse(rawResponse)
+          } catch {
+            parsedResponse = null
+          }
         }
+
+        if (xhr.status === 401 || xhr.status === 403) {
+          clearAuthStorage()
+          reject({ type: 'auth', status: xhr.status, error: createAuthExpiredError(xhr.status) })
+          return
+        }
+
+        if (xhr.status < 200 || xhr.status >= 300) {
+          const errorMessage =
+            parsedResponse?.error ||
+            parsedResponse?.message ||
+            `Erro na requisicao: ${xhr.status}`
+          const err: any = new Error(typeof errorMessage === 'string' ? errorMessage : JSON.stringify(errorMessage))
+          err.status = xhr.status
+          reject({ type: 'http', status: xhr.status, error: err })
+          return
+        }
+
+        resolve(parsedResponse)
       }
 
-      if (xhr.status === 401 || xhr.status === 403) {
-        clearAuthStorage()
-        reject(createAuthExpiredError(xhr.status))
-        return
-      }
+      xhr.send(body)
+    })
+  }
 
-      if (xhr.status < 200 || xhr.status >= 300) {
-        const errorMessage =
-          parsedResponse?.error ||
-          parsedResponse?.message ||
-          `Erro na requisicao: ${xhr.status}`
-        reject(
-          new Error(
-            typeof errorMessage === 'string' ? errorMessage : JSON.stringify(errorMessage)
-          )
-        )
-        return
+  while (attempt <= maxRetries) {
+    try {
+      return await execute()
+    } catch (err: any) {
+      const isRetryable = err.type === 'network' || (err.type === 'http' && err.status >= 500)
+      if (isRetryable && attempt < maxRetries) {
+        attempt += 1
+        console.warn(`[apiUpload] Tentando novamente (${attempt}/${maxRetries})...`)
+        await new Promise(r => setTimeout(r, 1000 * attempt))
+        continue
       }
-
-      resolve(parsedResponse)
+      throw err.error || err
     }
-
-    xhr.send(body)
-  })
+  }
 }

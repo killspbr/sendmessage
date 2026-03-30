@@ -1055,6 +1055,7 @@ export function CampaignsPage({
                                         <tr>
                                           <th className="p-2">Contato</th>
                                           <th className="p-2">Canal</th>
+                                          <th className="p-2">Composição</th>
                                           <th className="p-2">Status</th>
                                           <th className="p-2">Data</th>
                                         </tr>
@@ -1068,13 +1069,41 @@ export function CampaignsPage({
                                             </td>
                                             <td className="p-2">{entry.channel === 'whatsapp' ? '📱' : '✉️'}</td>
                                             <td className="p-2">
-                                              <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase ${
-                                                entry.ok ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'
-                                              }`}>
-                                                {entry.ok ? 'Enviado' : 'Falha'}
-                                              </span>
+                                              <div className="flex items-center gap-1.5">
+                                                {entry.deliverySummary?.sentText && (
+                                                  <span className="cursor-help" title="Texto enviado com sucesso">📝</span>
+                                                )}
+                                                {entry.deliverySummary?.mediaDetails?.map((m: any, idx: number) => (
+                                                  <span 
+                                                    key={idx} 
+                                                    className={`cursor-help text-[10px] ${m.status === 'sent' ? '' : 'filter grayscale opacity-50'}`}
+                                                    title={`${m.type.toUpperCase()}: ${m.status === 'sent' ? 'Enviado' : m.status === 'skipped' ? 'Pulado (Erro)' : 'Falhou'}${m.error ? ` - ${m.error}` : ''}`}
+                                                  >
+                                                    {m.type === 'audio' ? '🎵' : m.type === 'image' ? '🖼️' : '📄'}
+                                                    {m.status !== 'sent' && <span className="text-[7px] text-rose-500 absolute -mt-1 ml-[-2px]">✕</span>}
+                                                  </span>
+                                                ))}
+                                                {entry.deliverySummary?.contactSent && (
+                                                  <span className="cursor-help" title="Contato compartilhado enviado">👥</span>
+                                                )}
+                                                {!entry.deliverySummary && entry.ok && <span className="text-[10px] text-slate-400 italic">Legado</span>}
+                                              </div>
                                             </td>
-                                            <td className="p-2 text-slate-400 text-[9px]">{entry.runAt}</td>
+                                            <td className="p-2">
+                                              <div className="flex flex-col gap-0.5">
+                                                <span className={`w-fit rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase ${
+                                                  entry.ok ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'
+                                                }`}>
+                                                  {entry.ok ? 'Enviado' : 'Falha'}
+                                                </span>
+                                                {entry.errorDetail && (
+                                                  <span className="text-[8px] text-rose-400 max-w-[120px] truncate" title={entry.errorDetail}>
+                                                    {entry.errorDetail}
+                                                  </span>
+                                                )}
+                                              </div>
+                                            </td>
+                                            <td className="p-2 text-slate-400 text-[9px] whitespace-nowrap">{entry.runAt}</td>
                                           </tr>
                                         ))}
                                       </tbody>

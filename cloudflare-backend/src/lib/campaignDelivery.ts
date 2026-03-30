@@ -1,4 +1,6 @@
 import { ensureAbsoluteUrl, htmlToWhatsapp, resolveTemplate, toEvolutionNumber } from './messageUtils'
+import { resolveMediaUrl, preValidateMediaItems } from './mediaResolver'
+import type { ResolvedMedia } from './mediaResolver'
 
 const MAX_MEDIA_ITEMS = 5
 const INTRA_CONTACT_DELAY_MS = 1000
@@ -464,19 +466,38 @@ export async function executeWhatsappCampaignDelivery({
     contactSent: false,
     contactFailed: false,
     errors: [] as string[],
+    mediaDetails: [] as Array<{ id: string; type: string; status: 'sent' | 'failed' | 'skipped'; error?: string }>,
   }
 
   const mediaItems = Array.isArray(plan.mediaItems) ? plan.mediaItems : []
-  const [firstMedia, ...remainingMedia] = mediaItems
+
+  // ── PRÉ-VALIDAÇÃO: Resolver todas as mídias ANTES de disparar ──
+  const preValidationItems = mediaItems.map(m => ({
+    id: m.id,
+    url: safeTrim(resolveTemplate(m.url, contact)),
+    sourceType: m.sourceType,
+    mimeType: inferMimeType(m),
+  }))
+
+  const { valid: validMedia, invalid: invalidMedia } = await preValidateMediaItems(preValidationItems, env)
+
+  // Registra todas as mídias inválidas imediatamente (sem tentar enviar)
+  const resolvedUrlMap = new Map<string, ResolvedMedia>()
+  for (const v of validMedia) resolvedUrlMap.set(v.mediaId, v)
+  for (const inv of invalidMedia) {
+    result.mediaFailed += 1
+    result.errors.push(`Mídia ${inv.mediaId}: ${inv.error}`)
+    result.mediaDetails.push({ id: inv.mediaId, type: 'media', status: 'skipped', error: inv.error })
+  }
+
+  // Filtra apenas as mídias que passaram na validação
+  const sendableMedia = mediaItems.filter(m => resolvedUrlMap.has(m.id))
+  const [firstMedia, ...remainingMedia] = sendableMedia
   const useMessageAsFirstMediaCaption = Boolean(messageText && firstMedia && firstMedia.mediaType === 'image')
 
   const sendMediaItem = async (media: MediaItem, attachMessage: boolean) => {
-    const resolvedUrl = safeTrim(resolveTemplate(media.url, contact))
-    if (!isValidHttpUrl(resolvedUrl)) {
-      result.mediaFailed += 1
-      result.errors.push(`Midia invalida ignorada: ${media.id}`)
-      return
-    }
+    const resolved = resolvedUrlMap.get(media.id)
+    if (!resolved) return
 
     try {
       if (media.mediaType === 'audio') {
@@ -487,7 +508,7 @@ export async function executeWhatsappCampaignDelivery({
           evolutionInstance,
           number: evolutionNumber,
           media,
-          resolvedUrl,
+          resolvedUrl: resolved.url,
           baseUrl,
           env,
         })
@@ -499,7 +520,7 @@ export async function executeWhatsappCampaignDelivery({
           evolutionInstance,
           number: evolutionNumber,
           media,
-          resolvedUrl,
+          resolvedUrl: resolved.url,
           caption: buildMediaCaption(
             messageText,
             safeTrim(resolveTemplate(media.caption || '', contact)),
@@ -510,14 +531,15 @@ export async function executeWhatsappCampaignDelivery({
         })
       }
       result.mediaSent += 1
+      result.mediaDetails.push({ id: media.id, type: media.mediaType, status: 'sent' })
       if (attachMessage) result.sentText = true
     } catch (error) {
       result.mediaFailed += 1
-      result.errors.push(`Falha ao enviar midia ${media.id}: ${String((error as any)?.message || error)}`)
-      
-      // FALLBACK: Se esta mídia ia carregar a mensagem de texto da campanha como legenda (caption)
-      // mas o envio da mídia falhou (ex: arquivo obsoleto), não podemos perder o texto!
-      // Vamos tentar enviar o texto sozinho.
+      const errMsg = String((error as any)?.message || error)
+      result.errors.push(`Falha ao enviar mídia ${media.id}: ${errMsg}`)
+      result.mediaDetails.push({ id: media.id, type: media.mediaType, status: 'failed', error: errMsg })
+
+      // FALLBACK: Se esta mídia ia carregar o texto como legenda e falhou, envia o texto sozinho
       if (attachMessage && messageText) {
         try {
           await postEvolution(fetchImpl, `${evolutionUrl}/message/sendText/${evolutionInstance}`, evolutionApiKey, {
@@ -533,19 +555,25 @@ export async function executeWhatsappCampaignDelivery({
     }
   }
 
+  // ── EXECUÇÃO SEQUENCIAL ──
   if (firstMedia) {
     await sendMediaItem(firstMedia, useMessageAsFirstMediaCaption)
     if (remainingMedia.length > 0 || (messageText && !useMessageAsFirstMediaCaption) || plan.sharedContact) {
       await wait(INTRA_CONTACT_DELAY_MS)
     }
   }
+
   if (messageText && !useMessageAsFirstMediaCaption) {
-    await postEvolution(fetchImpl, `${evolutionUrl}/message/sendText/${evolutionInstance}`, evolutionApiKey, {
-      number: evolutionNumber,
-      text: messageText,
-      linkPreview: true,
-    })
-    result.sentText = true
+    try {
+      await postEvolution(fetchImpl, `${evolutionUrl}/message/sendText/${evolutionInstance}`, evolutionApiKey, {
+        number: evolutionNumber,
+        text: messageText,
+        linkPreview: true,
+      })
+      result.sentText = true
+    } catch (textErr) {
+      result.errors.push(`Falha ao enviar texto: ${String((textErr as any)?.message || textErr)}`)
+    }
     if (remainingMedia.length > 0 || plan.sharedContact) await wait(INTRA_CONTACT_DELAY_MS)
   }
 

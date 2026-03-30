@@ -201,3 +201,27 @@ adminOpsRoutes.get('/admin/queue', authenticateToken, checkAdmin, async (c) => {
   )
   return c.json({ success: true, data: result.rows })
 })
+
+adminOpsRoutes.post('/admin/cleanup-legacy-files', authenticateToken, checkAdmin, async (c) => {
+  const db = getDb(c.env)
+
+  // Marca como deletados todos os arquivos com paths legados do backend antigo
+  const result = await db.query(
+    `UPDATE user_uploaded_files
+        SET deleted_at = CURRENT_TIMESTAMP
+      WHERE deleted_at IS NULL
+        AND storage_path LIKE '/app/storage/%'
+    RETURNING id, user_id, original_name, storage_path`
+  )
+
+  const cleaned = result.rows || []
+  return c.json({
+    success: true,
+    message: `${cleaned.length} arquivo(s) legado(s) removidos.`,
+    cleaned: cleaned.map((r: any) => ({
+      id: r.id,
+      originalName: r.original_name,
+      storagePath: r.storage_path,
+    })),
+  })
+})

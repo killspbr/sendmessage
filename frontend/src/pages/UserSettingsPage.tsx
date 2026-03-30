@@ -385,6 +385,63 @@ export function UserSettingsPage({
                 </button>
              </div>
           </SectionCard>
+
+          <SectionCard
+            title="Manutenção e Diagnóstico"
+            description="Ferramentas avançadas para reparação e auditoria do sistema."
+            accent="bg-rose-400"
+          >
+            <div className="space-y-4">
+              <div className="p-3 rounded-xl bg-slate-50 border border-slate-100 flex flex-col gap-2">
+                <div className="flex items-start gap-3">
+                  <span className="text-lg">🧹</span>
+                  <div className="flex-1">
+                    <p className="text-[11px] font-bold text-slate-700 uppercase">Limpeza de Mídia Legada</p>
+                    <p className="text-[10px] text-slate-500 mt-0.5">Remove referências a arquivos de versões anteriores do sistema que não podem mais ser disparados (fantasmas da galeria).</p>
+                  </div>
+                </div>
+                
+                <button
+                  onClick={async () => {
+                    if (!confirm('Deseja realmente auditar e remover as referências a arquivos antigos? Isso limpará arquivos corrompidos da sua galeria.')) return
+                    try {
+                      const res = await apiFetch('/api/admin/cleanup-legacy-files', { method: 'POST' })
+                      alert(res.message || 'Limpeza concluída com sucesso.')
+                    } catch (err: any) {
+                      alert('Erro ao realizar limpeza: ' + (err.message || String(err)))
+                    }
+                  }}
+                  className="mt-1 h-9 w-full rounded-xl border border-rose-200 bg-white text-[11px] font-bold text-rose-600 transition hover:bg-rose-50"
+                >
+                  Auditar e Expurgar Arquivos Obsoletos
+                </button>
+              </div>
+
+              <div className="p-3 rounded-xl bg-slate-50 border border-slate-100 flex flex-col gap-2">
+                <div className="flex items-start gap-3">
+                  <span className="text-lg">🛠️</span>
+                  <div className="flex-1">
+                    <p className="text-[11px] font-bold text-slate-700 uppercase">Diagnóstico de Conexão</p>
+                    <p className="text-[10px] text-slate-500 mt-0.5">Verifica a comunicação entre o sistema e o seu worker do Cloudflare.</p>
+                  </div>
+                </div>
+                
+                <button
+                  onClick={async () => {
+                   try {
+                     await apiFetch('/api/auth/presence')
+                     alert('Conexão com o backend estabelecida com sucesso! ✅')
+                   } catch (err) {
+                     alert('Falha na conexão com o sistema. Tente recarregar a página.')
+                   }
+                  }}
+                  className="mt-1 h-9 w-full rounded-xl border border-slate-200 bg-white text-[11px] font-bold text-slate-600 transition hover:bg-slate-50"
+                >
+                  Testar Integridade do Sistema
+                </button>
+              </div>
+            </div>
+          </SectionCard>
         </div>
       </div>
     </section>
