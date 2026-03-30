@@ -48,7 +48,9 @@ uploadRoutes.get('/files', authenticateToken, async (c) => {
     console.log(`[Uploads] Encontrados ${result.rows.length} arquivos para o usuário.`)
 
     const files = result.rows.map(mapFileRow)
-    return c.json(files)
+    return c.json(files, 200, {
+      'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0'
+    })
   } catch (error: any) {
     console.error('[Uploads] Erro critico ao listar arquivos:', error)
     return c.json({ 
@@ -243,11 +245,15 @@ uploadRoutes.post('/files/bulk-delete', authenticateToken, async (c) => {
 
   const db = getDb(c.env)
   
+  // Constrói os placeholders dinâmicos (ex: $2, $3, $4)
+  const placeholders = ids.map((_, i) => `$${i + 2}`).join(',')
+  const queryParams = [user.id, ...ids]
+
   // Busca os caminhos no R2 antes de deletar do banco
   const filesResult = await db.query(
     `SELECT id, storage_path FROM user_uploaded_files 
-      WHERE user_id = $1 AND id = ANY($2::uuid[]) AND deleted_at IS NULL`,
-    [user.id, ids]
+      WHERE user_id = $1 AND id IN (${placeholders}) AND deleted_at IS NULL`,
+    queryParams
   )
   
   const filesToDelete = filesResult.rows as Array<{ storage_path: string }>
@@ -257,8 +263,8 @@ uploadRoutes.post('/files/bulk-delete', authenticateToken, async (c) => {
   await db.query(
     `UPDATE user_uploaded_files
         SET deleted_at = CURRENT_TIMESTAMP
-      WHERE user_id = $1 AND id = ANY($2::uuid[])`,
-    [user.id, ids]
+      WHERE user_id = $1 AND id IN (${placeholders})`,
+    queryParams
   )
 
   // Remove do R2 (Melhor esforço)
