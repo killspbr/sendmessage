@@ -514,6 +514,22 @@ export async function executeWhatsappCampaignDelivery({
     } catch (error) {
       result.mediaFailed += 1
       result.errors.push(`Falha ao enviar midia ${media.id}: ${String((error as any)?.message || error)}`)
+      
+      // FALLBACK: Se esta mídia ia carregar a mensagem de texto da campanha como legenda (caption)
+      // mas o envio da mídia falhou (ex: arquivo obsoleto), não podemos perder o texto!
+      // Vamos tentar enviar o texto sozinho.
+      if (attachMessage && messageText) {
+        try {
+          await postEvolution(fetchImpl, `${evolutionUrl}/message/sendText/${evolutionInstance}`, evolutionApiKey, {
+            number: evolutionNumber,
+            text: messageText,
+            linkPreview: true,
+          })
+          result.sentText = true
+        } catch (textErr) {
+          result.errors.push(`Falha no fallback de texto: ${String((textErr as any)?.message || textErr)}`)
+        }
+      }
     }
   }
 
@@ -523,7 +539,6 @@ export async function executeWhatsappCampaignDelivery({
       await wait(INTRA_CONTACT_DELAY_MS)
     }
   }
-
   if (messageText && !useMessageAsFirstMediaCaption) {
     await postEvolution(fetchImpl, `${evolutionUrl}/message/sendText/${evolutionInstance}`, evolutionApiKey, {
       number: evolutionNumber,
