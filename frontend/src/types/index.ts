@@ -20,7 +20,7 @@ export type ContactList = {
 
 export type CampaignChannel = 'whatsapp' | 'email'
 
-export type CampaignStatus = 'rascunho' | 'agendada' | 'enviada' | 'enviada_com_erros'
+export type CampaignStatus = 'rascunho' | 'agendada' | 'enviando' | 'enviada' | 'enviada_com_erros'
 
 export type CampaignMediaType = 'image' | 'document' | 'audio' | 'video'
 

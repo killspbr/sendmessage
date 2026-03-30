@@ -268,6 +268,33 @@ campaignRoutes.post('/campaigns', authenticateToken, async (c) => {
   }
 })
 
+// GET individual campaign (polling de status)
+campaignRoutes.get('/campaigns/:id', authenticateToken, async (c) => {
+  const userId = getAuthenticatedUserId(c)
+  if (!userId) return c.json({ error: 'Acesso negado.' }, 401)
+
+  const campaignId = c.req.param('id')
+  const db = getDb(c.env)
+  await ensureCampaignsTable(db)
+
+  const result = await db.query(
+    'SELECT id, name, status, list_name, channels, delivery_payload, interval_min_seconds, interval_max_seconds, created_at FROM campaigns WHERE id = $1 AND user_id = $2 LIMIT 1',
+    [campaignId, userId]
+  )
+  const campaign = result.rows[0]
+  if (!campaign) return c.json({ error: 'Campanha não encontrada.' }, 404)
+
+  return c.json({
+    data: {
+      id: campaign.id,
+      name: campaign.name,
+      status: campaign.status,
+      listName: campaign.list_name,
+      channels: campaign.channels,
+    },
+  })
+})
+
 campaignRoutes.put('/campaigns/:id', authenticateToken, async (c) => {
   const userId = getAuthenticatedUserId(c)
   if (!userId) return c.json({ error: 'Acesso negado.' }, 401)
@@ -426,83 +453,100 @@ campaignRoutes.post('/campaigns/:id/send', authenticateToken, async (c) => {
     }, 400)
   }
 
-  const intervalMin = Number(campaign.interval_min_seconds || 30)
-  const intervalMax = Number(campaign.interval_max_seconds || 90)
-
   if (contacts.length > 120) {
     return c.json({
-      error: 'Esta campanha possui muitos contatos para envio direto no Worker. Use o agendamento profissional para processar em fila.',
+      error: 'Esta campanha possui muitos contatos para envio direto. Use o agendamento em fila.',
     }, 400)
   }
 
-  let errors = 0
-  const items: unknown[] = []
+  // Marca campanha como "em processamento"
+  await db.query('UPDATE campaigns SET status = $1 WHERE id = $2', ['enviando', campaignId])
 
-  for (let index = 0; index < contacts.length; index += 1) {
-    const contact = contacts[index]
-    const evolutionNumber = toEvolutionNumber(contact.phone)
-    if (!evolutionNumber) {
-      const invalidEntry = buildContactSendHistoryEntry({
-        userId,
-        campaign,
-        contact,
-        channel: 'whatsapp',
-        error: new Error('Contato sem telefone válido para envio no formato Evolution.'),
-      })
-      await insertContactSendHistory((sql, params) => db.query(sql, params), invalidEntry)
-      items.push(invalidEntry)
-      errors += 1
-      continue
+  const baseUrl = new URL(c.req.url).origin
+  const env = { ...c.env, db }
+
+  // Processa os contatos em BACKGROUND usando waitUntil
+  // O handler retorna 202 imediatamente, mas o Worker continua executando
+  const backgroundTask = (async () => {
+    let errors = 0
+    let sent = 0
+
+    for (let index = 0; index < contacts.length; index += 1) {
+      const contact = contacts[index]
+      const evolutionNumber = toEvolutionNumber(contact.phone)
+
+      if (!evolutionNumber) {
+        const invalidEntry = buildContactSendHistoryEntry({
+          userId,
+          campaign,
+          contact,
+          channel: 'whatsapp',
+          error: new Error('Contato sem telefone válido para envio no formato Evolution.'),
+        })
+        await insertContactSendHistory((sql, params) => db.query(sql, params), invalidEntry)
+        errors += 1
+        continue
+      }
+
+      try {
+        const deliveryResult = await executeWhatsappCampaignDelivery({
+          evolutionUrl: evolution.evolutionUrl,
+          evolutionApiKey: evolution.evolutionApiKey,
+          evolutionInstance: evolution.evolutionInstance,
+          campaign,
+          contact,
+          baseUrl,
+          env,
+        })
+
+        const historyEntry = buildContactSendHistoryEntry({
+          userId,
+          campaign,
+          contact,
+          channel: 'whatsapp',
+          deliveryResult,
+        })
+        await insertContactSendHistory((sql, params) => db.query(sql, params), historyEntry)
+        if (historyEntry.status !== 200) errors += 1
+        else sent += 1
+      } catch (sendError) {
+        const historyEntry = buildContactSendHistoryEntry({
+          userId,
+          campaign,
+          contact,
+          channel: 'whatsapp',
+          error: sendError,
+        })
+        await insertContactSendHistory((sql, params) => db.query(sql, params), historyEntry)
+        errors += 1
+      }
+
+      // Delay entre contatos (clampeado entre 3 e 8 segundos para seguranca)
+      if (index < contacts.length - 1) {
+        const intervalMin = Number(campaign.interval_min_seconds || 30)
+        const intervalMax = Number(campaign.interval_max_seconds || 90)
+        const randomDelay = intervalMin + Math.floor(Math.random() * Math.max(1, intervalMax - intervalMin + 1))
+        const clampedDelay = Math.min(Math.max(randomDelay, 3), 8)
+        await sleep(clampedDelay * 1000)
+      }
     }
 
-    try {
-      const deliveryResult = await executeWhatsappCampaignDelivery({
-        evolutionUrl: evolution.evolutionUrl,
-        evolutionApiKey: evolution.evolutionApiKey,
-        evolutionInstance: evolution.evolutionInstance,
-        campaign,
-        contact,
-        baseUrl: new URL(c.req.url).origin,
-        env: { ...c.env, db },
-      })
+    // Atualiza status final da campanha no DB
+    const finalStatus = errors > 0 ? 'enviada_com_erros' : 'enviada'
+    await db.query('UPDATE campaigns SET status = $1 WHERE id = $2', [finalStatus, campaignId])
+    console.log(`[Campaigns] Disparo concluido: ${campaignId} | Enviados: ${sent} | Erros: ${errors}`)
+  })()
 
-      const historyEntry = buildContactSendHistoryEntry({
-        userId,
-        campaign,
-        contact,
-        channel: 'whatsapp',
-        deliveryResult,
-      })
-      await insertContactSendHistory((sql, params) => db.query(sql, params), historyEntry)
-      items.push(historyEntry)
-      if (historyEntry.status !== 200) errors += 1
-    } catch (sendError) {
-      const historyEntry = buildContactSendHistoryEntry({
-        userId,
-        campaign,
-        contact,
-        channel: 'whatsapp',
-        error: sendError,
-      })
-      await insertContactSendHistory((sql, params) => db.query(sql, params), historyEntry)
-      items.push(historyEntry)
-      errors += 1
-    }
-
-    if (index < contacts.length - 1) {
-      const randomDelay = intervalMin + Math.floor(Math.random() * Math.max(1, intervalMax - intervalMin + 1))
-      const clampedDelay = Math.min(Math.max(randomDelay, 1), 5)
-      await sleep(clampedDelay * 1000)
-    }
-  }
-
-  await db.query('UPDATE campaigns SET status = $1 WHERE id = $2', [errors > 0 ? 'enviada_com_erros' : 'enviada', campaignId])
+  // waitUntil permite que o Worker continue processando depois de responder
+  c.executionCtx.waitUntil(backgroundTask)
 
   return c.json({
     ok: true,
+    accepted: true,
     campaignId,
     contactsCount: contacts.length,
-    errors,
-    items,
-  })
+    estimatedSeconds: contacts.length * 6,
+    message: `Disparo iniciado. ${contacts.length} contato(s) serão processados em segundo plano.`,
+  }, 202)
 })
+

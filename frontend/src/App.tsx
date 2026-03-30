@@ -1559,7 +1559,7 @@ function App() {
     })
 
     try {
-      // Uma única chamada autenticada ao backend — ele faz o loop e os intervalos
+      // Inicia o disparo — backend responde 202 e processa em background
       const result = await apiFetch(`/api/campaigns/${camp.id}/send`, {
         method: 'POST',
         body: JSON.stringify({}),
@@ -1567,74 +1567,133 @@ function App() {
 
       console.log('[DEBUG] Resultado do backend:', result)
 
-      const errorCount = result?.errors ?? 0
-      const total = result?.contactsCount ?? contactsForList.length
+      // Se recebeu 202 (async) ou ok=true com accepted, faz polling pelo status
+      if (result?.accepted) {
+        const totalContacts = result?.contactsCount ?? contactsForList.length
+        const estimatedSec = result?.estimatedSeconds ?? totalContacts * 6
 
-      setSendingCurrentIndex(total)
-      setSendingErrors(errorCount)
+        setCampaigns((prev) =>
+          prev.map((c) => (c.id === camp.id ? { ...c, status: 'enviando' } : c))
+        )
+        setLastMoveMessage(
+          `Disparo iniciado para ${totalContacts} contato(s). Tempo estimado: ~${Math.ceil(estimatedSec / 60)} min. Processando em segundo plano...`
+        )
 
-      const finishedAt = new Date().toLocaleString('pt-BR', {
-        day: '2-digit',
-        month: 'short',
-        hour: '2-digit',
-        minute: '2-digit',
-      })
+        // Polling: verifica status da campanha a cada 5 segundos
+        const maxPolls = Math.max(60, Math.ceil(estimatedSec / 5) + 10) // Máximo ~5 min de polling
+        for (let poll = 0; poll < maxPolls; poll++) {
+          await new Promise((r) => setTimeout(r, 5000))
 
-      setCampaignSendLog((prev) => ({
-        ...prev,
-        [camp.id]: {
-          lastStatus: errorCount === 0 ? 200 : 207,
-          lastOk: errorCount === 0,
-          lastErrorCount: errorCount,
-          lastTotal: total,
-          lastRunAt: finishedAt,
-        },
-      }))
+          try {
+            const campStatus = await apiFetch(`/api/campaigns/${camp.id}`)
+            const newStatus = campStatus?.data?.status ?? campStatus?.status
+            console.log(`[DEBUG] Poll #${poll + 1}: status=${newStatus}`)
 
-      setSendHistory((prev) => {
-        const entry: SendHistoryItem = {
-          id: `${camp.id}-${Date.now()}`,
-          campaignId: camp.id,
-          campaignName: camp.name,
-          status: errorCount === 0 ? 200 : 207,
-          ok: errorCount === 0,
-          total,
-          errorCount,
-          runAt: finishedAt,
+            if (newStatus === 'enviada' || newStatus === 'enviada_com_erros') {
+              // Disparo finalizou — carrega resultado do historico
+              const finishedAt = new Date().toLocaleString('pt-BR', {
+                day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit',
+              })
+
+              setCampaigns((prev) =>
+                prev.map((c) => (c.id === camp.id ? { ...c, status: newStatus } : c))
+              )
+
+              setSendingCurrentIndex(totalContacts)
+
+              const isOk = newStatus === 'enviada'
+              setCampaignSendLog((prev) => ({
+                ...prev,
+                [camp.id]: {
+                  lastStatus: isOk ? 200 : 207,
+                  lastOk: isOk,
+                  lastErrorCount: isOk ? 0 : 1,
+                  lastTotal: totalContacts,
+                  lastRunAt: finishedAt,
+                },
+              }))
+
+              setSendHistory((prev) => {
+                const entry: SendHistoryItem = {
+                  id: `${camp.id}-${Date.now()}`,
+                  campaignId: camp.id,
+                  campaignName: camp.name,
+                  status: isOk ? 200 : 207,
+                  ok: isOk,
+                  total: totalContacts,
+                  errorCount: isOk ? 0 : 1,
+                  runAt: finishedAt,
+                }
+                return [entry, ...prev].slice(0, 50)
+              })
+
+              try {
+                await apiFetch('/api/campaigns/history', {
+                  method: 'POST',
+                  body: JSON.stringify({
+                    campaign_id: camp.id,
+                    status: isOk ? 200 : 207,
+                    ok: isOk,
+                    total: totalContacts,
+                    error_count: isOk ? 0 : 1,
+                    run_at: new Date().toISOString(),
+                  })
+                })
+              } catch (e) {
+                console.error('Erro ao gravar histórico agregado no backend', e)
+              }
+
+              setLastMoveMessage(
+                isOk
+                  ? `Campanha "${camp.name}" disparada com sucesso para ${totalContacts} contato(s).`
+                  : `Campanha "${camp.name}" concluída com erros em ${totalContacts} contato(s).`
+              )
+
+              await reloadContactSendHistory()
+              break
+            }
+          } catch (pollErr) {
+            console.warn('[DEBUG] Erro no polling:', pollErr)
+            // Continua tentando
+          }
         }
-        return [entry, ...prev].slice(0, 50)
-      })
-
-      // Grava histórico agregado
-      try {
-        await apiFetch('/api/campaigns/history', {
-          method: 'POST',
-          body: JSON.stringify({
-            campaign_id: camp.id,
-            status: errorCount === 0 ? 200 : 207,
-            ok: errorCount === 0,
-            total,
-            error_count: errorCount,
-            run_at: new Date().toISOString(),
-          })
-        })
-      } catch (e) {
-        console.error('Erro ao gravar histórico agregado no backend', e)
-      }
-
-      if (errorCount === 0) {
-        setCampaigns((prev) =>
-          prev.map((c) => (c.id === camp.id ? { ...c, status: 'enviada' } : c))
-        )
-        setLastMoveMessage(`Campanha "${camp.name}" disparada com sucesso para ${total} contato(s).`)
       } else {
-        setCampaigns((prev) =>
-          prev.map((c) => (c.id === camp.id ? { ...c, status: 'enviada_com_erros' } : c))
-        )
-        setLastMoveMessage(`Campanha "${camp.name}" concluída com ${errorCount} erro(s) em ${total} contato(s).`)
-      }
+        // Backward compatibility: resposta síncrona (200)
+        const errorCount = result?.errors ?? 0
+        const total = result?.contactsCount ?? contactsForList.length
 
-      await reloadContactSendHistory()
+        setSendingCurrentIndex(total)
+        setSendingErrors(errorCount)
+
+        const finishedAt = new Date().toLocaleString('pt-BR', {
+          day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit',
+        })
+
+        setCampaignSendLog((prev) => ({
+          ...prev,
+          [camp.id]: {
+            lastStatus: errorCount === 0 ? 200 : 207,
+            lastOk: errorCount === 0,
+            lastErrorCount: errorCount,
+            lastTotal: total,
+            lastRunAt: finishedAt,
+          },
+        }))
+
+        if (errorCount === 0) {
+          setCampaigns((prev) =>
+            prev.map((c) => (c.id === camp.id ? { ...c, status: 'enviada' } : c))
+          )
+          setLastMoveMessage(`Campanha "${camp.name}" disparada com sucesso para ${total} contato(s).`)
+        } else {
+          setCampaigns((prev) =>
+            prev.map((c) => (c.id === camp.id ? { ...c, status: 'enviada_com_erros' } : c))
+          )
+          setLastMoveMessage(`Campanha "${camp.name}" concluída com ${errorCount} erro(s) em ${total} contato(s).`)
+        }
+
+        await reloadContactSendHistory()
+      }
     } catch (err: any) {
       console.error('Erro ao disparar campanha:', err)
       setLastMoveMessage(`Erro ao disparar campanha: ${err?.message ?? 'Falha desconhecida'}`)
