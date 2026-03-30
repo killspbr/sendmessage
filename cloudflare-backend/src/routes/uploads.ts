@@ -195,19 +195,17 @@ uploadRoutes.delete('/files/:id', authenticateToken, async (c) => {
   const result = await db.query(
     `UPDATE user_uploaded_files
         SET deleted_at = CURRENT_TIMESTAMP
-      WHERE id = $1
-        AND user_id = $2
+      WHERE id = $1::uuid
+        AND user_id = $2::uuid
         AND deleted_at IS NULL
-    RETURNING *`,
+    RETURNING id`,
     [id, user.id]
   )
 
-  const file = result.rows[0]
-  if (!file) {
-    return c.json({ error: 'Arquivo nao encontrado.' }, 404)
+  if (result.rows.length === 0) {
+    return c.json({ error: 'Arquivo nao encontrado ou ja removido.' }, 404)
   }
 
-  await c.env.UPLOADS_BUCKET.delete(file.storage_path)
   return c.json({ ok: true })
 })
 
@@ -224,11 +222,11 @@ uploadRoutes.patch('/files/:id', authenticateToken, async (c) => {
   const result = await db.query(
     `UPDATE user_uploaded_files
         SET original_name = $1, updated_at = CURRENT_TIMESTAMP
-      WHERE id = $1::uuid
-        AND user_id = $2
+      WHERE id = $2::uuid
+        AND user_id = $3::uuid
         AND deleted_at IS NULL
     RETURNING *`,
-    [newName, user.id]
+    [newName, id, user.id]
   )
 
   if (!result.rows[0]) return c.json({ error: 'Arquivo nao encontrado.' }, 404)
@@ -245,33 +243,33 @@ uploadRoutes.post('/files/bulk-delete', authenticateToken, async (c) => {
 
   const db = getDb(c.env)
   
-  // Constrói os placeholders dinâmicos (ex: $2, $3, $4)
-  const placeholders = ids.map((_, i) => `$${i + 2}`).join(',')
-  const queryParams = [user.id, ...ids]
+  // Usar ANY para performance e seguranca de tipos no Postgres
+  try {
+    const filesResult = await db.query(
+      `SELECT id, storage_path FROM user_uploaded_files 
+        WHERE user_id = $1::uuid AND id = ANY($2::uuid[]) AND deleted_at IS NULL`,
+      [user.id, ids]
+    )
+    
+    const filesToDelete = filesResult.rows
+    if (filesToDelete.length === 0) return c.json({ ok: true, deleted: 0 })
 
-  // Busca os caminhos no R2 antes de deletar do banco
-  const filesResult = await db.query(
-    `SELECT id, storage_path FROM user_uploaded_files 
-      WHERE user_id = $1 AND id IN (${placeholders}) AND deleted_at IS NULL`,
-    queryParams
-  )
-  
-  const filesToDelete = filesResult.rows as Array<{ storage_path: string }>
-  if (filesToDelete.length === 0) return c.json({ ok: true, deleted: 0 })
+    await db.query(
+      `UPDATE user_uploaded_files
+          SET deleted_at = CURRENT_TIMESTAMP
+        WHERE user_id = $1::uuid AND id = ANY($2::uuid[])`,
+      [user.id, ids]
+    )
 
-  // Soft delete no banco
-  await db.query(
-    `UPDATE user_uploaded_files
-        SET deleted_at = CURRENT_TIMESTAMP
-      WHERE user_id = $1 AND id IN (${placeholders})`,
-    queryParams
-  )
+    // Detalhe importante: deletar do R2 em background
+    const deletePromises = filesToDelete.map((f: any) => c.env.UPLOADS_BUCKET.delete(f.storage_path).catch(() => {}))
+    await Promise.allSettled(deletePromises)
 
-  // Remove do R2 (Melhor esforço)
-  const deletePromises = filesToDelete.map((f) => c.env.UPLOADS_BUCKET.delete(f.storage_path))
-  await Promise.allSettled(deletePromises)
-
-  return c.json({ ok: true, deleted: filesToDelete.length })
+    return c.json({ ok: true, deleted: filesToDelete.length })
+  } catch (err: any) {
+    console.error('[Uploads] Erro no bulk-delete:', err)
+    return c.json({ error: 'Falha ao processar exclusao em lote.', message: err.message }, 500)
+  }
 })
 
 uploadRoutes.get('/uploads/public/:token/:storedName', async (c) => {

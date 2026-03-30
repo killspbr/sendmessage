@@ -32,6 +32,10 @@ presenceRoutes.post('/auth/presence', authenticateToken, async (c) => {
   return c.json({ ok: true })
 })
 
+presenceRoutes.get('/auth/presence', authenticateToken, async (c) => {
+  return c.json({ ok: true })
+})
+
 presenceRoutes.post('/auth/presence/logout', authenticateToken, async (c) => {
   const body = await c.req.json().catch(() => ({} as any))
   const sessionId = String(body?.sessionId || '').trim()
