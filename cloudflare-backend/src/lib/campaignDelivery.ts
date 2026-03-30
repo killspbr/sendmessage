@@ -255,62 +255,55 @@ function arrayBufferToBase64(buffer: ArrayBuffer) {
 }
 
 async function resolveMediaBody(fetchImpl: typeof fetch, media: MediaItem, resolvedUrl: string, baseUrl?: string, env?: any) {
-  // Se for explicitamente um asset ou se a URL aponta fisicamente pro nosso backend, 
-  // tentamos resgatar direto do R2 ou via loopback HTTP e enviamos como Base64 (Data URI).
-  // Isso impede que a Evolution API tome Block 403 (Cloudflare WAF / Bot Fight Mode)
-  // e contorna o erro 1042 (Fetch Loopback limit) de Workers consultando a si mesmos via HTTP.
-  const isInternal = resolvedUrl.includes('sendmessage-backend') || media.sourceType === 'asset'
+  // Se ja vier como Data URI (resolvido pelo mediaResolver), apenas extraímos o conteúdo que a Evolution API espera
+  if (resolvedUrl.startsWith('data:')) {
+    const base64Match = resolvedUrl.match(/base64,(.*)$/)
+    if (base64Match) return base64Match[1]
+    return resolvedUrl // Fallback se não for base64
+  }
 
+  // Se não for interno (URL externa de verdade), deixa a Evolution API lidar com o download via URL
+  const isInternal = resolvedUrl.includes('sendmessage-backend') || media.sourceType === 'asset'
   if (!isInternal) {
     return baseUrl ? ensureAbsoluteUrl(resolvedUrl, baseUrl) : resolvedUrl
   }
 
+  // Previne loopback e erro 1042: tenta ler direto do R2 se tivermos as credenciais
   const mimeType = inferMimeType(media)
-  let base64Data: string;
+  if (env?.UPLOADS_BUCKET && env?.db) {
+    const match = resolvedUrl.match(/\/uploads\/public\/([^/?#]+)\/([^/?#]+)/)
+    const token = match ? decodeURIComponent(match[1]) : null
+    const storedName = match ? decodeURIComponent(match[2]) : null
 
-  try {
-    // Tenta bypass super rapido e fail-safe direto pelo bucket R2 usando BD para achar o path
-    if (env?.UPLOADS_BUCKET && env?.db) {
-      // Formato da Rota: /api/uploads/public/:token/:storedName
-      const match = resolvedUrl.match(/\/uploads\/public\/([^/?#]+)\/([^/?#]+)/)
-      const token = match ? decodeURIComponent(match[1]) : null
-      const storedName = match ? decodeURIComponent(match[2]) : null
-      
-      if (token && storedName) {
+    if (token && storedName) {
+      try {
         const fileResult = await env.db.query(
           `SELECT storage_path FROM user_uploaded_files WHERE public_token = $1 AND stored_name = $2 AND deleted_at IS NULL LIMIT 1`,
           [token, storedName]
         )
-        
         const storagePath = fileResult.rows[0]?.storage_path
-
         if (storagePath) {
           if (storagePath.startsWith('/app/storage/')) {
-            throw new Error(`[OBSOLETE_FILE] Arquivo obsoleto: '${storedName}' não está mais hospedado no sistema (versão anterior). Remova o anexo desta campanha e refaça o upload do arquivo atualizado.`)
+            throw new Error(`[OBSOLETE_FILE] Arquivo '${storedName}' obsoleto.`)
           }
-
           const object = await env.UPLOADS_BUCKET.get(storagePath)
           if (object) {
-            base64Data = arrayBufferToBase64(await object.arrayBuffer())
-            return `data:${mimeType};base64,${base64Data}`
+            return arrayBufferToBase64(await object.arrayBuffer())
           }
         }
+      } catch (err: any) {
+        if (err.message && err.message.includes('[OBSOLETE_FILE]')) throw err
+        console.warn('[Delivery] Bypass R2 falhou:', err.message)
       }
     }
-  } catch (err: any) {
-    if (err.message && err.message.includes('[OBSOLETE_FILE]')) {
-      throw new Error(err.message.replace('[OBSOLETE_FILE] ', ''))
-    }
-    console.warn('[Delivery] Bypass R2 via DB falhou, caindo para HTTP:', err)
   }
 
+  // Fallback final: tenta baixar via HTTP (pode falhar por WAF/Loopback)
   const response = await fetchImpl(resolvedUrl)
   if (!response.ok) {
-    throw new Error(`Falha ao carregar o arquivo interno (${response.status}): ${await response.text().catch(() => 'corpo indisponivel')}`)
+    throw new Error(`Falha ao carregar arquivo interno (${response.status})`)
   }
-  
-  base64Data = arrayBufferToBase64(await response.arrayBuffer())
-  return `data:${mimeType};base64,${base64Data}`
+  return arrayBufferToBase64(await response.arrayBuffer())
 }
 
 function buildMediaCaption(messageText: string, mediaCaption: string, attachMessage: boolean) {
