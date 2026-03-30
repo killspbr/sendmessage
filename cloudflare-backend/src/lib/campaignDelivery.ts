@@ -222,7 +222,9 @@ function isRetryableEvolutionTransportError(error: unknown) {
     message.includes('econnreset') ||
     message.includes('etimedout') ||
     message.includes('fetch failed') ||
-    message.includes('und_err_socket')
+    message.includes('und_err_socket') ||
+    message.includes('eai_again') ||
+    message.includes('enotfound')
   )
 }
 
@@ -259,6 +261,22 @@ function buildMediaCaption(messageText: string, mediaCaption: string, attachMess
   if (attachMessage && safeTrim(messageText)) parts.push(safeTrim(messageText))
   if (safeTrim(mediaCaption)) parts.push(safeTrim(mediaCaption))
   return parts.join('\n\n').trim()
+}
+
+// Garante que URLs com caracteres especiais (espaco, &, acentos) sejam validas
+// para a Evolution API, que rejeita URLs com caracteres nao-encodados.
+function ensureValidMediaUrl(url: string): string {
+  try {
+    const parsed = new URL(url)
+    // Re-encoda cada segmento do path (decodifica primeiro para evitar double-encoding)
+    parsed.pathname = parsed.pathname
+      .split('/')
+      .map(seg => encodeURIComponent(decodeURIComponent(seg)))
+      .join('/')
+    return parsed.toString()
+  } catch {
+    return url
+  }
 }
 
 async function sendEvolutionMedia({
@@ -432,8 +450,8 @@ export async function executeWhatsappCampaignDelivery({
     if (!resolved) return
 
     // Usa a URL ORIGINAL da midia (nao o Data URI da pre-validacao)
-    // A Evolution API baixa o arquivo diretamente via HTTP
-    const originalUrl = safeTrim(resolveTemplate(media.url, contact))
+    // A Evolution API baixa o arquivo diretamente via HTTP - garante encoding correto
+    const originalUrl = ensureValidMediaUrl(safeTrim(resolveTemplate(media.url, contact)))
 
     try {
       if (media.mediaType === 'audio') {

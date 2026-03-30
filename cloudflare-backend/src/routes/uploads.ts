@@ -18,7 +18,7 @@ function mapFileRow(row: any) {
     mediaType: row.media_type || 'document',
     sizeBytes: Number(row.size_bytes || 0),
     createdAt: row.created_at,
-    publicUrl: `/api/uploads/public/${row.public_token}/${row.stored_name}`,
+    publicUrl: `/api/uploads/public/${row.public_token}/${encodeURIComponent(row.stored_name)}`,
     isAvailable: true,
     canInline: ['image', 'video', 'document'].includes(row.media_type) && row.mime_type !== 'application/pdf', 
   }
