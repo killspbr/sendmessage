@@ -521,13 +521,12 @@ campaignRoutes.post('/campaigns/:id/send', authenticateToken, async (c) => {
         errors += 1
       }
 
-      // Delay entre contatos (clampeado entre 3 e 8 segundos para seguranca)
+      // Delay entre contatos — respeita os valores configurados na campanha
       if (index < contacts.length - 1) {
-        const intervalMin = Number(campaign.interval_min_seconds || 30)
-        const intervalMax = Number(campaign.interval_max_seconds || 90)
+        const intervalMin = Math.max(Number(campaign.interval_min_seconds || 3), 2)
+        const intervalMax = Math.max(Number(campaign.interval_max_seconds || 5), intervalMin)
         const randomDelay = intervalMin + Math.floor(Math.random() * Math.max(1, intervalMax - intervalMin + 1))
-        const clampedDelay = Math.min(Math.max(randomDelay, 3), 8)
-        await sleep(clampedDelay * 1000)
+        await sleep(randomDelay * 1000)
       }
     }
 
