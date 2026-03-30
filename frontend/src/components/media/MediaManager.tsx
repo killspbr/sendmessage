@@ -7,12 +7,14 @@ interface MediaManagerProps {
   onSelect?: (files: UploadedUserFile[]) => void
   allowMultiple?: boolean
   initialSelected?: string[]
+  externalFiles?: UploadedUserFile[]
 }
 
 export const MediaManager: React.FC<MediaManagerProps> = ({
   onSelect,
   allowMultiple = false,
-  initialSelected = []
+  initialSelected = [],
+  externalFiles = [],
 }) => {
   const [files, setFiles] = React.useState<UploadedUserFile[]>([])
   const [loading, setLoading] = React.useState(true)
@@ -27,7 +29,8 @@ export const MediaManager: React.FC<MediaManagerProps> = ({
   const loadFiles = async () => {
     setLoading(true)
     try {
-      const data = await apiFetch('/api/files')
+      // Cache-buster para garantir dados frescos do servidor
+      const data = await apiFetch(`/api/files?_t=${Date.now()}`)
       setFiles(Array.isArray(data) ? data : [])
     } catch (err) {
       console.error('Falha ao carregar arquivos:', err)
@@ -40,13 +43,21 @@ export const MediaManager: React.FC<MediaManagerProps> = ({
     void loadFiles()
   }, [])
 
+  // Mescla arquivos do servidor com arquivos injetados otimisticamente (sem duplicatas)
+  const mergedFiles = React.useMemo(() => {
+    if (externalFiles.length === 0) return files
+    const existingIds = new Set(files.map(f => f.id))
+    const newExternals = externalFiles.filter(f => !existingIds.has(f.id))
+    return [...newExternals, ...files]
+  }, [files, externalFiles])
+
   const filteredFiles = React.useMemo(() => {
-    return files.filter(f => {
+    return mergedFiles.filter(f => {
       const matchSearch = f.originalName.toLowerCase().includes(searchTerm.toLowerCase())
       const matchFilter = filterType === 'all' || f.mediaType === filterType || (filterType === 'document' && !['image','video','audio'].includes(f.mediaType))
       return matchSearch && matchFilter
     })
-  }, [files, searchTerm, filterType])
+  }, [mergedFiles, searchTerm, filterType])
 
   const toggleSelect = (id: string) => {
     const next = new Set(selectedIds)

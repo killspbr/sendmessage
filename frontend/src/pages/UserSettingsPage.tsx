@@ -109,7 +109,8 @@ export function UserSettingsPage({
   const [uploading, setUploading] = React.useState(false)
   const [uploadProgress, setUploadProgress] = React.useState(0)
   const [uploadMessage, setUploadMessage] = React.useState<string | null>(null)
-  const [mediaKey, setMediaKey] = React.useState(0) // Usado para forçar reload do MediaManager
+  const [mediaKey, setMediaKey] = React.useState(0)
+  const [recentUploads, setRecentUploads] = React.useState<any[]>([])
   const fileInputRef = React.useRef<HTMLInputElement | null>(null)
 
   const loadLimits = React.useCallback(async () => {
@@ -174,14 +175,27 @@ export function UserSettingsPage({
       const form = new FormData()
       selectedFiles.forEach((file) => form.append('files', file))
 
-      await apiUpload('/api/files/upload', form, {
+      const uploadResult = await apiUpload('/api/files/upload', form, {
         onProgress: ({ percent }) => setUploadProgress(percent),
       })
 
       setUploadProgress(100)
+
+      // Optimistic update: injeta resposta do servidor direto na galeria
+      const newFiles = Array.isArray(uploadResult) ? uploadResult : uploadResult ? [uploadResult] : []
+      if (newFiles.length > 0) {
+        setRecentUploads(prev => [...newFiles, ...prev])
+      }
+
       await loadLimits()
       setUploadMessage(`${selectedFiles.length} arquivo(s) enviados com sucesso.`)
-      setMediaKey(prev => prev + 1) // Recarrega a lista
+
+      // Refresh com atraso para dar tempo ao DB de propagar
+      setTimeout(() => {
+        setRecentUploads([])
+        setMediaKey(prev => prev + 1)
+      }, 1200)
+
       if (fileInputRef.current) fileInputRef.current.value = ''
     } catch (error: any) {
       setUploadMessage(error?.message || 'Falha ao enviar arquivos.')
@@ -263,7 +277,7 @@ export function UserSettingsPage({
               </div>
 
               <div className="h-[600px]">
-                <MediaManager key={mediaKey} />
+                <MediaManager key={mediaKey} externalFiles={recentUploads} />
               </div>
             </div>
           </SectionCard>
