@@ -279,8 +279,15 @@ async function resolveMediaBody(fetchImpl: typeof fetch, media: MediaItem, resol
           `SELECT storage_path FROM user_uploaded_files WHERE public_token = $1 AND stored_name = $2 AND deleted_at IS NULL LIMIT 1`,
           [token, storedName]
         )
-        if (fileResult.rows[0]?.storage_path) {
-          const object = await env.UPLOADS_BUCKET.get(fileResult.rows[0].storage_path)
+        
+        const storagePath = fileResult.rows[0]?.storage_path
+
+        if (storagePath) {
+          if (storagePath.startsWith('/app/storage/')) {
+            throw new Error(`[OBSOLETE_FILE] Arquivo obsoleto: '${storedName}' não está mais hospedado no sistema (versão anterior). Remova o anexo desta campanha e refaça o upload do arquivo atualizado.`)
+          }
+
+          const object = await env.UPLOADS_BUCKET.get(storagePath)
           if (object) {
             base64Data = arrayBufferToBase64(await object.arrayBuffer())
             return `data:${mimeType};base64,${base64Data}`
@@ -288,7 +295,10 @@ async function resolveMediaBody(fetchImpl: typeof fetch, media: MediaItem, resol
         }
       }
     }
-  } catch (err) {
+  } catch (err: any) {
+    if (err.message && err.message.includes('[OBSOLETE_FILE]')) {
+      throw new Error(err.message.replace('[OBSOLETE_FILE] ', ''))
+    }
     console.warn('[Delivery] Bypass R2 via DB falhou, caindo para HTTP:', err)
   }
 

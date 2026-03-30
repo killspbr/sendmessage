@@ -20,7 +20,7 @@ statusRoutes.get('/debug-errors', async (c) => {
     const { getDb } = await import('../lib/db');
     const db = getDb(c.env);
     if (!db) return c.json({ error: "No DB" }, 500);
-    const result = await db.query('SELECT status, provider_status, error_detail, payload_raw FROM contact_send_history ORDER BY run_at DESC LIMIT 5');
+    const result = await db.query('SELECT run_at, status, provider_status, error_detail, payload_raw FROM contact_send_history ORDER BY run_at DESC LIMIT 5');
     return c.json(result.rows);
   } catch(e: any) {
     return c.json({ error: e.message }, 500);
