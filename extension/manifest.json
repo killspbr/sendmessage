@@ -1,7 +1,7 @@
-﻿{
+{
     "manifest_version": 3,
     "name": "SendMessage - Extrator de Contatos",
-    "version": "1.0.9",
+    "version": "1.1.0",
     "description": "Extrai dados de negócios do Google Maps e permite importar os contatos manualmente para o SendMessage.",
     "permissions": [
         "activeTab",

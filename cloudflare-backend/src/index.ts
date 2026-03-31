@@ -100,7 +100,7 @@ app.get('/api/rescue-migration', async (c) => {
 app.get('/api/version-check', (c) => {
   return c.json({
     status: 'ONLINE',
-    version: '1.0.9',
+    version: '1.1.0',
     marker: 'RANDOM-V9-XYZ',
     time: new Date().toISOString()
   })
