@@ -23,9 +23,9 @@ function normalizeNullableText(value: unknown) {
 async function ensureListsAndContactsTables(db: ReturnType<typeof getDb>) {
   await runSchemaBestEffort(async () => {
     await db.query(`
-      CREATE TABLE IF NOT EXISTS lists (
+      CREATE TABLE IF NOT EXISTS public.lists (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
         name TEXT NOT NULL,
         created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
       )
@@ -33,14 +33,14 @@ async function ensureListsAndContactsTables(db: ReturnType<typeof getDb>) {
 
     await db.query(`
       CREATE INDEX IF NOT EXISTS idx_lists_user_name
-        ON lists(user_id, name)
+        ON public.lists(user_id, name)
     `)
 
     await db.query(`
-      CREATE TABLE IF NOT EXISTS contacts (
+      CREATE TABLE IF NOT EXISTS public.contacts (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        list_id UUID NOT NULL REFERENCES lists(id) ON DELETE CASCADE,
+        user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+        list_id UUID NOT NULL REFERENCES public.lists(id) ON DELETE CASCADE,
         name TEXT NOT NULL,
         phone TEXT DEFAULT '',
         email TEXT DEFAULT '',
@@ -60,7 +60,7 @@ async function ensureListsAndContactsTables(db: ReturnType<typeof getDb>) {
 
     await db.query(`
       CREATE INDEX IF NOT EXISTS idx_contacts_user_list_name
-        ON contacts(user_id, list_id, name)
+        ON public.contacts(user_id, list_id, name)
     `)
   }, 'listsContacts')
 }
@@ -75,7 +75,7 @@ listsContactsRoutes.get('/lists', authenticateToken, async (c) => {
     await ensureListsAndContactsTables(db)
 
     const result = await db.query(
-      'SELECT * FROM lists WHERE user_id = $1 ORDER BY name ASC',
+      'SELECT * FROM public.lists WHERE user_id = $1 ORDER BY name ASC',
       [userId]
     )
 
@@ -107,7 +107,7 @@ listsContactsRoutes.post('/lists', authenticateToken, async (c) => {
   if (!name) return c.json({ error: 'Nome da lista é obrigatório.' }, 400)
 
   const result = await db.query(
-    'INSERT INTO lists (user_id, name) VALUES ($1, $2) RETURNING *',
+    'INSERT INTO public.lists (user_id, name) VALUES ($1, $2) RETURNING *',
     [userId, name]
   )
 
@@ -126,7 +126,7 @@ listsContactsRoutes.put('/lists/:id', authenticateToken, async (c) => {
   if (!name) return c.json({ error: 'Nome da lista é obrigatório.' }, 400)
 
   const result = await db.query(
-    `UPDATE lists
+    `UPDATE public.lists
         SET name = $1
       WHERE id = $2
         AND user_id = $3
@@ -145,7 +145,7 @@ listsContactsRoutes.delete('/lists/:id', authenticateToken, async (c) => {
   const db = getDb(c.env)
   await ensureListsAndContactsTables(db)
 
-  await db.query('DELETE FROM lists WHERE id = $1 AND user_id = $2', [listId, userId])
+  await db.query('DELETE FROM public.lists WHERE id = $1 AND user_id = $2', [listId, userId])
   return c.json({ ok: true })
 })
 
@@ -155,7 +155,7 @@ listsContactsRoutes.delete('/lists', authenticateToken, async (c) => {
   const db = getDb(c.env)
   await ensureListsAndContactsTables(db)
 
-  await db.query('DELETE FROM lists WHERE user_id = $1', [userId])
+  await db.query('DELETE FROM public.lists WHERE user_id = $1', [userId])
   return c.json({ ok: true })
 })
 
@@ -170,7 +170,7 @@ listsContactsRoutes.get('/contacts', authenticateToken, async (c) => {
     if (listId) {
       const result = await db.query(
         `SELECT *
-           FROM contacts
+           FROM public.contacts
           WHERE user_id = $1
             AND list_id = $2
           ORDER BY name ASC`,
@@ -181,7 +181,7 @@ listsContactsRoutes.get('/contacts', authenticateToken, async (c) => {
 
     const result = await db.query(
       `SELECT *
-         FROM contacts
+         FROM public.contacts
         WHERE user_id = $1
         ORDER BY name ASC`,
       [userId]
@@ -220,7 +220,7 @@ listsContactsRoutes.post('/contacts', authenticateToken, async (c) => {
 
   const duplicate = await db.query(
     `SELECT id
-       FROM contacts
+       FROM public.contacts
       WHERE user_id = $1
         AND list_id = $2
         AND (name = $3 OR (phone = $4 AND phone <> ''))
@@ -233,7 +233,7 @@ listsContactsRoutes.post('/contacts', authenticateToken, async (c) => {
   }
 
   const result = await db.query(
-    `INSERT INTO contacts (
+    `INSERT INTO public.contacts (
       user_id, list_id, name, phone, email, category, cep, rating,
       address, city, state, instagram, facebook, whatsapp, website
     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
@@ -269,7 +269,7 @@ listsContactsRoutes.put('/contacts/:id', authenticateToken, async (c) => {
   const body = await c.req.json().catch(() => ({} as Record<string, unknown>))
 
   const result = await db.query(
-    `UPDATE contacts SET
+    `UPDATE public.contacts SET
       name = COALESCE($1, name),
       phone = COALESCE($2, phone),
       email = COALESCE($3, email),
@@ -314,7 +314,7 @@ listsContactsRoutes.delete('/contacts/:id', authenticateToken, async (c) => {
   const contactId = c.req.param('id')
   const db = getDb(c.env)
   await ensureListsAndContactsTables(db)
-  await db.query('DELETE FROM contacts WHERE id = $1 AND user_id = $2', [contactId, userId])
+  await db.query('DELETE FROM public.contacts WHERE id = $1 AND user_id = $2', [contactId, userId])
   return c.json({ ok: true })
 })
 
@@ -323,6 +323,6 @@ listsContactsRoutes.delete('/contacts', authenticateToken, async (c) => {
   if (!userId) return c.json({ error: 'Acesso negado.' }, 401)
   const db = getDb(c.env)
   await ensureListsAndContactsTables(db)
-  await db.query('DELETE FROM contacts WHERE user_id = $1', [userId])
+  await db.query('DELETE FROM public.contacts WHERE user_id = $1', [userId])
   return c.json({ ok: true })
 })
