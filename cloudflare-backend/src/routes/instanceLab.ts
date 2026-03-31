@@ -232,12 +232,9 @@ async function tableExists(db: ReturnType<typeof getDb>, tableName: string) {
 async function ensureInstanceLabSchema(db: ReturnType<typeof getDb>) {
   const UUID_GEN = "(md5(random()::text || clock_timestamp()::text)::uuid)"
   
-  // Rodamos a criacao das tabelas de forma GARANTIDA (sem soft guards que ignoram erros)
-  // pois o laboratario NAO funciona se elas nao existirem.
-  
   // 1. Configs
   await db.query(`
-    CREATE TABLE IF NOT EXISTS warmer_configs (
+    CREATE TABLE IF NOT EXISTS public.warmer_configs (
       id UUID PRIMARY KEY DEFAULT ${UUID_GEN},
       user_id UUID,
       name TEXT,
@@ -258,13 +255,13 @@ async function ensureInstanceLabSchema(db: ReturnType<typeof getDb>) {
       created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
     )
-  `).catch(e => console.error('[InstanceLab:SchemaConfigs]', e))
+  `)
 
   // 2. Runs
   await db.query(`
-    CREATE TABLE IF NOT EXISTS warmer_runs (
+    CREATE TABLE IF NOT EXISTS public.warmer_runs (
       id UUID PRIMARY KEY DEFAULT ${UUID_GEN},
-      warmer_id UUID NOT NULL REFERENCES warmer_configs(id) ON DELETE CASCADE,
+      warmer_id UUID NOT NULL REFERENCES public.warmer_configs(id) ON DELETE CASCADE,
       initiated_by UUID,
       status TEXT NOT NULL DEFAULT 'queued' CHECK (status IN ('queued', 'running', 'completed', 'failed')),
       steps_total INTEGER NOT NULL DEFAULT 1,
@@ -276,19 +273,19 @@ async function ensureInstanceLabSchema(db: ReturnType<typeof getDb>) {
       finished_at TIMESTAMP WITH TIME ZONE,
       created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
     )
-  `).catch(e => console.error('[InstanceLab:SchemaRuns]', e))
+  `)
 
   // 3. Logs
   await db.query(`
-    CREATE TABLE IF NOT EXISTS warmer_logs (
+    CREATE TABLE IF NOT EXISTS public.warmer_logs (
       id BIGSERIAL PRIMARY KEY,
-      warmer_id UUID NOT NULL REFERENCES warmer_configs(id) ON DELETE CASCADE,
+      warmer_id UUID NOT NULL REFERENCES public.warmer_configs(id) ON DELETE CASCADE,
       from_phone TEXT NOT NULL,
       to_phone TEXT NOT NULL,
       message_type TEXT DEFAULT 'text',
       content_summary TEXT,
       sent_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-      run_id UUID REFERENCES warmer_runs(id) ON DELETE SET NULL,
+      run_id UUID REFERENCES public.warmer_runs(id) ON DELETE SET NULL,
       from_instance TEXT,
       to_instance TEXT,
       payload_type TEXT,
@@ -297,18 +294,18 @@ async function ensureInstanceLabSchema(db: ReturnType<typeof getDb>) {
       response_time_ms INTEGER,
       error_detail TEXT
     )
-  `).catch(e => console.error('[InstanceLab:SchemaLogs]', e))
+  `)
 
-  // Updates e Indices (esses podem usar o Best Effort pq sao melhorias incrementais)
+  // Updates e Indices
   await runSchemaBestEffort(async () => {
-    await db.query(`ALTER TABLE warmer_configs ADD COLUMN IF NOT EXISTS name TEXT`)
-    await db.query(`ALTER TABLE warmer_configs ADD COLUMN IF NOT EXISTS notes TEXT`)
-    await db.query(`ALTER TABLE warmer_configs ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP`)
+    await db.query(`ALTER TABLE public.warmer_configs ADD COLUMN IF NOT EXISTS name TEXT`)
+    await db.query(`ALTER TABLE public.warmer_configs ADD COLUMN IF NOT EXISTS notes TEXT`)
+    await db.query(`ALTER TABLE public.warmer_configs ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP`)
 
-    await db.query(`CREATE INDEX IF NOT EXISTS idx_warmer_configs_status ON warmer_configs(status)`)
-    await db.query(`CREATE INDEX IF NOT EXISTS idx_warmer_logs_warmer_id_sent_at ON warmer_logs(warmer_id, sent_at DESC)`)
-    await db.query(`CREATE INDEX IF NOT EXISTS idx_warmer_runs_warmer_created_at ON warmer_runs(warmer_id, created_at DESC)`)
-    await db.query(`CREATE INDEX IF NOT EXISTS idx_warmer_runs_status_created_at ON warmer_runs(status, created_at DESC)`)
+    await db.query(`CREATE INDEX IF NOT EXISTS idx_warmer_configs_status ON public.warmer_configs(status)`)
+    await db.query(`CREATE INDEX IF NOT EXISTS idx_warmer_logs_warmer_id_sent_at ON public.warmer_logs(warmer_id, sent_at DESC)`)
+    await db.query(`CREATE INDEX IF NOT EXISTS idx_warmer_runs_warmer_created_at ON public.warmer_runs(warmer_id, created_at DESC)`)
+    await db.query(`CREATE INDEX IF NOT EXISTS idx_warmer_runs_status_created_at ON public.warmer_runs(status, created_at DESC)`)
   }, 'instanceLabUpdates')
 }
 
@@ -502,7 +499,7 @@ async function createRunLog({
   responseTimeMs?: number | null
   errorDetail?: string | null
 }) {
-  const columns = await getTableColumns(db, 'warmer_logs')
+  const columns = await getTableColumns(db, 'public.warmer_logs')
   const values: unknown[] = []
   const fields: string[] = []
 
@@ -527,11 +524,11 @@ async function createRunLog({
   add('error_detail', errorDetail || null)
 
   if (fields.length === 0) {
-    throw new Error('Tabela warmer_logs sem colunas compatíveis para inserção.')
+    throw new Error('Tabela public.warmer_logs sem colunas compatíveis para inserção.')
   }
 
   const placeholders = fields.map((_, index) => `$${index + 1}`).join(', ')
-  await db.query(`INSERT INTO warmer_logs (${fields.join(', ')}) VALUES (${placeholders})`, values)
+  await db.query(`INSERT INTO public.warmer_logs (${fields.join(', ')}) VALUES (${placeholders})`, values)
 }
 
 async function executeRunStep({
@@ -565,7 +562,7 @@ async function executeRunStep({
     let contentSummary = ''
 
     if (payload.type === 'text') {
-      const runData = await db.query('SELECT initiated_by FROM warmer_runs WHERE id = $1', [runId])
+      const runData = await db.query('SELECT initiated_by FROM public.warmer_runs WHERE id = $1', [runId])
       const userId = runData.rows[0]?.initiated_by || pair.user_id || ''
 
       const dynamicMessage = await generateLabMessage({
@@ -754,7 +751,7 @@ async function executeLabRun(env: Bindings, runId: string, baseUrl?: string) {
     if (pair.status === 'paused') throw new Error('Par pausado. Ative-o para rodar.')
 
     await db.query(
-      `UPDATE warmer_runs
+      `UPDATE public.warmer_runs
           SET status = 'running',
               started_at = COALESCE(started_at, CURRENT_TIMESTAMP)
         WHERE id = $1`,
@@ -790,7 +787,7 @@ async function executeLabRun(env: Bindings, runId: string, baseUrl?: string) {
         baseUrl,
       })
 
-      await db.query('UPDATE warmer_runs SET steps_completed = $1 WHERE id = $2', [stepIndex + 1, run.id])
+      await db.query('UPDATE public.warmer_runs SET steps_completed = $1 WHERE id = $2', [stepIndex + 1, run.id])
       if (stepIndex < totalSteps - 1) {
         // Atraso randomizado entre etapas (80% a 120% do configurado) para parecer mais humano
         const randomizedDelay = delaySeconds * (0.8 + Math.random() * 0.4)
@@ -799,7 +796,7 @@ async function executeLabRun(env: Bindings, runId: string, baseUrl?: string) {
     }
 
     await db.query(
-      `UPDATE warmer_runs
+      `UPDATE public.warmer_runs
           SET status = 'completed',
               finished_at = CURRENT_TIMESTAMP,
               last_error = NULL
@@ -808,7 +805,7 @@ async function executeLabRun(env: Bindings, runId: string, baseUrl?: string) {
     )
 
     await db.query(
-      `UPDATE warmer_configs
+      `UPDATE public.warmer_configs
           SET last_run_status = 'completed',
               last_run_error = NULL,
               last_run_at = CURRENT_TIMESTAMP,
@@ -818,11 +815,11 @@ async function executeLabRun(env: Bindings, runId: string, baseUrl?: string) {
     )
   } catch (error) {
     const errorMessage = toErrorMessage(error)
-    const runInfo = await db.query('SELECT warmer_id FROM warmer_runs WHERE id = $1 LIMIT 1', [runId])
+    const runInfo = await db.query('SELECT warmer_id FROM public.warmer_runs WHERE id = $1 LIMIT 1', [runId])
     const pairId = String(runInfo.rows[0]?.warmer_id || '')
 
     await db.query(
-      `UPDATE warmer_runs
+      `UPDATE public.warmer_runs
           SET status = 'failed',
               finished_at = CURRENT_TIMESTAMP,
               last_error = $2
@@ -832,7 +829,7 @@ async function executeLabRun(env: Bindings, runId: string, baseUrl?: string) {
 
     if (pairId) {
       await db.query(
-        `UPDATE warmer_configs
+        `UPDATE public.warmer_configs
             SET last_run_status = 'failed',
                 last_run_error = $2,
                 last_run_at = CURRENT_TIMESTAMP,
@@ -860,7 +857,7 @@ async function createRunRecord(
   } = {}
 ) {
   await ensureInstanceLabSchema(db)
-  const pairResult = await db.query('SELECT * FROM warmer_configs WHERE id = $1 LIMIT 1', [pairId])
+  const pairResult = await db.query('SELECT * FROM public.warmer_configs WHERE id = $1 LIMIT 1', [pairId])
   const pair = pairResult.rows[0]
 
   if (!pair) throw new Error('Par de instancias nao encontrado.')
@@ -868,7 +865,7 @@ async function createRunRecord(
 
   const activeRunResult = await db.query(
     `SELECT id
-       FROM warmer_runs
+       FROM public.warmer_runs
       WHERE warmer_id = $1
         AND status IN ('queued', 'running')
       ORDER BY created_at DESC
@@ -897,7 +894,7 @@ async function createRunRecord(
 
   const runId = crypto.randomUUID()
   const insertResult = await db.query(
-    `INSERT INTO warmer_runs (
+    `INSERT INTO public.warmer_runs (
       id, warmer_id, initiated_by, status, steps_total, step_delay_seconds, preferred_start_side
     ) VALUES ($1, $2, $3, 'queued', $4, $5, $6)
     RETURNING *`,
@@ -921,7 +918,7 @@ export async function handleScheduledWarming(env: Bindings) {
 
   // 1. Busca todos os pares ativos
   const activePairsResult = await db.query(
-    "SELECT * FROM warmer_configs WHERE status = 'active'"
+    "SELECT * FROM public.warmer_configs WHERE status = 'active'"
   )
   const activePairs = activePairsResult.rows
 
@@ -941,7 +938,7 @@ export async function handleScheduledWarming(env: Bindings) {
     try {
       // 3. Verifica se ja existe uma rodada em execucao
       const activeRun = await db.query(
-        "SELECT id FROM warmer_runs WHERE warmer_id = $1 AND status IN ('queued', 'running') LIMIT 1",
+        "SELECT id FROM public.warmer_runs WHERE warmer_id = $1 AND status IN ('queued', 'running') LIMIT 1",
         [pair.id]
       )
       if (activeRun.rows.length > 0) continue
