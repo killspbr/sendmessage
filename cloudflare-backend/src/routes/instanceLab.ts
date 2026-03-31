@@ -232,72 +232,75 @@ async function tableExists(db: ReturnType<typeof getDb>, tableName: string) {
 async function ensureInstanceLabSchema(db: ReturnType<typeof getDb>) {
   const UUID_GEN = "(md5(random()::text || clock_timestamp()::text)::uuid)"
   
+  // Rodamos a criacao das tabelas de forma GARANTIDA (sem soft guards que ignoram erros)
+  // pois o laboratario NAO funciona se elas nao existirem.
+  
+  // 1. Configs
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS warmer_configs (
+      id UUID PRIMARY KEY DEFAULT ${UUID_GEN},
+      user_id UUID,
+      name TEXT,
+      instance_a_id TEXT NOT NULL,
+      instance_b_id TEXT NOT NULL,
+      phone_a TEXT NOT NULL,
+      phone_b TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'paused', 'error')),
+      default_delay_seconds INTEGER DEFAULT 5,
+      default_messages_per_run INTEGER DEFAULT 4,
+      sample_image_url TEXT,
+      sample_document_url TEXT,
+      sample_audio_url TEXT,
+      notes TEXT,
+      last_run_status TEXT,
+      last_run_error TEXT,
+      last_run_at TIMESTAMP WITH TIME ZONE,
+      created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    )
+  `).catch(e => console.error('[InstanceLab:SchemaConfigs]', e))
+
+  // 2. Runs
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS warmer_runs (
+      id UUID PRIMARY KEY DEFAULT ${UUID_GEN},
+      warmer_id UUID NOT NULL REFERENCES warmer_configs(id) ON DELETE CASCADE,
+      initiated_by UUID,
+      status TEXT NOT NULL DEFAULT 'queued' CHECK (status IN ('queued', 'running', 'completed', 'failed')),
+      steps_total INTEGER NOT NULL DEFAULT 1,
+      steps_completed INTEGER NOT NULL DEFAULT 0,
+      step_delay_seconds INTEGER NOT NULL DEFAULT 5,
+      preferred_start_side TEXT CHECK (preferred_start_side IN ('a', 'b')),
+      last_error TEXT,
+      started_at TIMESTAMP WITH TIME ZONE,
+      finished_at TIMESTAMP WITH TIME ZONE,
+      created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    )
+  `).catch(e => console.error('[InstanceLab:SchemaRuns]', e))
+
+  // 3. Logs
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS warmer_logs (
+      id BIGSERIAL PRIMARY KEY,
+      warmer_id UUID NOT NULL REFERENCES warmer_configs(id) ON DELETE CASCADE,
+      from_phone TEXT NOT NULL,
+      to_phone TEXT NOT NULL,
+      message_type TEXT DEFAULT 'text',
+      content_summary TEXT,
+      sent_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+      run_id UUID REFERENCES warmer_runs(id) ON DELETE SET NULL,
+      from_instance TEXT,
+      to_instance TEXT,
+      payload_type TEXT,
+      ok BOOLEAN DEFAULT true,
+      provider_status INTEGER,
+      response_time_ms INTEGER,
+      error_detail TEXT
+    )
+  `).catch(e => console.error('[InstanceLab:SchemaLogs]', e))
+
+  // Updates e Indices (esses podem usar o Best Effort pq sao melhorias incrementais)
   await runSchemaBestEffort(async () => {
-    // 1. Configs
-    await db.query(`
-      CREATE TABLE IF NOT EXISTS warmer_configs (
-        id UUID PRIMARY KEY DEFAULT ${UUID_GEN},
-        user_id UUID,
-        name TEXT,
-        instance_a_id TEXT NOT NULL,
-        instance_b_id TEXT NOT NULL,
-        phone_a TEXT NOT NULL,
-        phone_b TEXT NOT NULL,
-        status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'paused', 'error')),
-        default_delay_seconds INTEGER DEFAULT 5,
-        default_messages_per_run INTEGER DEFAULT 4,
-        sample_image_url TEXT,
-        sample_document_url TEXT,
-        sample_audio_url TEXT,
-        notes TEXT,
-        last_run_status TEXT,
-        last_run_error TEXT,
-        last_run_at TIMESTAMP WITH TIME ZONE,
-        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-      )
-    `)
-
-    // 2. Runs
-    await db.query(`
-      CREATE TABLE IF NOT EXISTS warmer_runs (
-        id UUID PRIMARY KEY DEFAULT ${UUID_GEN},
-        warmer_id UUID NOT NULL REFERENCES warmer_configs(id) ON DELETE CASCADE,
-        initiated_by UUID,
-        status TEXT NOT NULL DEFAULT 'queued' CHECK (status IN ('queued', 'running', 'completed', 'failed')),
-        steps_total INTEGER NOT NULL DEFAULT 1,
-        steps_completed INTEGER NOT NULL DEFAULT 0,
-        step_delay_seconds INTEGER NOT NULL DEFAULT 5,
-        preferred_start_side TEXT CHECK (preferred_start_side IN ('a', 'b')),
-        last_error TEXT,
-        started_at TIMESTAMP WITH TIME ZONE,
-        finished_at TIMESTAMP WITH TIME ZONE,
-        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-      )
-    `)
-
-    // 3. Logs
-    await db.query(`
-      CREATE TABLE IF NOT EXISTS warmer_logs (
-        id BIGSERIAL PRIMARY KEY,
-        warmer_id UUID NOT NULL REFERENCES warmer_configs(id) ON DELETE CASCADE,
-        from_phone TEXT NOT NULL,
-        to_phone TEXT NOT NULL,
-        message_type TEXT DEFAULT 'text',
-        content_summary TEXT,
-        sent_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-        run_id UUID REFERENCES warmer_runs(id) ON DELETE SET NULL,
-        from_instance TEXT,
-        to_instance TEXT,
-        payload_type TEXT,
-        ok BOOLEAN DEFAULT true,
-        provider_status INTEGER,
-        response_time_ms INTEGER,
-        error_detail TEXT
-      )
-    `)
-
-    // Updates e Indices
     await db.query(`ALTER TABLE warmer_configs ADD COLUMN IF NOT EXISTS name TEXT`)
     await db.query(`ALTER TABLE warmer_configs ADD COLUMN IF NOT EXISTS notes TEXT`)
     await db.query(`ALTER TABLE warmer_configs ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP`)
@@ -306,7 +309,7 @@ async function ensureInstanceLabSchema(db: ReturnType<typeof getDb>) {
     await db.query(`CREATE INDEX IF NOT EXISTS idx_warmer_logs_warmer_id_sent_at ON warmer_logs(warmer_id, sent_at DESC)`)
     await db.query(`CREATE INDEX IF NOT EXISTS idx_warmer_runs_warmer_created_at ON warmer_runs(warmer_id, created_at DESC)`)
     await db.query(`CREATE INDEX IF NOT EXISTS idx_warmer_runs_status_created_at ON warmer_runs(status, created_at DESC)`)
-  }, 'instanceLab')
+  }, 'instanceLabUpdates')
 }
 
 async function getGlobalEvolutionConfig(db: ReturnType<typeof getDb>) {
