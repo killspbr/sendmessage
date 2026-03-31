@@ -19,13 +19,7 @@ self.addEventListener('activate', (event) => {
     );
 });
 
-// Listener de fetch obrigatório para evitar o erro de "preloadResponse"
-// Respondemos com a requisição original para não interferir na navegação
-self.addEventListener('fetch', (event) => {
-    if (event.request.mode === 'navigate') {
-        return; 
-    }
-});
+// Removida escuta inútil de Fetch por causa do Warning de Navigation Preload
 
 // ─── Message Listener (API Gateway) ─────────────────────────────────────────
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
