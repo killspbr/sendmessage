@@ -14,7 +14,7 @@ export interface ResolvedMedia {
 }
 
 export interface MediaResolverEnv {
-  UPLOADS_BUCKET?: { get(key: string): Promise<any> }
+  UPLOADS_BUCKET?: { get(key: string): Promise<any>; head(key: string): Promise<any> }
   db?: { query(text: string, params?: any[]): Promise<any> }
 }
 
@@ -95,15 +95,16 @@ export async function resolveMediaUrl(opts: {
         }
       }
 
-      const object = await env.UPLOADS_BUCKET.get(storagePath)
-      if (!object) {
+      // Verifica existência no R2 sem baixar o conteúdo (o disparo usa URL pública)
+      const head = await env.UPLOADS_BUCKET.head(storagePath)
+      if (!head) {
         return { url: '', source: 'error', error: `Arquivo '${parsed.storedName}' existe no banco mas não foi encontrado no storage R2.`, mediaId }
       }
 
-      const base64 = arrayBufferToBase64(await object.arrayBuffer())
-      return { url: `data:${mimeType};base64,${base64}`, source: 'r2', mediaId }
+      // Arquivo existe e está acessível — retorna a URL original para validação
+      return { url: trimmedUrl, source: 'r2', mediaId }
     } catch (err: any) {
-      return { url: '', source: 'error', error: `Erro ao acessar R2: ${err?.message || String(err)}`, mediaId }
+      return { url: '', source: 'error', error: `Erro ao verificar R2: ${err?.message || String(err)}`, mediaId }
     }
   }
 
