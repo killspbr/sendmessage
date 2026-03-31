@@ -912,6 +912,71 @@ function runInBackground(c: any, promise: Promise<unknown>) {
   }
 }
 
+export async function handleScheduledWarming(env: Bindings) {
+  const db = getDb(env)
+  await ensureInstanceLabSchema(db)
+
+  // 1. Busca todos os pares ativos
+  const activePairsResult = await db.query(
+    "SELECT * FROM warmer_configs WHERE status = 'active'"
+  )
+  const activePairs = activePairsResult.rows
+
+  if (activePairs.length === 0) return
+
+  const now = new Date()
+  const currentHour = now.getHours()
+
+  // 2. Filtro de "Horario Humano" (ex: entre 07h e 22h)
+  // TODO: Tornar isso configuravel, por enquanto fixo para seguranca
+  if (currentHour < 7 || currentHour > 22) {
+    console.log(`[ScheduledWarming] Fora do horario comercial (${currentHour}h). Pulando...`)
+    return
+  }
+
+  for (const pair of activePairs) {
+    try {
+      // 3. Verifica se ja existe uma rodada em execucao
+      const activeRun = await db.query(
+        "SELECT id FROM warmer_runs WHERE warmer_id = $1 AND status IN ('queued', 'running') LIMIT 1",
+        [pair.id]
+      )
+      if (activeRun.rows.length > 0) continue
+
+      // 4. Verifica se passou o tempo de delay desde o ultimo disparo
+      const lastRunAt = pair.last_run_at ? new Date(pair.last_run_at) : new Date(0)
+      const diffSeconds = (now.getTime() - lastRunAt.getTime()) / 1000
+      
+      // Adiciona uma margem aleatoria de 0 a 50% do delay para nao ser mecanico
+      const baseDelay = pair.default_delay_seconds || DEFAULT_DELAY_SECONDS
+      const randomJitter = Math.random() * (baseDelay * 0.5)
+      const targetDelay = baseDelay + randomJitter
+
+      if (diffSeconds < targetDelay) {
+        // console.log(`[ScheduledWarming] Par ${pair.id} ainda no intervalo. ${Math.round(diffSeconds)}s < ${Math.round(targetDelay)}s`)
+        continue
+      }
+
+      console.log(`[ScheduledWarming] Iniciando passo automatico para par: ${pair.name || pair.id}`)
+
+      // 5. Cria uma rodada de apenas 1 PASSO (aquele "ping-pong" basico)
+      const run = await createRunRecord(db, String(pair.id), null, {
+        stepsTotal: 1,
+        // Delay do passo na rodada manual nao importa muito aqui pois eh so 1 passo
+        stepDelaySeconds: 1 
+      })
+
+      // Executa no background (no cron, o ctx ja foi passado ou aguardamos a promise)
+      // Aqui usamos o backgroundEnv que ja criamos antes para garantir R2
+      const backgroundEnv = { UPLOADS_BUCKET: env.UPLOADS_BUCKET, db }
+      await executeLabRun(backgroundEnv as any, String(run.id), '')
+      
+    } catch (err) {
+      console.error(`[ScheduledWarming] Erro ao processar par ${pair.id}:`, err)
+    }
+  }
+}
+
 export const instanceLabRoutes = new Hono<{ Bindings: Bindings; Variables: AppVariables }>()
 
 instanceLabRoutes.get('/admin/warmer', authenticateToken, checkAdmin, async (c) => {

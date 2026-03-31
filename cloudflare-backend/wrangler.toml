@@ -18,3 +18,6 @@ id = "12abb41244884c95a5ab078a0f17c62f"
 SYSTEM_TIMEZONE = "America/Sao_Paulo"
 SYSTEM_TIMEZONE_LABEL = "GMT-3 (America/Sao_Paulo)"
 ACTIVE_USER_WINDOW_SECONDS = "120"
+
+[triggers]
+crons = ["* * * * *"]

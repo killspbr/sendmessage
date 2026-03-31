@@ -134,4 +134,15 @@ app.onError((error, c) => {
   return c.json({ error: 'Erro interno no backend Cloudflare.', technical }, 500, CORS_HEADERS)
 })
 
-export default app
+export default {
+  fetch: app.fetch,
+  async scheduled(event: any, env: Bindings, ctx: ExecutionContext) {
+    console.log(`[ScheduledTrigger] Executing at ${new Date().toISOString()}. Event: ${event.cron || 'manual'}`)
+    
+    // Importacao dinamica para evitar problemas de carregamento circular se houver
+    const { handleScheduledWarming } = await import('./routes/instanceLab')
+    
+    // Usamos waitUntil para garantir que o processo termine mesmo se a funcao retornar
+    ctx.waitUntil(handleScheduledWarming(env))
+  }
+}
