@@ -1,4 +1,4 @@
-import { ensureAbsoluteUrl, htmlToWhatsapp, resolveTemplate, toEvolutionNumber } from './messageUtils'
+import { ensureAbsoluteUrl, ensureValidMediaUrl, htmlToWhatsapp, postEvolution, postEvolutionWithRetry, resolveTemplate, toEvolutionNumber, wait } from './messageUtils'
 import { resolveMediaUrl, preValidateMediaItems } from './mediaResolver'
 import type { ResolvedMedia } from './mediaResolver'
 
@@ -19,10 +19,6 @@ type MediaItem = {
   assetId?: string
   assetName?: string
   mimeType?: string
-}
-
-function wait(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
 function safeTrim(value: unknown) {
@@ -201,50 +197,6 @@ function buildCampaignDeliveryPlan(campaign: Campaign, messageOverride?: string)
   }
 }
 
-async function postEvolution(fetchImpl: typeof fetch, url: string, apiKey: string, body: unknown) {
-  const response = await fetchImpl(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', apikey: apiKey },
-    body: JSON.stringify(body),
-  })
-
-  if (!response.ok) {
-    const text = await response.text().catch(() => '')
-    throw new Error(text || `HTTP ${response.status}`)
-  }
-}
-
-function isRetryableEvolutionTransportError(error: unknown) {
-  const message = String((error as any)?.message || '').toLowerCase()
-  return (
-    message.includes('connection closed') ||
-    message.includes('socket hang up') ||
-    message.includes('econnreset') ||
-    message.includes('etimedout') ||
-    message.includes('fetch failed') ||
-    message.includes('und_err_socket') ||
-    message.includes('eai_again') ||
-    message.includes('enotfound')
-  )
-}
-
-async function postEvolutionWithRetry(fetchImpl: typeof fetch, url: string, apiKey: string, body: unknown) {
-  let lastError: unknown = null
-  for (let attempt = 1; attempt <= EVOLUTION_MEDIA_RETRY_ATTEMPTS; attempt++) {
-    try {
-      await postEvolution(fetchImpl, url, apiKey, body)
-      return
-    } catch (error) {
-      lastError = error
-      const canRetry = attempt < EVOLUTION_MEDIA_RETRY_ATTEMPTS && isRetryableEvolutionTransportError(error)
-      if (!canRetry) throw error
-      const delay = EVOLUTION_MEDIA_RETRY_DELAYS_MS[Math.min(attempt - 1, EVOLUTION_MEDIA_RETRY_DELAYS_MS.length - 1)]
-      await wait(delay)
-    }
-  }
-  throw lastError
-}
-
 function arrayBufferToBase64(buffer: ArrayBuffer) {
   const bytes = new Uint8Array(buffer)
   const chunkSize = 0x8000
@@ -261,22 +213,6 @@ function buildMediaCaption(messageText: string, mediaCaption: string, attachMess
   if (attachMessage && safeTrim(messageText)) parts.push(safeTrim(messageText))
   if (safeTrim(mediaCaption)) parts.push(safeTrim(mediaCaption))
   return parts.join('\n\n').trim()
-}
-
-// Garante que URLs com caracteres especiais (espaco, &, acentos) sejam validas
-// para a Evolution API, que rejeita URLs com caracteres nao-encodados.
-function ensureValidMediaUrl(url: string): string {
-  try {
-    const parsed = new URL(url)
-    // Re-encoda cada segmento do path (decodifica primeiro para evitar double-encoding)
-    parsed.pathname = parsed.pathname
-      .split('/')
-      .map(seg => encodeURIComponent(decodeURIComponent(seg)))
-      .join('/')
-    return parsed.toString()
-  } catch {
-    return url
-  }
 }
 
 async function sendEvolutionMedia({

@@ -9,6 +9,80 @@ export function toEvolutionNumber(phone: unknown) {
   return `55${local}`
 }
 
+export const EVOLUTION_RETRY_ATTEMPTS = 3
+export const EVOLUTION_RETRY_DELAYS_MS = [1500, 3000]
+
+export function wait(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+export function isRetryableEvolutionTransportError(error: unknown) {
+  const message = String((error as any)?.message || '').toLowerCase()
+  return (
+    message.includes('connection closed') ||
+    message.includes('socket hang up') ||
+    message.includes('econnreset') ||
+    message.includes('etimedout') ||
+    message.includes('fetch failed') ||
+    message.includes('und_err_socket') ||
+    message.includes('eai_again') ||
+    message.includes('enotfound')
+  )
+}
+
+export async function postEvolution(fetchImpl: typeof fetch, url: string, apiKey: string, body: unknown) {
+  const startedAt = Date.now()
+  const response = await fetchImpl(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', apikey: apiKey },
+    body: JSON.stringify(body),
+  })
+
+  const responseTimeMs = Date.now() - startedAt
+  const rawText = await response.text().catch(() => '')
+
+  if (!response.ok) {
+    throw Object.assign(new Error(rawText || `HTTP ${response.status}`), {
+      status: response.status,
+      responseTimeMs,
+    })
+  }
+
+  return { status: response.status, responseTimeMs, rawText }
+}
+
+export async function postEvolutionWithRetry(fetchImpl: typeof fetch, url: string, apiKey: string, body: unknown): Promise<{ status: number; responseTimeMs: number; rawText: string }> {
+  let lastError: any = null
+  for (let attempt = 1; attempt <= EVOLUTION_RETRY_ATTEMPTS; attempt++) {
+    try {
+      return await postEvolution(fetchImpl, url, apiKey, body)
+    } catch (error) {
+      lastError = error
+      const canRetry = attempt < EVOLUTION_RETRY_ATTEMPTS && isRetryableEvolutionTransportError(error)
+      if (!canRetry) throw error
+      const delay = EVOLUTION_RETRY_DELAYS_MS[Math.min(attempt - 1, EVOLUTION_RETRY_DELAYS_MS.length - 1)]
+      await wait(delay)
+    }
+  }
+  throw lastError
+}
+
+// Garante que URLs com caracteres especiais (espaco, &, acentos) sejam validas
+// para a Evolution API, que rejeita URLs com caracteres nao-encodados.
+export function ensureValidMediaUrl(url: string): string {
+  try {
+    const parsed = new URL(url)
+    // Re-encoda cada segmento do path (decodifica primeiro para evitar double-encoding)
+    parsed.pathname = parsed.pathname
+      .split('/')
+      .map(seg => encodeURIComponent(decodeURIComponent(seg)))
+      .join('/')
+    return parsed.toString()
+  } catch {
+    return url
+  }
+}
+
 export function resolveTemplate(template: unknown, contact: Record<string, unknown>) {
   let result = String(template || '')
   const name = String(contact.name || '')

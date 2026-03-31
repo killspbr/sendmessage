@@ -2,7 +2,7 @@ import { Hono } from 'hono'
 import type { Bindings, AppVariables } from '../types'
 import { authenticateToken, checkAdmin } from '../lib/auth'
 import { getDb } from '../lib/db'
-import { toEvolutionNumber, ensureAbsoluteUrl } from '../lib/messageUtils'
+import { toEvolutionNumber, ensureAbsoluteUrl, ensureValidMediaUrl, postEvolution, postEvolutionWithRetry } from '../lib/messageUtils'
 import { runSchemaBestEffort } from '../lib/runtimeSchema'
 
 const DEFAULT_DELAY_SECONDS = 5
@@ -57,7 +57,7 @@ async function sendPresence({
   if (!number) return
   
   try {
-    await postEvolution(`${evolutionUrl}/chat/sendPresence/${safeTrim(instanceName)}`, apiKey, {
+    await postEvolution(fetch, `${evolutionUrl}/chat/sendPresence/${safeTrim(instanceName)}`, apiKey, {
       number,
       presence
     })
@@ -337,40 +337,6 @@ async function getGlobalEvolutionConfig(db: ReturnType<typeof getDb>) {
   }
 }
 
-async function postEvolution(url: string, apiKey: string, body: unknown) {
-  const startedAt = Date.now()
-  let response: Response
-
-  try {
-    response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        apikey: apiKey,
-      },
-      body: JSON.stringify(body),
-    })
-  } catch (error) {
-    throw new Error(`Falha de conexao com a Evolution API: ${toErrorMessage(error)}`)
-  }
-
-  const responseTimeMs = Date.now() - startedAt
-  const rawText = await response.text().catch(() => '')
-
-  if (!response.ok) {
-    throw Object.assign(new Error(rawText || `Erro HTTP ${response.status}`), {
-      status: response.status,
-      responseTimeMs,
-    })
-  }
-
-  return {
-    status: response.status,
-    responseTimeMs,
-    rawText,
-  }
-}
-
 async function sendText({
   evolutionUrl,
   apiKey,
@@ -387,7 +353,7 @@ async function sendText({
   const number = toEvolutionNumber(toPhone)
   if (!number) throw new Error('Telefone de destino invalido para o laboratorio.')
 
-  return postEvolution(`${evolutionUrl}/message/sendText/${safeTrim(instanceName)}`, apiKey, {
+  return postEvolutionWithRetry(fetch, `${evolutionUrl}/message/sendText/${safeTrim(instanceName)}`, apiKey, {
     number,
     text,
     linkPreview: false,
@@ -416,9 +382,12 @@ async function sendMedia({
   const number = toEvolutionNumber(toPhone)
   if (!number) throw new Error('Telefone de destino invalido para o laboratorio.')
 
-  const finalMediaUrl = baseUrl ? ensureAbsoluteUrl(mediaUrl, baseUrl) : mediaUrl
+  const rawUrl = baseUrl ? ensureAbsoluteUrl(mediaUrl, baseUrl) : mediaUrl
+  const finalMediaUrl = ensureValidMediaUrl(rawUrl)
 
-  return postEvolution(`${evolutionUrl}/message/sendMedia/${safeTrim(instanceName)}`, apiKey, {
+  console.log(`[InstanceLab] Enviando media (${mediaType}) de ${instanceName} para ${toPhone}. URL: ${finalMediaUrl.substring(0, 100)}`)
+
+  return postEvolutionWithRetry(fetch, `${evolutionUrl}/message/sendMedia/${safeTrim(instanceName)}`, apiKey, {
     number,
     mediatype: mediaType,
     mimetype: inferMimeTypeFromUrl(finalMediaUrl, mediaType),
@@ -446,9 +415,12 @@ async function sendAudio({
   const number = toEvolutionNumber(toPhone)
   if (!number) throw new Error('Telefone de destino invalido para o laboratorio.')
 
-  const finalAudioUrl = baseUrl ? ensureAbsoluteUrl(audioUrl, baseUrl) : audioUrl
+  const rawUrl = baseUrl ? ensureAbsoluteUrl(audioUrl, baseUrl) : audioUrl
+  const finalAudioUrl = ensureValidMediaUrl(rawUrl)
 
-  return postEvolution(`${evolutionUrl}/message/sendWhatsAppAudio/${safeTrim(instanceName)}`, apiKey, {
+  console.log(`[InstanceLab] Enviando audio de ${instanceName} para ${toPhone}. URL: ${finalAudioUrl.substring(0, 100)}`)
+
+  return postEvolutionWithRetry(fetch, `${evolutionUrl}/message/sendWhatsAppAudio/${safeTrim(instanceName)}`, apiKey, {
     number,
     audio: finalAudioUrl,
   })
@@ -629,13 +601,14 @@ async function executeRunStep({
       const typingTime = Math.min(8000, Math.max(1500, dynamicMessage.length * 150))
       await wait(typingTime)
 
-      responseMeta = await sendText({
+      const meta = await sendText({
         evolutionUrl,
         apiKey,
         instanceName: direction.fromInstance,
         toPhone: direction.toPhone,
         text: dynamicMessage,
       })
+      responseMeta = { status: meta.status, responseTimeMs: meta.responseTimeMs }
     } else if (payload.type === 'audio') {
       contentSummary = `Audio de teste: ${inferFileNameFromUrl(payload.url, 'audio.mp3')}`
       
@@ -649,7 +622,7 @@ async function executeRunStep({
       })
       await wait(Math.random() * 3000 + 2000) // 2 a 5 segundos de "gravacao"
 
-      responseMeta = await sendAudio({
+      const meta = await sendAudio({
         evolutionUrl,
         apiKey,
         instanceName: direction.fromInstance,
@@ -657,20 +630,23 @@ async function executeRunStep({
         audioUrl: String(payload.url || ''),
         baseUrl,
       })
+      responseMeta = { status: meta.status, responseTimeMs: meta.responseTimeMs }
     } else {
       const isDocument = payload.type === 'document'
+      const mType = payload.type === 'document' ? 'document' : 'image'
       contentSummary = `${isDocument ? 'Documento' : 'Imagem'} de teste: ${inferFileNameFromUrl(payload.url, 'arquivo')}`
       
-      responseMeta = await sendMedia({
+      const meta = await sendMedia({
         evolutionUrl,
         apiKey,
         instanceName: direction.fromInstance,
         toPhone: direction.toPhone,
         mediaUrl: String(payload.url || ''),
-        mediaType: payload.type,
-        caption: isDocument ? '' : `Laboratório de instâncias ${stepIndex + 1}/${stepsTotal}`,
+        mediaType: mType,
+        caption: isDocument ? '' : `Laboratorio de instancias ${stepIndex + 1}/${stepsTotal}`,
         baseUrl,
       })
+      responseMeta = { status: meta.status, responseTimeMs: meta.responseTimeMs }
     }
 
     await createRunLog({
@@ -1175,7 +1151,10 @@ instanceLabRoutes.post('/admin/warmer/:id/force', authenticateToken, checkAdmin,
     }
 
     const run = await createRunRecord(db, warmerId, user?.id || null)
-    runInBackground(c, executeLabRun(c.env, String(run.id), new URL(c.req.url).origin))
+    // GARANTIA DE BINDINGS NO BACKGROUND (PASSAR OBJETO ENV CORRETO)
+    const workerEnv = c.env
+    const backgroundEnv = { UPLOADS_BUCKET: workerEnv.UPLOADS_BUCKET, db }
+    runInBackground(c, executeLabRun(backgroundEnv as any, String(run.id), new URL(c.req.url).origin))
     return c.json({ success: true, run })
   } catch (error) {
     console.error(`[InstanceLab] Erro ao forcar rodada para ${warmerId}:`, error)
@@ -1199,7 +1178,10 @@ instanceLabRoutes.post('/admin/warmer/:id/manual', authenticateToken, checkAdmin
       stepDelaySeconds: 1,
       preferredStartSide: side,
     })
-    runInBackground(c, executeLabRun(c.env, String(run.id), new URL(c.req.url).origin))
+    // GARANTIA DE BINDINGS NO BACKGROUND (PASSAR OBJETO ENV CORRETO)
+    const workerEnv = c.env
+    const backgroundEnv = { UPLOADS_BUCKET: workerEnv.UPLOADS_BUCKET, db }
+    runInBackground(c, executeLabRun(backgroundEnv as any, String(run.id), new URL(c.req.url).origin))
     return c.json({
       success: true,
       run,
