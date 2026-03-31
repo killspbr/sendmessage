@@ -429,7 +429,17 @@ export async function executeWhatsappCampaignDelivery({
     mimeType: inferMimeType(m),
   }))
 
+  console.log(`[Delivery] Pre-validando ${preValidationItems.length} midia(s):`, preValidationItems.map(p => ({
+    id: p.id, url: p.url.substring(0, 80), sourceType: p.sourceType,
+  })))
+  console.log(`[Delivery] env.UPLOADS_BUCKET disponivel: ${!!env?.UPLOADS_BUCKET}, env.db disponivel: ${!!env?.db}`)
+
   const { valid: validMedia, invalid: invalidMedia } = await preValidateMediaItems(preValidationItems, env)
+
+  console.log(`[Delivery] Resultado: ${validMedia.length} valida(s), ${invalidMedia.length} invalida(s)`)
+  if (invalidMedia.length > 0) {
+    console.log(`[Delivery] Midias invalidas:`, invalidMedia.map(inv => ({ id: inv.mediaId, error: inv.error })))
+  }
 
   // Registra todas as mídias inválidas imediatamente (sem tentar enviar)
   const resolvedUrlMap = new Map<string, ResolvedMedia>()

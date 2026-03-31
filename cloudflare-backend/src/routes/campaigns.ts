@@ -463,7 +463,9 @@ campaignRoutes.post('/campaigns/:id/send', authenticateToken, async (c) => {
   await db.query('UPDATE campaigns SET status = $1 WHERE id = $2', ['enviando', campaignId])
 
   const baseUrl = new URL(c.req.url).origin
-  const env = { ...c.env, db }
+  // IMPORTANTE: Não fazer spread de c.env - bindings como R2 podem se perder
+  const workerEnv = c.env
+  const env = { UPLOADS_BUCKET: workerEnv.UPLOADS_BUCKET, db }
 
   // Processa os contatos em BACKGROUND usando waitUntil
   // O handler retorna 202 imediatamente, mas o Worker continua executando

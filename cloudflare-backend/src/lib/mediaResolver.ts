@@ -72,8 +72,11 @@ export async function resolveMediaUrl(opts: {
   if (isInternal && env?.UPLOADS_BUCKET && env?.db) {
     const parsed = extractPublicTokenFromUrl(trimmedUrl)
     if (!parsed) {
+      console.log(`[MediaResolver] ${mediaId}: Regex falhou para URL: ${trimmedUrl.substring(0, 100)}`)
       return { url: '', source: 'error', error: `URL interna não reconhecida: ${trimmedUrl}`, mediaId }
     }
+
+    console.log(`[MediaResolver] ${mediaId}: token=${parsed.token.substring(0, 12)}... storedName=${parsed.storedName.substring(0, 40)}`)
 
     try {
       const fileResult = await env.db.query(
@@ -83,6 +86,7 @@ export async function resolveMediaUrl(opts: {
 
       const storagePath = fileResult.rows[0]?.storage_path
       if (!storagePath) {
+        console.log(`[MediaResolver] ${mediaId}: NAO encontrado no banco. token=${parsed.token} stored_name=${parsed.storedName}`)
         return { url: '', source: 'error', error: `Arquivo '${parsed.storedName}' não encontrado no banco (pode ter sido excluído).`, mediaId }
       }
 
@@ -98,12 +102,15 @@ export async function resolveMediaUrl(opts: {
       // Verifica existência no R2 sem baixar o conteúdo (o disparo usa URL pública)
       const head = await env.UPLOADS_BUCKET.head(storagePath)
       if (!head) {
+        console.log(`[MediaResolver] ${mediaId}: Encontrado no DB (path=${storagePath}) mas NAO no R2`)
         return { url: '', source: 'error', error: `Arquivo '${parsed.storedName}' existe no banco mas não foi encontrado no storage R2.`, mediaId }
       }
 
+      console.log(`[MediaResolver] ${mediaId}: OK (R2 validado, path=${storagePath})`)
       // Arquivo existe e está acessível — retorna a URL original para validação
       return { url: trimmedUrl, source: 'r2', mediaId }
     } catch (err: any) {
+      console.log(`[MediaResolver] ${mediaId}: ERRO R2: ${err?.message || String(err)}`)
       return { url: '', source: 'error', error: `Erro ao verificar R2: ${err?.message || String(err)}`, mediaId }
     }
   }
