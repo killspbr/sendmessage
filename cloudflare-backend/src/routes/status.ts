@@ -6,9 +6,9 @@ import type { Bindings, AppVariables } from '../types'
 export const statusRoutes = new Hono<{ Bindings: Bindings; Variables: AppVariables }>()
 
 export const CURRENT_VERSION = {
-  commit: 'R2-Bypass-v1.1.3',
-  timestamp: '2026-03-29T20:49:00-03:00',
-  message: 'Atualização Crítica: Bypass R2 Database (Resolução 1042 Loopback Limit) (v1.1.3)',
+  commit: 'Stabilizer-v1.1.4',
+  timestamp: '2026-03-31T22:55:00-03:00',
+  message: 'Estabilização de Database: SCHEMA PRF (Hyperdrive Ready) (v1.1.4)',
 }
 
 statusRoutes.get('/version', (c) => {
