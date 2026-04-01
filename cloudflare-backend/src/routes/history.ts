@@ -13,9 +13,9 @@ async function ensureHistoryTables(db: ReturnType<typeof getDb>) {
   const UUID_GEN = "(md5(random()::text || clock_timestamp()::text)::uuid)"
   await runSchemaBestEffort(async () => {
     await db.query(`
-      CREATE TABLE IF NOT EXISTS contact_send_history (
+      CREATE TABLE IF NOT EXISTS public.contact_send_history (
         id UUID PRIMARY KEY DEFAULT ${UUID_GEN},
-        user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+        user_id UUID REFERENCES public.users(id) ON DELETE CASCADE,
         campaign_id UUID,
         campaign_name TEXT,
         contact_name TEXT,
@@ -35,18 +35,18 @@ async function ensureHistoryTables(db: ReturnType<typeof getDb>) {
 
     await db.query(`
       CREATE INDEX IF NOT EXISTS idx_contact_send_history_user_run_at
-        ON contact_send_history(user_id, run_at DESC)
+        ON public.contact_send_history(user_id, run_at DESC)
     `)
 
     await db.query(`
       CREATE INDEX IF NOT EXISTS idx_contact_send_history_campaign_run_at
-        ON contact_send_history(campaign_id, run_at DESC)
+        ON public.contact_send_history(campaign_id, run_at DESC)
     `)
 
     await db.query(`
-      CREATE TABLE IF NOT EXISTS campaign_history (
+      CREATE TABLE IF NOT EXISTS public.campaign_history (
         id UUID PRIMARY KEY DEFAULT ${UUID_GEN},
-        user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+        user_id UUID REFERENCES public.users(id) ON DELETE CASCADE,
         campaign_id UUID,
         status TEXT,
         ok BOOLEAN DEFAULT false,
@@ -59,7 +59,7 @@ async function ensureHistoryTables(db: ReturnType<typeof getDb>) {
 
     await db.query(`
       CREATE INDEX IF NOT EXISTS idx_campaign_history_user_run_at
-        ON campaign_history(user_id, run_at DESC)
+        ON public.campaign_history(user_id, run_at DESC)
     `)
   }, 'history')
 }
@@ -75,7 +75,7 @@ historyRoutes.post('/history', authenticateToken, async (c) => {
 
   const historyId = crypto.randomUUID()
   const result = await db.query(
-    `INSERT INTO contact_send_history (
+    `INSERT INTO public.contact_send_history (
       id,
       user_id,
       campaign_id,
@@ -124,7 +124,7 @@ historyRoutes.get('/history', authenticateToken, async (c) => {
     await ensureHistoryTables(db)
 
     const result = await db.query(
-      'SELECT * FROM contact_send_history WHERE user_id = $1 ORDER BY run_at DESC',
+      'SELECT * FROM public.contact_send_history WHERE user_id = $1 ORDER BY run_at DESC',
       [userId]
     )
 
@@ -150,7 +150,7 @@ historyRoutes.delete('/history', authenticateToken, async (c) => {
   if (!userId) return c.json({ error: 'Acesso negado.' }, 401)
   const db = getDb(c.env)
   await ensureHistoryTables(db)
-  await db.query('DELETE FROM contact_send_history WHERE user_id = $1', [userId])
+  await db.query('DELETE FROM public.contact_send_history WHERE user_id = $1', [userId])
   return c.json({ ok: true })
 })
 
@@ -162,7 +162,7 @@ historyRoutes.get('/campaigns/history', authenticateToken, async (c) => {
     await ensureHistoryTables(db)
 
     const result = await db.query(
-      'SELECT * FROM campaign_history WHERE user_id = $1 ORDER BY run_at DESC',
+      'SELECT * FROM public.campaign_history WHERE user_id = $1 ORDER BY run_at DESC',
       [userId]
     )
 
@@ -192,7 +192,7 @@ historyRoutes.post('/campaigns/history', authenticateToken, async (c) => {
 
   const historyId = crypto.randomUUID()
   const result = await db.query(
-    `INSERT INTO campaign_history (
+    `INSERT INTO public.campaign_history (
       id,
       user_id,
       campaign_id,
@@ -223,6 +223,6 @@ historyRoutes.delete('/campaigns/history', authenticateToken, async (c) => {
   if (!userId) return c.json({ error: 'Acesso negado.' }, 401)
   const db = getDb(c.env)
   await ensureHistoryTables(db)
-  await db.query('DELETE FROM campaign_history WHERE user_id = $1', [userId])
+  await db.query('DELETE FROM public.campaign_history WHERE user_id = $1', [userId])
   return c.json({ ok: true })
 })

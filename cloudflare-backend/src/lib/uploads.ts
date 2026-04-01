@@ -23,7 +23,7 @@ export function resolveFileRule(mimeType: string, originalName: string) {
 export async function getUploadUsageBytes(db: Pool, userId: string) {
   const result = await db.query(
     `SELECT COALESCE(SUM(size_bytes), 0)::bigint AS total
-       FROM user_uploaded_files
+       FROM public.user_uploaded_files
       WHERE user_id = $1
         AND deleted_at IS NULL`,
     [userId]

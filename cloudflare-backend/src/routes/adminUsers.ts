@@ -69,14 +69,14 @@ const ROLE_PERMISSION_MATRIX: Record<string, string[]> = {
 async function ensureAdminUsersTables(db: ReturnType<typeof getDb>) {
   await runBestEffortDdl(db, 'adminUsers.ensureAdminUsersTables', [
     `
-      CREATE TABLE IF NOT EXISTS user_groups (
+      CREATE TABLE IF NOT EXISTS public.user_groups (
         id UUID PRIMARY KEY DEFAULT (md5(random()::text || clock_timestamp()::text)::uuid),
         name TEXT UNIQUE NOT NULL,
         created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
       )
     `,
     `
-      CREATE TABLE IF NOT EXISTS permissions (
+      CREATE TABLE IF NOT EXISTS public.permissions (
         id UUID PRIMARY KEY DEFAULT (md5(random()::text || clock_timestamp()::text)::uuid),
         code TEXT UNIQUE NOT NULL,
         name TEXT,
@@ -85,18 +85,18 @@ async function ensureAdminUsersTables(db: ReturnType<typeof getDb>) {
       )
     `,
     `
-      CREATE TABLE IF NOT EXISTS group_permissions (
-        group_id UUID NOT NULL REFERENCES user_groups(id) ON DELETE CASCADE,
-        permission_id UUID NOT NULL REFERENCES permissions(id) ON DELETE CASCADE,
+      CREATE TABLE IF NOT EXISTS public.group_permissions (
+        group_id UUID NOT NULL REFERENCES public.user_groups(id) ON DELETE CASCADE,
+        permission_id UUID NOT NULL REFERENCES public.permissions(id) ON DELETE CASCADE,
         PRIMARY KEY (group_id, permission_id)
       )
     `,
     `
-      CREATE TABLE IF NOT EXISTS user_profiles (
-        id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+      CREATE TABLE IF NOT EXISTS public.user_profiles (
+        id UUID PRIMARY KEY REFERENCES public.users(id) ON DELETE CASCADE,
         display_name TEXT,
         phone TEXT,
-        group_id UUID REFERENCES user_groups(id) ON DELETE SET NULL,
+        group_id UUID REFERENCES public.user_groups(id) ON DELETE SET NULL,
         use_global_ai BOOLEAN DEFAULT true,
         ai_api_key TEXT,
         company_info TEXT,
@@ -108,7 +108,7 @@ async function ensureAdminUsersTables(db: ReturnType<typeof getDb>) {
       )
     `,
     `
-      CREATE TABLE IF NOT EXISTS app_settings (
+      CREATE TABLE IF NOT EXISTS public.app_settings (
         id SERIAL PRIMARY KEY,
         global_ai_api_key TEXT,
         evolution_api_url TEXT,
@@ -117,33 +117,33 @@ async function ensureAdminUsersTables(db: ReturnType<typeof getDb>) {
         updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
       )
     `,
-    `ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS display_name TEXT`,
-    `ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS phone TEXT`,
-    `ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS group_id UUID REFERENCES user_groups(id) ON DELETE SET NULL`,
-    `ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS use_global_ai BOOLEAN DEFAULT true`,
-    `ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS ai_api_key TEXT`,
-    `ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS company_info TEXT`,
-    `ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS evolution_url TEXT`,
-    `ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS evolution_apikey TEXT`,
-    `ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS evolution_instance TEXT`,
-    `ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP`,
-    `ALTER TABLE permissions ADD COLUMN IF NOT EXISTS description TEXT`,
+    `ALTER TABLE public.user_profiles ADD COLUMN IF NOT EXISTS display_name TEXT`,
+    `ALTER TABLE public.user_profiles ADD COLUMN IF NOT EXISTS phone TEXT`,
+    `ALTER TABLE public.user_profiles ADD COLUMN IF NOT EXISTS group_id UUID REFERENCES public.user_groups(id) ON DELETE SET NULL`,
+    `ALTER TABLE public.user_profiles ADD COLUMN IF NOT EXISTS use_global_ai BOOLEAN DEFAULT true`,
+    `ALTER TABLE public.user_profiles ADD COLUMN IF NOT EXISTS ai_api_key TEXT`,
+    `ALTER TABLE public.user_profiles ADD COLUMN IF NOT EXISTS company_info TEXT`,
+    `ALTER TABLE public.user_profiles ADD COLUMN IF NOT EXISTS evolution_url TEXT`,
+    `ALTER TABLE public.user_profiles ADD COLUMN IF NOT EXISTS evolution_apikey TEXT`,
+    `ALTER TABLE public.user_profiles ADD COLUMN IF NOT EXISTS evolution_instance TEXT`,
+    `ALTER TABLE public.user_profiles ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP`,
+    `ALTER TABLE public.permissions ADD COLUMN IF NOT EXISTS description TEXT`,
   ])
 }
 
 async function ensureAdminSeeds(db: ReturnType<typeof getDb>) {
-  const groupsCount = await db.query('SELECT COUNT(*)::int AS total FROM user_groups')
+  const groupsCount = await db.query('SELECT COUNT(*)::int AS total FROM public.user_groups')
   if (Number(groupsCount.rows[0]?.total || 0) === 0) {
     for (const groupName of DEFAULT_GROUPS) {
-      await db.query('INSERT INTO user_groups (name) VALUES ($1) ON CONFLICT (name) DO NOTHING', [groupName])
+      await db.query('INSERT INTO public.user_groups (name) VALUES ($1) ON CONFLICT (name) DO NOTHING', [groupName])
     }
   }
 
-  const permissionsCount = await db.query('SELECT COUNT(*)::int AS total FROM permissions')
+  const permissionsCount = await db.query('SELECT COUNT(*)::int AS total FROM public.permissions')
   if (Number(permissionsCount.rows[0]?.total || 0) === 0) {
     for (const permission of DEFAULT_PERMISSIONS) {
       await db.query(
-        `INSERT INTO permissions (code, name, description)
+        `INSERT INTO public.permissions (code, name, description)
          VALUES ($1, $2, $3)
          ON CONFLICT (code) DO NOTHING`,
         [permission.code, permission.name, permission.description]
@@ -151,12 +151,12 @@ async function ensureAdminSeeds(db: ReturnType<typeof getDb>) {
     }
   }
 
-  const groupPermissionCount = await db.query('SELECT COUNT(*)::int AS total FROM group_permissions')
+  const groupPermissionCount = await db.query('SELECT COUNT(*)::int AS total FROM public.group_permissions')
   if (Number(groupPermissionCount.rows[0]?.total || 0) > 0) return
 
   const [groupRows, permissionRows] = await Promise.all([
-    db.query('SELECT id, name FROM user_groups'),
-    db.query('SELECT id, code FROM permissions'),
+    db.query('SELECT id, name FROM public.user_groups'),
+    db.query('SELECT id, code FROM public.permissions'),
   ])
 
   const groupIdByName = new Map<string, string>()
@@ -177,7 +177,7 @@ async function ensureAdminSeeds(db: ReturnType<typeof getDb>) {
       const permissionId = permissionIdByCode.get(code)
       if (!permissionId) continue
       await db.query(
-        `INSERT INTO group_permissions (group_id, permission_id)
+        `INSERT INTO public.group_permissions (group_id, permission_id)
          VALUES ($1, $2)
          ON CONFLICT (group_id, permission_id) DO NOTHING`,
         [groupId, permissionId]
@@ -208,9 +208,9 @@ adminUsersRoutes.get('/permissions/me', authenticateToken, async (c) => {
 
   const result = await db.query(
     `SELECT p.code
-       FROM user_profiles up
-       JOIN group_permissions gp ON gp.group_id = up.group_id
-       JOIN permissions p ON p.id = gp.permission_id
+       FROM public.user_profiles up
+       JOIN public.group_permissions gp ON gp.group_id = up.group_id
+       JOIN public.permissions p ON p.id = gp.permission_id
       WHERE up.id = $1`,
     [user.id]
   )
@@ -233,9 +233,9 @@ adminUsersRoutes.get('/admin/users', authenticateToken, checkAdmin, async (c) =>
        ug.name AS group_name,
        u.name AS user_name,
        u.email
-     FROM users u
-     LEFT JOIN user_profiles up ON up.id = u.id
-     LEFT JOIN user_groups ug ON ug.id = up.group_id
+     FROM public.users u
+     LEFT JOIN public.user_profiles up ON up.id = u.id
+     LEFT JOIN public.user_groups ug ON ug.id = up.group_id
      ORDER BY COALESCE(up.display_name, u.name, u.email, u.id::text) ASC`
   )
 
@@ -259,7 +259,7 @@ adminUsersRoutes.put('/admin/users/:id/profile', authenticateToken, checkAdmin, 
   try {
     await db.query('BEGIN')
     await db.query(
-      `INSERT INTO user_profiles (id, display_name, phone)
+      `INSERT INTO public.user_profiles (id, display_name, phone)
        VALUES ($1, $2, $3)
        ON CONFLICT (id) DO UPDATE SET
          display_name = EXCLUDED.display_name,
@@ -268,11 +268,11 @@ adminUsersRoutes.put('/admin/users/:id/profile', authenticateToken, checkAdmin, 
     )
 
     if (displayName !== undefined) {
-      await db.query('UPDATE users SET name = $1 WHERE id = $2', [displayName, id])
+      await db.query('UPDATE public.users SET name = $1 WHERE id = $2', [displayName, id])
     }
 
     if (email !== undefined) {
-      await db.query('UPDATE users SET email = $1 WHERE id = $2', [email, id])
+      await db.query('UPDATE public.users SET email = $1 WHERE id = $2', [email, id])
     }
 
     await db.query('COMMIT')
@@ -295,9 +295,9 @@ adminUsersRoutes.put('/admin/users/:id/profile', authenticateToken, checkAdmin, 
        ug.name AS group_name,
        u.name AS user_name,
        u.email
-     FROM users u
-     LEFT JOIN user_profiles up ON up.id = u.id
-     LEFT JOIN user_groups ug ON ug.id = up.group_id
+     FROM public.users u
+     LEFT JOIN public.user_profiles up ON up.id = u.id
+     LEFT JOIN public.user_groups ug ON ug.id = up.group_id
      WHERE u.id = $1
      LIMIT 1`,
     [id]
@@ -310,7 +310,7 @@ adminUsersRoutes.get('/admin/groups', authenticateToken, checkAdmin, async (c) =
   const db = getDb(c.env)
   await ensureAdminUsersTables(db)
   await ensureAdminSeeds(db)
-  const result = await db.query('SELECT * FROM user_groups ORDER BY name ASC')
+  const result = await db.query('SELECT * FROM public.user_groups ORDER BY name ASC')
   return c.json(result.rows)
 })
 
@@ -318,7 +318,7 @@ adminUsersRoutes.get('/admin/permissions', authenticateToken, checkAdmin, async 
   const db = getDb(c.env)
   await ensureAdminUsersTables(db)
   await ensureAdminSeeds(db)
-  const result = await db.query('SELECT * FROM permissions ORDER BY code ASC')
+  const result = await db.query('SELECT * FROM public.permissions ORDER BY code ASC')
   return c.json(result.rows)
 })
 
@@ -326,7 +326,7 @@ adminUsersRoutes.get('/admin/group-permissions', authenticateToken, checkAdmin, 
   const db = getDb(c.env)
   await ensureAdminUsersTables(db)
   await ensureAdminSeeds(db)
-  const result = await db.query('SELECT * FROM group_permissions')
+  const result = await db.query('SELECT * FROM public.group_permissions')
   return c.json(result.rows)
 })
 
@@ -343,7 +343,7 @@ adminUsersRoutes.post('/admin/group-permissions', authenticateToken, checkAdmin,
   }
 
   await db.query(
-    `INSERT INTO group_permissions (group_id, permission_id)
+    `INSERT INTO public.group_permissions (group_id, permission_id)
      VALUES ($1, $2)
      ON CONFLICT (group_id, permission_id) DO NOTHING`,
     [groupId, permissionId]
@@ -364,7 +364,7 @@ adminUsersRoutes.delete('/admin/group-permissions', authenticateToken, checkAdmi
     return c.json({ error: 'group_id e permission_id sao obrigatorios.' }, 400)
   }
 
-  await db.query('DELETE FROM group_permissions WHERE group_id = $1 AND permission_id = $2', [groupId, permissionId])
+  await db.query('DELETE FROM public.group_permissions WHERE group_id = $1 AND permission_id = $2', [groupId, permissionId])
   return c.json({ ok: true })
 })
 
@@ -380,8 +380,8 @@ adminUsersRoutes.put('/admin/users/:id/group', authenticateToken, checkAdmin, as
 
   if (!id) return c.json({ error: 'Usuario invalido.' }, 400)
 
-  await db.query('INSERT INTO user_profiles (id) VALUES ($1) ON CONFLICT (id) DO NOTHING', [id])
-  await db.query('UPDATE user_profiles SET group_id = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2', [groupId, id])
+  await db.query('INSERT INTO public.user_profiles (id) VALUES ($1) ON CONFLICT (id) DO NOTHING', [id])
+  await db.query('UPDATE public.user_profiles SET group_id = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2', [groupId, id])
 
   return c.json({ ok: true })
 })
@@ -418,14 +418,14 @@ adminUsersRoutes.put('/admin/users/:id/settings', authenticateToken, checkAdmin,
     return c.json({ error: 'Nenhum campo valido fornecido.' }, 400)
   }
 
-  await db.query('INSERT INTO user_profiles (id) VALUES ($1) ON CONFLICT (id) DO NOTHING', [id])
+  await db.query('INSERT INTO public.user_profiles (id) VALUES ($1) ON CONFLICT (id) DO NOTHING', [id])
 
   const assignments = updates.map((entry, index) => `${entry.column} = $${index + 1}`)
   const values = updates.map((entry) => entry.value)
   assignments.push(`updated_at = CURRENT_TIMESTAMP`)
   values.push(id)
 
-  await db.query(`UPDATE user_profiles SET ${assignments.join(', ')} WHERE id = $${values.length}`, values)
+  await db.query(`UPDATE public.user_profiles SET ${assignments.join(', ')} WHERE id = $${values.length}`, values)
   return c.json({ ok: true })
 })
 
@@ -438,7 +438,7 @@ adminUsersRoutes.post('/admin/users/:id/reset-password', authenticateToken, chec
   const passwordHash = await bcrypt.hash(defaultPassword, 10)
 
   const result = await db.query(
-    `UPDATE users
+    `UPDATE public.users
         SET password_hash = $1,
             reset_password_token = NULL,
             reset_password_expires = NULL,
@@ -464,7 +464,7 @@ adminUsersRoutes.post('/admin/users/:id/invalidate-sessions', authenticateToken,
   if (!id) return c.json({ success: false, error: 'Usuario invalido.' }, 400)
 
   const result = await db.query(
-    `UPDATE users
+    `UPDATE public.users
         SET token_version = COALESCE(token_version, 0) + 1
       WHERE id = $1
       RETURNING id`,
@@ -480,7 +480,7 @@ adminUsersRoutes.post('/admin/users/:id/invalidate-sessions', authenticateToken,
 
 adminUsersRoutes.post('/admin/invalidate-all-sessions', authenticateToken, checkAdmin, async (c) => {
   const db = getDb(c.env)
-  await db.query('UPDATE users SET token_version = COALESCE(token_version, 0) + 1')
+  await db.query('UPDATE public.users SET token_version = COALESCE(token_version, 0) + 1')
   return c.json({ success: true, message: 'Sessoes de todos os usuarios invalidadas com sucesso.' })
 })
 
@@ -502,8 +502,8 @@ adminUsersRoutes.post('/admin/users/:id/notify', authenticateToken, checkAdmin, 
       `SELECT
          up.phone,
          COALESCE(up.display_name, u.name, u.email, u.id::text) AS user_label
-       FROM users u
-       LEFT JOIN user_profiles up ON up.id = u.id
+       FROM public.users u
+       LEFT JOIN public.user_profiles up ON up.id = u.id
        WHERE u.id = $1
        LIMIT 1`,
       [id]
@@ -513,7 +513,7 @@ adminUsersRoutes.post('/admin/users/:id/notify', authenticateToken, checkAdmin, 
          evolution_url,
          evolution_apikey,
          evolution_instance
-       FROM user_profiles
+       FROM public.user_profiles
        WHERE id = $1
        LIMIT 1`,
       [authUser.id]
@@ -523,7 +523,7 @@ adminUsersRoutes.post('/admin/users/:id/notify', authenticateToken, checkAdmin, 
          evolution_api_url,
          evolution_api_key,
          evolution_shared_instance
-       FROM app_settings
+       FROM public.app_settings
        ORDER BY id DESC
        LIMIT 1`
     ),

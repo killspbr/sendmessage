@@ -38,7 +38,7 @@ uploadRoutes.get('/files', authenticateToken, async (c) => {
 
     const result = await db.query(
       `SELECT id, user_id, original_name, stored_name, mime_type, extension, media_type, size_bytes, public_token, created_at
-         FROM user_uploaded_files
+         FROM public.user_uploaded_files
         WHERE user_id = $1::uuid
           AND deleted_at IS NULL
         ORDER BY created_at DESC`,
@@ -156,7 +156,7 @@ uploadRoutes.post('/files/upload', authenticateToken, async (c) => {
       })
 
       const inserted = await db.query(
-        `INSERT INTO user_uploaded_files (
+        `INSERT INTO public.user_uploaded_files (
           id, user_id, original_name, stored_name, mime_type, extension, media_type, size_bytes, storage_path, public_token
         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
         RETURNING *`,
@@ -193,7 +193,7 @@ uploadRoutes.delete('/files/:id', authenticateToken, async (c) => {
   const db = getDb(c.env)
 
   const result = await db.query(
-    `UPDATE user_uploaded_files
+    `UPDATE public.user_uploaded_files
         SET deleted_at = CURRENT_TIMESTAMP
       WHERE id = $1::uuid
         AND user_id = $2::uuid
@@ -220,7 +220,7 @@ uploadRoutes.patch('/files/:id', authenticateToken, async (c) => {
 
   const db = getDb(c.env)
   const result = await db.query(
-    `UPDATE user_uploaded_files
+    `UPDATE public.user_uploaded_files
         SET original_name = $1, updated_at = CURRENT_TIMESTAMP
       WHERE id = $2::uuid
         AND user_id = $3::uuid
@@ -246,7 +246,7 @@ uploadRoutes.post('/files/bulk-delete', authenticateToken, async (c) => {
   // Usar ANY para performance e seguranca de tipos no Postgres
   try {
     const filesResult = await db.query(
-      `SELECT id, storage_path FROM user_uploaded_files 
+      `SELECT id, storage_path FROM public.user_uploaded_files 
         WHERE user_id = $1::uuid AND id = ANY($2::uuid[]) AND deleted_at IS NULL`,
       [user.id, ids]
     )
@@ -255,7 +255,7 @@ uploadRoutes.post('/files/bulk-delete', authenticateToken, async (c) => {
     if (filesToDelete.length === 0) return c.json({ ok: true, deleted: 0 })
 
     await db.query(
-      `UPDATE user_uploaded_files
+      `UPDATE public.user_uploaded_files
           SET deleted_at = CURRENT_TIMESTAMP
         WHERE user_id = $1::uuid AND id = ANY($2::uuid[])`,
       [user.id, ids]
@@ -278,7 +278,7 @@ uploadRoutes.get('/uploads/public/:token/:storedName', async (c) => {
 
   const result = await db.query(
     `SELECT *
-       FROM user_uploaded_files
+       FROM public.user_uploaded_files
       WHERE public_token = $1
         AND stored_name = $2
         AND deleted_at IS NULL

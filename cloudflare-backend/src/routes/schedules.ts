@@ -61,8 +61,8 @@ async function isAdminUser(userId: string, db: ReturnType<typeof getDb>) {
   try {
     const result = await db.query(
       `SELECT 1
-         FROM user_profiles up
-         JOIN user_groups ug ON ug.id = up.group_id
+         FROM public.user_profiles up
+         JOIN public.user_groups ug ON ug.id = up.group_id
         WHERE up.id = $1
           AND ug.name = 'Administrador'
         LIMIT 1`,
@@ -92,11 +92,11 @@ async function getServerClock(env: Bindings) {
 async function resolveEvolutionConfigForUser(userId: string, db: ReturnType<typeof getDb>) {
   const [profileResult, globalSettingsResult] = await Promise.all([
     db.query(
-      'SELECT evolution_url, evolution_apikey, evolution_instance FROM user_profiles WHERE id = $1 LIMIT 1',
+      'SELECT evolution_url, evolution_apikey, evolution_instance FROM public.user_profiles WHERE id = $1 LIMIT 1',
       [userId]
     ),
     db.query(
-      'SELECT evolution_api_url, evolution_api_key, evolution_shared_instance FROM app_settings ORDER BY id DESC LIMIT 1'
+      'SELECT evolution_api_url, evolution_api_key, evolution_shared_instance FROM public.app_settings ORDER BY id DESC LIMIT 1'
     ),
   ])
 
@@ -113,10 +113,10 @@ async function resolveEvolutionConfigForUser(userId: string, db: ReturnType<type
 async function ensureScheduleTables(db: ReturnType<typeof getDb>) {
   await runBestEffortDdl(db, 'schedules.ensureScheduleTables', [
     `
-      CREATE TABLE IF NOT EXISTS campaign_schedule (
+      CREATE TABLE IF NOT EXISTS public.campaign_schedule (
         id SERIAL PRIMARY KEY,
-        campaign_id UUID NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
-        user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        campaign_id UUID NOT NULL REFERENCES public.campaigns(id) ON DELETE CASCADE,
+        user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
         data_inicio DATE NOT NULL,
         hora_inicio TIME NOT NULL,
         limite_diario INTEGER DEFAULT 300,
@@ -134,11 +134,11 @@ async function ensureScheduleTables(db: ReturnType<typeof getDb>) {
       )
     `,
     `
-      CREATE TABLE IF NOT EXISTS message_queue (
+      CREATE TABLE IF NOT EXISTS public.message_queue (
         id SERIAL PRIMARY KEY,
-        schedule_id INTEGER REFERENCES campaign_schedule(id) ON DELETE CASCADE,
-        campaign_id UUID NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
-        user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        schedule_id INTEGER REFERENCES public.campaign_schedule(id) ON DELETE CASCADE,
+        campaign_id UUID NOT NULL REFERENCES public.campaigns(id) ON DELETE CASCADE,
+        user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
         contact_id TEXT,
         telefone TEXT NOT NULL,
         nome TEXT,
@@ -153,32 +153,32 @@ async function ensureScheduleTables(db: ReturnType<typeof getDb>) {
       )
     `,
     `
-      CREATE TABLE IF NOT EXISTS scheduler_logs (
+      CREATE TABLE IF NOT EXISTS public.scheduler_logs (
         id SERIAL PRIMARY KEY,
         event TEXT NOT NULL,
         details TEXT,
         data_evento TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
       )
     `,
-    `ALTER TABLE campaign_schedule ADD COLUMN IF NOT EXISTS scheduler_claimed_at TIMESTAMP WITH TIME ZONE`,
-    `ALTER TABLE campaign_schedule ADD COLUMN IF NOT EXISTS pause_reason TEXT`,
-    `ALTER TABLE campaign_schedule ADD COLUMN IF NOT EXISTS pause_details TEXT`,
-    `ALTER TABLE campaign_schedule ADD COLUMN IF NOT EXISTS paused_at TIMESTAMP WITH TIME ZONE`,
-    `ALTER TABLE campaign_schedule ADD COLUMN IF NOT EXISTS resumed_at TIMESTAMP WITH TIME ZONE`,
-    `ALTER TABLE message_queue ADD COLUMN IF NOT EXISTS contact_id TEXT`,
-    `ALTER TABLE message_queue ADD COLUMN IF NOT EXISTS processing_started_at TIMESTAMP WITH TIME ZONE`,
-    `ALTER TABLE message_queue ADD COLUMN IF NOT EXISTS recovered_at TIMESTAMP WITH TIME ZONE`,
-    `ALTER TABLE message_queue ADD COLUMN IF NOT EXISTS erro TEXT`,
-    `CREATE INDEX IF NOT EXISTS idx_mq_user_status ON message_queue(user_id, status)`,
-    `CREATE INDEX IF NOT EXISTS idx_mq_schedule_status ON message_queue(schedule_id, status)`,
-    `CREATE INDEX IF NOT EXISTS idx_schedule_user_status ON campaign_schedule(user_id, status)`,
-    `CREATE INDEX IF NOT EXISTS idx_scheduler_logs_event_date ON scheduler_logs(event, data_evento DESC)`,
-    `ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS last_scheduled_at TIMESTAMP WITH TIME ZONE`,
+    `ALTER TABLE public.campaign_schedule ADD COLUMN IF NOT EXISTS scheduler_claimed_at TIMESTAMP WITH TIME ZONE`,
+    `ALTER TABLE public.campaign_schedule ADD COLUMN IF NOT EXISTS pause_reason TEXT`,
+    `ALTER TABLE public.campaign_schedule ADD COLUMN IF NOT EXISTS pause_details TEXT`,
+    `ALTER TABLE public.campaign_schedule ADD COLUMN IF NOT EXISTS paused_at TIMESTAMP WITH TIME ZONE`,
+    `ALTER TABLE public.campaign_schedule ADD COLUMN IF NOT EXISTS resumed_at TIMESTAMP WITH TIME ZONE`,
+    `ALTER TABLE public.message_queue ADD COLUMN IF NOT EXISTS contact_id TEXT`,
+    `ALTER TABLE public.message_queue ADD COLUMN IF NOT EXISTS processing_started_at TIMESTAMP WITH TIME ZONE`,
+    `ALTER TABLE public.message_queue ADD COLUMN IF NOT EXISTS recovered_at TIMESTAMP WITH TIME ZONE`,
+    `ALTER TABLE public.message_queue ADD COLUMN IF NOT EXISTS erro TEXT`,
+    `CREATE INDEX IF NOT EXISTS idx_mq_user_status ON public.message_queue(user_id, status)`,
+    `CREATE INDEX IF NOT EXISTS idx_mq_schedule_status ON public.message_queue(schedule_id, status)`,
+    `CREATE INDEX IF NOT EXISTS idx_schedule_user_status ON public.campaign_schedule(user_id, status)`,
+    `CREATE INDEX IF NOT EXISTS idx_scheduler_logs_event_date ON public.scheduler_logs(event, data_evento DESC)`,
+    `ALTER TABLE public.campaigns ADD COLUMN IF NOT EXISTS last_scheduled_at TIMESTAMP WITH TIME ZONE`,
   ])
 }
 
 async function writeSchedulerLog(db: ReturnType<typeof getDb>, event: string, details: Record<string, unknown>) {
-  await db.query('INSERT INTO scheduler_logs (event, details) VALUES ($1, $2)', [
+  await db.query('INSERT INTO public.scheduler_logs (event, details) VALUES ($1, $2)', [
     event,
     JSON.stringify(details),
   ])
@@ -191,7 +191,7 @@ async function setCampaignStatusFromQueue(db: ReturnType<typeof getDb>, campaign
       COUNT(*) FILTER (WHERE status = 'processando')::int AS processando,
       COUNT(*) FILTER (WHERE status = 'enviado')::int AS enviado,
       COUNT(*) FILTER (WHERE status = 'falhou')::int AS falhou
-     FROM message_queue
+     FROM public.message_queue
      WHERE campaign_id = $1`,
     [campaignId]
   )
@@ -207,7 +207,7 @@ async function setCampaignStatusFromQueue(db: ReturnType<typeof getDb>, campaign
   else if (failed > 0) nextStatus = sent > 0 ? 'enviada_com_erros' : 'rascunho'
   else if (sent > 0) nextStatus = 'enviada'
 
-  await db.query('UPDATE campaigns SET status = $1 WHERE id = $2', [nextStatus, campaignId])
+  await db.query('UPDATE public.campaigns SET status = $1 WHERE id = $2', [nextStatus, campaignId])
 }
 
 function renderQueuedMessage(campaignMessage: unknown, contact: Record<string, unknown>) {
@@ -220,11 +220,11 @@ async function prepareQueueForSchedule(
   db: ReturnType<typeof getDb>,
   schedule: any
 ) {
-  const existing = await db.query('SELECT COUNT(*)::int AS total FROM message_queue WHERE schedule_id = $1', [schedule.id])
+  const existing = await db.query('SELECT COUNT(*)::int AS total FROM public.message_queue WHERE schedule_id = $1', [schedule.id])
   if (Number(existing.rows[0]?.total || 0) > 0) return Number(existing.rows[0]?.total || 0)
 
   const campaignResult = await db.query(
-    'SELECT id, user_id, name, list_name, message, channels, delivery_payload FROM campaigns WHERE id = $1 LIMIT 1',
+    'SELECT id, user_id, name, list_name, message, channels, delivery_payload FROM public.campaigns WHERE id = $1 LIMIT 1',
     [schedule.campaign_id]
   )
   const campaign = campaignResult.rows[0]
@@ -241,7 +241,7 @@ async function prepareQueueForSchedule(
   }
 
   const listResult = await db.query(
-    'SELECT id FROM lists WHERE user_id = $1 AND name = $2 LIMIT 1',
+    'SELECT id FROM public.lists WHERE user_id = $1 AND name = $2 LIMIT 1',
     [campaign.user_id, campaign.list_name]
   )
   const list = listResult.rows[0]
@@ -249,7 +249,7 @@ async function prepareQueueForSchedule(
 
   const contactsResult = await db.query(
     `SELECT id, name, phone, email, category, city, rating, address, cep
-       FROM contacts
+       FROM public.contacts
       WHERE user_id = $1
         AND list_id = $2
         AND COALESCE(TRIM(phone), '') <> ''
@@ -264,7 +264,7 @@ async function prepareQueueForSchedule(
   for (const contact of contacts) {
     const message = renderQueuedMessage(campaign.message, contact)
     await db.query(
-      `INSERT INTO message_queue (
+      `INSERT INTO public.message_queue (
         schedule_id, campaign_id, user_id, contact_id, telefone, nome, mensagem, status
       ) VALUES ($1,$2,$3,$4,$5,$6,$7,'pendente')`,
       [
@@ -280,7 +280,7 @@ async function prepareQueueForSchedule(
   }
 
   await db.query(
-    `UPDATE campaigns
+    `UPDATE public.campaigns
         SET status = 'agendada',
             last_scheduled_at = CURRENT_TIMESTAMP
       WHERE id = $1`,
@@ -294,7 +294,7 @@ async function runScheduler(db: ReturnType<typeof getDb>, env: Bindings) {
   const nowParts = getSystemDateTimeParts(env)
 
   await db.query(
-    `UPDATE campaign_schedule
+    `UPDATE public.campaign_schedule
         SET status = 'agendado',
             scheduler_claimed_at = NULL
       WHERE status = 'preparando'
@@ -304,7 +304,7 @@ async function runScheduler(db: ReturnType<typeof getDb>, env: Bindings) {
 
   const dueResult = await db.query(
     `SELECT *
-       FROM campaign_schedule
+       FROM public.campaign_schedule
       WHERE status = 'agendado'
         AND (
           data_inicio < $1::date
@@ -317,7 +317,7 @@ async function runScheduler(db: ReturnType<typeof getDb>, env: Bindings) {
 
   for (const schedule of dueResult.rows) {
     const claimed = await db.query(
-      `UPDATE campaign_schedule
+      `UPDATE public.campaign_schedule
           SET status = 'preparando',
               scheduler_claimed_at = NOW(),
               pause_reason = NULL,
@@ -332,7 +332,7 @@ async function runScheduler(db: ReturnType<typeof getDb>, env: Bindings) {
     try {
       const count = await prepareQueueForSchedule(db, schedule)
       await db.query(
-        `UPDATE campaign_schedule
+        `UPDATE public.campaign_schedule
             SET status = 'em_execucao',
                 scheduler_claimed_at = NULL
           WHERE id = $1`,
@@ -347,7 +347,7 @@ async function runScheduler(db: ReturnType<typeof getDb>, env: Bindings) {
     } catch (error) {
       const reason = String((error as any)?.message || error || 'Erro ao preparar fila')
       await db.query(
-        `UPDATE campaign_schedule
+        `UPDATE public.campaign_schedule
             SET status = 'erro',
                 pause_details = $1,
                 scheduler_claimed_at = NULL
@@ -365,12 +365,12 @@ async function runScheduler(db: ReturnType<typeof getDb>, env: Bindings) {
 }
 
 async function processQueueItem(db: ReturnType<typeof getDb>, queueItem: any) {
-  const campaignResult = await db.query('SELECT * FROM campaigns WHERE id = $1 LIMIT 1', [queueItem.campaign_id])
+  const campaignResult = await db.query('SELECT * FROM public.campaigns WHERE id = $1 LIMIT 1', [queueItem.campaign_id])
   const campaign = campaignResult.rows[0]
   if (!campaign) throw new Error('Campanha não encontrada para item da fila.')
 
   const contactResult = await db.query(
-    'SELECT * FROM contacts WHERE id::text = $1 AND user_id = $2 LIMIT 1',
+    'SELECT * FROM public.contacts WHERE id::text = $1 AND user_id = $2 LIMIT 1',
     [String(queueItem.contact_id || ''), queueItem.user_id]
   )
 
@@ -414,7 +414,7 @@ async function processQueueItem(db: ReturnType<typeof getDb>, queueItem: any) {
 
   const queueStatus = historyEntry.ok ? 'enviado' : 'falhou'
   await db.query(
-    `UPDATE message_queue
+    `UPDATE public.message_queue
         SET status = $1,
             data_envio = NOW(),
             erro = $2
@@ -432,14 +432,14 @@ async function processQueueItem(db: ReturnType<typeof getDb>, queueItem: any) {
 
 async function runWorker(db: ReturnType<typeof getDb>) {
   const claimed = await db.query(
-    `UPDATE message_queue
+    `UPDATE public.message_queue
         SET status = 'processando',
             processing_started_at = NOW(),
             tentativas = COALESCE(tentativas, 0) + 1
       WHERE id IN (
         SELECT mq.id
-        FROM message_queue mq
-        JOIN campaign_schedule cs ON cs.id = mq.schedule_id
+        FROM public.message_queue mq
+        JOIN public.campaign_schedule cs ON cs.id = mq.schedule_id
         WHERE mq.status = 'pendente'
           AND cs.status IN ('preparando', 'em_execucao')
         ORDER BY mq.data_criacao ASC
@@ -455,7 +455,7 @@ async function runWorker(db: ReturnType<typeof getDb>) {
       const reason = String((error as any)?.message || error || 'Erro ao enviar item da fila')
 
       await db.query(
-        `UPDATE message_queue
+        `UPDATE public.message_queue
             SET status = 'falhou',
                 data_envio = NOW(),
                 erro = $1
@@ -463,7 +463,7 @@ async function runWorker(db: ReturnType<typeof getDb>) {
         [reason, queueItem.id]
       )
 
-      const campaignResult = await db.query('SELECT * FROM campaigns WHERE id = $1 LIMIT 1', [queueItem.campaign_id])
+      const campaignResult = await db.query('SELECT * FROM public.campaigns WHERE id = $1 LIMIT 1', [queueItem.campaign_id])
       const campaign = campaignResult.rows[0] || { id: queueItem.campaign_id, name: 'Campanha' }
       const contact = {
         id: queueItem.contact_id,
@@ -491,7 +491,7 @@ async function runWorker(db: ReturnType<typeof getDb>) {
 
 async function runCleanup(db: ReturnType<typeof getDb>) {
   const stale = await db.query(
-    `UPDATE message_queue
+    `UPDATE public.message_queue
         SET status = 'falhou',
             data_envio = NOW(),
             erro = COALESCE(erro, 'Timeout de processamento no worker')
@@ -514,7 +514,7 @@ async function runCleanup(db: ReturnType<typeof getDb>) {
 async function finalizeSchedules(db: ReturnType<typeof getDb>) {
   const schedules = await db.query(
     `SELECT id, campaign_id, status
-       FROM campaign_schedule
+       FROM public.campaign_schedule
       WHERE status IN ('preparando', 'em_execucao', 'agendado')`
   )
 
@@ -525,7 +525,7 @@ async function finalizeSchedules(db: ReturnType<typeof getDb>) {
         COUNT(*) FILTER (WHERE status = 'processando')::int AS processing_count,
         COUNT(*) FILTER (WHERE status = 'enviado')::int AS sent_count,
         COUNT(*) FILTER (WHERE status = 'falhou')::int AS failed_count
-       FROM message_queue
+       FROM public.message_queue
        WHERE schedule_id = $1`,
       [schedule.id]
     )
@@ -543,7 +543,7 @@ async function finalizeSchedules(db: ReturnType<typeof getDb>) {
 
     if (nextStatus && nextStatus !== schedule.status) {
       await db.query(
-        `UPDATE campaign_schedule
+        `UPDATE public.campaign_schedule
             SET status = $1,
                 scheduler_claimed_at = NULL,
                 pause_reason = CASE WHEN $1 IN ('concluido', 'erro') THEN pause_reason ELSE NULL END,
@@ -601,8 +601,8 @@ async function listSchedulesWithStats(
         q.last_queue_activity_at,
         NULL::text AS last_event,
         NULL::timestamp with time zone AS last_event_at
-     FROM campaign_schedule s
-     LEFT JOIN campaigns c ON s.campaign_id = c.id
+     FROM public.campaign_schedule s
+     LEFT JOIN public.campaigns c ON s.campaign_id = c.id
      LEFT JOIN (
        SELECT
          mq.schedule_id,
@@ -612,7 +612,7 @@ async function listSchedulesWithStats(
          COUNT(*) FILTER (WHERE mq.status = 'falhou')::int AS failed_count,
          MAX(COALESCE(mq.data_envio, mq.processing_started_at, mq.data_criacao)) AS last_queue_activity_at,
          (ARRAY_REMOVE(ARRAY_AGG(mq.erro ORDER BY COALESCE(mq.data_envio, mq.processing_started_at, mq.data_criacao) DESC), NULL))[1] AS last_error
-       FROM message_queue mq
+       FROM public.message_queue mq
        GROUP BY mq.schedule_id
      ) q ON q.schedule_id = s.id
      ${whereClause}
@@ -635,7 +635,7 @@ scheduleRoutes.post('/campaigns/:id/schedule', authenticateToken, async (c) => {
   const nowParts = getSystemDateTimeParts(c.env)
 
   const campaignResult = await db.query(
-    'SELECT id, user_id, name, list_name, channels, delivery_payload FROM campaigns WHERE id = $1 LIMIT 1',
+    'SELECT id, user_id, name, list_name, channels, delivery_payload FROM public.campaigns WHERE id = $1 LIMIT 1',
     [campaignId]
   )
   const campaign = campaignResult.rows[0]
@@ -661,7 +661,7 @@ scheduleRoutes.post('/campaigns/:id/schedule', authenticateToken, async (c) => {
   }
 
   const listResult = await db.query(
-    'SELECT id FROM lists WHERE user_id = $1 AND name = $2 LIMIT 1',
+    'SELECT id FROM public.lists WHERE user_id = $1 AND name = $2 LIMIT 1',
     [userId, campaign.list_name]
   )
   const list = listResult.rows[0]
@@ -669,7 +669,7 @@ scheduleRoutes.post('/campaigns/:id/schedule', authenticateToken, async (c) => {
 
   const contactsCheck = await db.query(
     `SELECT COUNT(*)::int AS total
-       FROM contacts
+       FROM public.contacts
       WHERE user_id = $1
         AND list_id = $2
         AND COALESCE(TRIM(phone), '') <> ''`,
@@ -705,7 +705,7 @@ scheduleRoutes.post('/campaigns/:id/schedule', authenticateToken, async (c) => {
   }
 
   await db.query(
-    `UPDATE campaign_schedule
+    `UPDATE public.campaign_schedule
         SET status = 'cancelado',
             pause_reason = 'manual_cancel',
             pause_details = 'Agendamento substituído por um novo agendamento.',
@@ -714,10 +714,10 @@ scheduleRoutes.post('/campaigns/:id/schedule', authenticateToken, async (c) => {
         AND status = ANY($2)`,
     [campaignId, ACTIVE_SCHEDULE_STATUSES]
   )
-  await db.query('DELETE FROM message_queue WHERE campaign_id = $1 AND status = $2', [campaignId, 'pendente'])
+  await db.query('DELETE FROM public.message_queue WHERE campaign_id = $1 AND status = $2', [campaignId, 'pendente'])
 
   const inserted = await db.query(
-    `INSERT INTO campaign_schedule (
+    `INSERT INTO public.campaign_schedule (
       campaign_id, user_id, data_inicio, hora_inicio, limite_diario,
       intervalo_minimo, intervalo_maximo, mensagens_por_lote, tempo_pausa_lote
     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
@@ -736,7 +736,7 @@ scheduleRoutes.post('/campaigns/:id/schedule', authenticateToken, async (c) => {
   )
 
   await db.query(
-    `UPDATE campaigns
+    `UPDATE public.campaigns
         SET status = 'agendada',
             last_scheduled_at = CURRENT_TIMESTAMP
       WHERE id = $1`,
@@ -759,15 +759,15 @@ scheduleRoutes.delete('/campaigns/:id/schedule', authenticateToken, async (c) =>
   const db = getDb(c.env)
   await ensureScheduleTables(db)
 
-  const campaignResult = await db.query('SELECT id, user_id FROM campaigns WHERE id = $1 LIMIT 1', [campaignId])
+  const campaignResult = await db.query('SELECT id, user_id FROM public.campaigns WHERE id = $1 LIMIT 1', [campaignId])
   const campaign = campaignResult.rows[0]
   if (!campaign || campaign.user_id !== userId) {
     return c.json({ success: false, error: 'Campanha não encontrada para este usuário.' }, 404)
   }
 
-  await db.query('DELETE FROM message_queue WHERE campaign_id = $1 AND status = $2', [campaignId, 'pendente'])
+  await db.query('DELETE FROM public.message_queue WHERE campaign_id = $1 AND status = $2', [campaignId, 'pendente'])
   await db.query(
-    `UPDATE message_queue
+    `UPDATE public.message_queue
         SET status = 'falhou',
             erro = 'Envio cancelado pelo usuário antes da conclusão.',
             processing_started_at = NULL,
@@ -777,7 +777,7 @@ scheduleRoutes.delete('/campaigns/:id/schedule', authenticateToken, async (c) =>
     [campaignId]
   )
   await db.query(
-    `UPDATE campaign_schedule
+    `UPDATE public.campaign_schedule
         SET status = 'cancelado',
             pause_reason = 'manual_cancel',
             pause_details = 'Agendamento cancelado manualmente pelo usuário.',
@@ -878,8 +878,8 @@ scheduleRoutes.get('/queue/professional', authenticateToken, async (c) => {
         q.recovered_at,
         q.erro,
         c.name as campaign_name
-       FROM message_queue q
-       LEFT JOIN campaigns c ON q.campaign_id = c.id
+       FROM public.message_queue q
+       LEFT JOIN public.campaigns c ON q.campaign_id = c.id
        ${whereClause}
        ORDER BY q.id DESC
        LIMIT 100`,

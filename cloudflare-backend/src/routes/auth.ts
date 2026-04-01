@@ -87,32 +87,32 @@ authRoutes.post('/auth/signup', async (c) => {
   }
 
   const db = getDb(c.env)
-  const existing = await db.query('SELECT id FROM users WHERE email = $1 LIMIT 1', [email])
+  const existing = await db.query('SELECT id FROM public.users WHERE email = $1 LIMIT 1', [email])
   if (existing.rows.length > 0) {
     return c.json({ error: 'Este e-mail ja esta cadastrado.' }, 400)
   }
 
   const passwordHash = await bcrypt.hash(password, 10)
   const inserted = await db.query(
-    `INSERT INTO users (email, password_hash, name)
+    `INSERT INTO public.users (email, password_hash, name)
      VALUES ($1, $2, $3)
      RETURNING id, email, name, token_version`,
     [email, passwordHash, name || null]
   )
 
   const user = inserted.rows[0]
-  const userCount = await db.query('SELECT COUNT(*)::int AS total FROM users')
+  const userCount = await db.query('SELECT COUNT(*)::int AS total FROM public.users')
   const isFirstUser = Number(userCount.rows[0]?.total || 0) === 1
 
   if (isFirstUser) {
-    const adminGroup = await db.query(`SELECT id FROM user_groups WHERE name = 'Administrador' LIMIT 1`)
+    const adminGroup = await db.query(`SELECT id FROM public.user_groups WHERE name = 'Administrador' LIMIT 1`)
     if (adminGroup.rows[0]?.id) {
-      await db.query('INSERT INTO user_profiles (id, group_id) VALUES ($1, $2) ON CONFLICT (id) DO NOTHING', [user.id, adminGroup.rows[0].id])
+      await db.query('INSERT INTO public.user_profiles (id, group_id) VALUES ($1, $2) ON CONFLICT (id) DO NOTHING', [user.id, adminGroup.rows[0].id])
     } else {
-      await db.query('INSERT INTO user_profiles (id) VALUES ($1) ON CONFLICT (id) DO NOTHING', [user.id])
+      await db.query('INSERT INTO public.user_profiles (id) VALUES ($1) ON CONFLICT (id) DO NOTHING', [user.id])
     }
   } else {
-    await db.query('INSERT INTO user_profiles (id) VALUES ($1) ON CONFLICT (id) DO NOTHING', [user.id])
+    await db.query('INSERT INTO public.user_profiles (id) VALUES ($1) ON CONFLICT (id) DO NOTHING', [user.id])
   }
 
   const token = await signAuthToken(c.env, {
@@ -138,7 +138,7 @@ authRoutes.post('/auth/login', async (c) => {
     }
 
     const db = getDb(c.env)
-    const result = await db.query('SELECT * FROM users WHERE email = $1 LIMIT 1', [email])
+    const result = await db.query('SELECT * FROM public.users WHERE email = $1 LIMIT 1', [email])
     const user = result.rows[0]
 
     if (!user) {
@@ -196,8 +196,8 @@ authRoutes.post('/auth/forgot-password', async (c) => {
     const db = getDb(c.env)
     const result = await db.query(
       `SELECT u.id, u.email, up.phone
-         FROM users u
-         LEFT JOIN user_profiles up ON up.id = u.id
+         FROM public.users u
+         LEFT JOIN public.user_profiles up ON up.id = u.id
         WHERE u.email = $1
         LIMIT 1`,
       [email]
@@ -217,7 +217,7 @@ authRoutes.post('/auth/forgot-password', async (c) => {
 
     const settingsResult = await db.query(
       `SELECT evolution_api_url, evolution_api_key, evolution_shared_instance
-         FROM app_settings
+         FROM public.app_settings
         ORDER BY id DESC
         LIMIT 1`
     )
@@ -235,7 +235,7 @@ authRoutes.post('/auth/forgot-password', async (c) => {
     const passwordHash = await bcrypt.hash(newPassword, 10)
 
     await db.query(
-      `UPDATE users
+      `UPDATE public.users
           SET password_hash = $1,
               reset_password_token = NULL,
               reset_password_expires = NULL,
@@ -284,7 +284,7 @@ authRoutes.post('/auth/reset-password', async (c) => {
   const db = getDb(c.env)
   const result = await db.query(
     `SELECT id
-       FROM users
+       FROM public.users
       WHERE reset_password_token = $1
         AND reset_password_expires > NOW()
       LIMIT 1`,
@@ -298,7 +298,7 @@ authRoutes.post('/auth/reset-password', async (c) => {
 
   const passwordHash = await bcrypt.hash(password, 10)
   await db.query(
-    `UPDATE users
+    `UPDATE public.users
         SET password_hash = $1,
             reset_password_token = NULL,
             reset_password_expires = NULL,
@@ -316,6 +316,6 @@ authRoutes.get('/auth/me', authenticateToken, async (c) => {
     return c.json({ error: 'Acesso negado.' }, 401)
   }
   const db = getDb(c.env)
-  const result = await db.query('SELECT id, email, name FROM users WHERE id = $1 LIMIT 1', [user.id])
+  const result = await db.query('SELECT id, email, name FROM public.users WHERE id = $1 LIMIT 1', [user.id])
   return c.json(result.rows[0] || null)
 })

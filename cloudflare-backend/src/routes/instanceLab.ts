@@ -88,7 +88,7 @@ async function generateLabMessage({
     // Busca as ultimas 5 mensagens para dar contexto a IA
     const history = await db.query(
       `SELECT from_phone, content_summary
-         FROM warmer_logs
+         FROM public.warmer_logs
         WHERE warmer_id = $1
           AND message_type = 'text'
         ORDER BY sent_at DESC
@@ -132,8 +132,8 @@ Não use emojis excessivos. Seja natural como um humano.
 async function resolveGeminiAccess(userId: string, db: ReturnType<typeof getDb>, env: Bindings) {
   // Logic based on ai.ts
   const [profileResult, settingsResult] = await Promise.all([
-    db.query('SELECT use_global_ai, ai_api_key FROM user_profiles WHERE id = $1 LIMIT 1', [userId]),
-    db.query('SELECT global_ai_api_key FROM app_settings ORDER BY id DESC LIMIT 1'),
+    db.query('SELECT use_global_ai, ai_api_key FROM public.user_profiles WHERE id = $1 LIMIT 1', [userId]),
+    db.query('SELECT global_ai_api_key FROM public.app_settings ORDER BY id DESC LIMIT 1'),
   ])
 
   const profile = profileResult.rows[0] || {}
@@ -145,7 +145,7 @@ async function resolveGeminiAccess(userId: string, db: ReturnType<typeof getDb>,
   if (!useGlobalAi && userAiKey) return { apiKey: userAiKey }
   
   const pooled = await db.query(
-    `SELECT api_key FROM gemini_api_keys WHERE status = 'ativa' AND requests_count < 20 ORDER BY requests_count ASC LIMIT 1`
+    `SELECT api_key FROM public.gemini_api_keys WHERE status = 'ativa' AND requests_count < 20 ORDER BY requests_count ASC LIMIT 1`
   )
   if (pooled.rows[0]?.api_key) return { apiKey: pooled.rows[0].api_key }
   
@@ -312,7 +312,7 @@ async function ensureInstanceLabSchema(db: ReturnType<typeof getDb>) {
 async function getGlobalEvolutionConfig(db: ReturnType<typeof getDb>) {
   const result = await db.query(
     `SELECT evolution_api_url, evolution_api_key
-       FROM app_settings
+       FROM public.app_settings
        ORDER BY id DESC
        LIMIT 1`
   )
@@ -698,8 +698,8 @@ async function executeLabRun(env: Bindings, runId: string, baseUrl?: string) {
          w.sample_image_url,
          w.sample_document_url,
          w.sample_audio_url
-       FROM warmer_runs r
-       JOIN warmer_configs w ON w.id = r.warmer_id
+       FROM public.warmer_runs r
+       JOIN public.warmer_configs w ON w.id = r.warmer_id
        WHERE r.id = $1
        LIMIT 1`,
       [runId]
@@ -993,7 +993,7 @@ instanceLabRoutes.get('/admin/warmer', authenticateToken, checkAdmin, async (c) 
   const todayJoin = hasWarmerLogs
     ? `LEFT JOIN LATERAL (
       SELECT COUNT(*) AS total_events, ${failedEventsExpr} AS failed_events
-      FROM warmer_logs l
+       FROM public.warmer_logs l
       WHERE l.warmer_id = w.id
         AND l.sent_at >= CURRENT_DATE
     ) today ON TRUE`
@@ -1003,7 +1003,7 @@ instanceLabRoutes.get('/admin/warmer', authenticateToken, checkAdmin, async (c) 
 
   const recentRunJoin = hasWarmerRuns
     ? `LEFT JOIN LATERAL (
-      SELECT * FROM warmer_runs r
+      SELECT * FROM public.warmer_runs r
       WHERE r.warmer_id = w.id
         AND r.status IN ('queued', 'running')
       ORDER BY r.created_at DESC
@@ -1015,7 +1015,7 @@ instanceLabRoutes.get('/admin/warmer', authenticateToken, checkAdmin, async (c) 
 
   const lastRunJoin = hasWarmerRuns
     ? `LEFT JOIN LATERAL (
-      SELECT * FROM warmer_runs r
+      SELECT * FROM public.warmer_runs r
       WHERE r.warmer_id = w.id
       ORDER BY r.created_at DESC
       LIMIT 1
@@ -1036,7 +1036,7 @@ instanceLabRoutes.get('/admin/warmer', authenticateToken, checkAdmin, async (c) 
       last_run.status AS last_run_status_actual,
       last_run.finished_at AS last_run_finished_at,
       last_run.last_error AS last_run_error_actual
-    FROM warmer_configs w
+    FROM public.warmer_configs w
     ${todayJoin}
     ${recentRunJoin}
     ${lastRunJoin}
@@ -1062,7 +1062,7 @@ instanceLabRoutes.post('/admin/warmer', authenticateToken, checkAdmin, async (c)
 
   const pairId = crypto.randomUUID()
   const result = await db.query(
-    `INSERT INTO warmer_configs (
+    `INSERT INTO public.warmer_configs (
       id, user_id, name, instance_a_id, instance_b_id, phone_a, phone_b, status,
       default_delay_seconds, default_messages_per_run,
       sample_image_url, sample_document_url, sample_audio_url, notes
@@ -1105,7 +1105,7 @@ instanceLabRoutes.put('/admin/warmer/:id', authenticateToken, checkAdmin, async 
   }
 
   const result = await db.query(
-    `UPDATE warmer_configs SET
+    `UPDATE public.warmer_configs SET
       name = $1,
       instance_a_id = $2,
       instance_b_id = $3,
@@ -1150,7 +1150,7 @@ instanceLabRoutes.put('/admin/warmer/:id/status', authenticateToken, checkAdmin,
   const db = getDb(c.env)
   await ensureInstanceLabSchema(db)
   const result = await db.query(
-    `UPDATE warmer_configs
+    `UPDATE public.warmer_configs
         SET status = $1, updated_at = CURRENT_TIMESTAMP
       WHERE id = $2
       RETURNING *`,
@@ -1174,13 +1174,13 @@ instanceLabRoutes.get('/admin/warmer/:id/logs', authenticateToken, checkAdmin, a
 
   const query = hasRunIdColumn
     ? `SELECT l.*, r.status AS run_status
-         FROM warmer_logs l
-         LEFT JOIN warmer_runs r ON r.id = l.run_id
+         FROM public.warmer_logs l
+         LEFT JOIN public.warmer_runs r ON r.id = l.run_id
         WHERE l.warmer_id = $1
         ORDER BY l.sent_at DESC
         LIMIT 200`
     : `SELECT l.*, NULL::text AS run_status
-         FROM warmer_logs l
+         FROM public.warmer_logs l
         WHERE l.warmer_id = $1
         ORDER BY l.sent_at DESC
         LIMIT 200`
@@ -1197,7 +1197,7 @@ instanceLabRoutes.post('/admin/warmer/:id/force', authenticateToken, checkAdmin,
   const warmerId = safeTrim(c.req.param('id'))
   try {
     // Verificacao explicita antes de rodar
-    const check = await db.query('SELECT id FROM warmer_configs WHERE id = $1 LIMIT 1', [warmerId])
+    const check = await db.query('SELECT id FROM public.warmer_configs WHERE id = $1 LIMIT 1', [warmerId])
     if (!check.rows[0]) {
       return c.json({ error: `Par de instancia ${warmerId} nao encontrado.` }, 404)
     }

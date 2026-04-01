@@ -8,23 +8,23 @@ function safeTrim(value: unknown) {
 }
 
 async function ensureWebhookSchema(db: ReturnType<typeof getDb>) {
-  await db.query('ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS webhook_email_url TEXT')
-  await db.query('ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS use_global_webhooks BOOLEAN DEFAULT true')
-  await db.query('ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS global_webhook_email_url TEXT')
+  await db.query('ALTER TABLE public.user_profiles ADD COLUMN IF NOT EXISTS webhook_email_url TEXT')
+  await db.query('ALTER TABLE public.user_profiles ADD COLUMN IF NOT EXISTS use_global_webhooks BOOLEAN DEFAULT true')
+  await db.query('ALTER TABLE public.app_settings ADD COLUMN IF NOT EXISTS global_webhook_email_url TEXT')
 }
 
 async function resolveEmailWebhookUrl(db: ReturnType<typeof getDb>, userId: string, env: Bindings) {
   const [profileResult, appSettingsResult] = await Promise.all([
     db.query(
       `SELECT webhook_email_url
-         FROM user_profiles
+         FROM public.user_profiles
         WHERE id = $1
         LIMIT 1`,
       [userId]
     ),
     db.query(
       `SELECT global_webhook_email_url
-         FROM app_settings
+         FROM public.app_settings
         ORDER BY id DESC
         LIMIT 1`
     ),

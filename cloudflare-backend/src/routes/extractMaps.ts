@@ -31,10 +31,15 @@ function mapPlace(place: GooglePlacesTextResult) {
 }
 
 async function getMapsApiKey(db: ReturnType<typeof getDb>, env: Bindings) {
-  const settingsResult = await db.query('SELECT google_maps_api_key FROM app_settings ORDER BY id DESC LIMIT 1')
-  const settingsKey = String(settingsResult.rows[0]?.google_maps_api_key || '').trim()
-  const envKey = String(env.GOOGLE_MAPS_API_KEY || '').trim()
-  return settingsKey || envKey || null
+  try {
+    const settingsResult = await db.query('SELECT google_maps_api_key FROM public.app_settings ORDER BY id DESC LIMIT 1')
+    const settingsKey = String(settingsResult.rows[0]?.google_maps_api_key || '').trim()
+    const envKey = String(env.GOOGLE_MAPS_API_KEY || '').trim()
+    return settingsKey || envKey || null
+  } catch (err) {
+    console.error('[getMapsApiKey] Erro ao buscar chave da API:', err)
+    return String(env.GOOGLE_MAPS_API_KEY || '').trim() || null
+  }
 }
 
 export const extractMapsRoutes = new Hono<{ Bindings: Bindings; Variables: AppVariables }>()

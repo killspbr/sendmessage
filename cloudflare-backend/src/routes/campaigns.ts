@@ -55,9 +55,9 @@ async function ensureCampaignsTable(db: ReturnType<typeof getDb>) {
 
   await runSchemaBestEffort(async () => {
     await db.query(`
-      CREATE TABLE IF NOT EXISTS campaigns (
+      CREATE TABLE IF NOT EXISTS public.campaigns (
         id UUID PRIMARY KEY DEFAULT ${UUID_GEN},
-        user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
         name TEXT NOT NULL,
         status TEXT NOT NULL DEFAULT 'rascunho',
         channels JSONB NOT NULL DEFAULT '["whatsapp"]'::jsonb,
@@ -75,8 +75,8 @@ async function ensureCampaignsTable(db: ReturnType<typeof getDb>) {
     // MIGRAÇÃO CRÍTICA FORÇADA
     try {
       // 1. Garante que as colunas novas existem (para quem tem schema antigo sem variations/payload)
-      await db.query(`ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS variations JSONB NOT NULL DEFAULT '[]'::jsonb`).catch(() => {})
-      await db.query(`ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS delivery_payload JSONB`).catch(() => {})
+      await db.query(`ALTER TABLE public.campaigns ADD COLUMN IF NOT EXISTS variations JSONB NOT NULL DEFAULT '[]'::jsonb`).catch(() => {})
+      await db.query(`ALTER TABLE public.campaigns ADD COLUMN IF NOT EXISTS delivery_payload JSONB`).catch(() => {})
       
       // 2. Converte channels de Array de Texto (text[]) para JSONB se necessário
       // Usamos uma query bruta que tenta a conversão se o tipo for ARRAY
@@ -85,9 +85,9 @@ async function ensureCampaignsTable(db: ReturnType<typeof getDb>) {
         BEGIN
           IF EXISTS (
             SELECT 1 FROM information_schema.columns 
-            WHERE table_name = 'campaigns' AND column_name = 'channels' AND data_type = 'ARRAY'
+            WHERE table_name = 'campaigns' AND table_schema = 'public' AND column_name = 'channels' AND data_type = 'ARRAY'
           ) THEN
-            ALTER TABLE campaigns ALTER COLUMN channels TYPE JSONB USING to_jsonb(channels);
+            ALTER TABLE public.campaigns ALTER COLUMN channels TYPE JSONB USING to_jsonb(channels);
           END IF;
         END $$;
       `)
@@ -95,12 +95,12 @@ async function ensureCampaignsTable(db: ReturnType<typeof getDb>) {
       console.warn('[MigrationV3] Falha na migracao de colunas:', err)
     }
 
-    await db.query(`ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS interval_min_seconds INTEGER NOT NULL DEFAULT 30`).catch(() => {})
-    await db.query(`ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS interval_max_seconds INTEGER NOT NULL DEFAULT 90`).catch(() => {})
+    await db.query(`ALTER TABLE public.campaigns ADD COLUMN IF NOT EXISTS interval_min_seconds INTEGER NOT NULL DEFAULT 30`).catch(() => {})
+    await db.query(`ALTER TABLE public.campaigns ADD COLUMN IF NOT EXISTS interval_max_seconds INTEGER NOT NULL DEFAULT 90`).catch(() => {})
 
     await db.query(`
       CREATE INDEX IF NOT EXISTS idx_campaigns_user_created_at
-        ON campaigns(user_id, created_at DESC)
+        ON public.campaigns(user_id, created_at DESC)
     `)
   }, 'campaigns_v3')
 }
@@ -112,9 +112,9 @@ async function ensureContactHistoryTable(db: ReturnType<typeof getDb>) {
   const UUID_GEN = "gen_random_uuid()"
   await runSchemaBestEffort(async () => {
     await db.query(`
-      CREATE TABLE IF NOT EXISTS contact_send_history (
+      CREATE TABLE IF NOT EXISTS public.contact_send_history (
         id UUID PRIMARY KEY DEFAULT ${UUID_GEN},
-        user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+        user_id UUID REFERENCES public.users(id) ON DELETE CASCADE,
         campaign_id UUID,
         campaign_name TEXT,
         contact_name TEXT,
@@ -138,11 +138,11 @@ async function ensureContactHistoryTable(db: ReturnType<typeof getDb>) {
 async function resolveEvolutionConfigForUser(userId: string, db: ReturnType<typeof getDb>) {
   const [profileResult, globalSettingsResult] = await Promise.all([
     db.query(
-      'SELECT evolution_url, evolution_apikey, evolution_instance FROM user_profiles WHERE id = $1 LIMIT 1',
+      'SELECT evolution_url, evolution_apikey, evolution_instance FROM public.user_profiles WHERE id = $1 LIMIT 1',
       [userId]
     ),
     db.query(
-      'SELECT evolution_api_url, evolution_api_key, evolution_shared_instance FROM app_settings ORDER BY id DESC LIMIT 1'
+      'SELECT evolution_api_url, evolution_api_key, evolution_shared_instance FROM public.app_settings ORDER BY id DESC LIMIT 1'
     ),
   ])
 
@@ -169,7 +169,7 @@ campaignRoutes.get('/campaigns', authenticateToken, async (c) => {
   const db = getDb(c.env)
   await ensureCampaignsTable(db)
   const result = await db.query(
-    'SELECT * FROM campaigns WHERE user_id = $1 ORDER BY created_at DESC',
+    'SELECT * FROM public.campaigns WHERE user_id = $1 ORDER BY created_at DESC',
     [userId]
   )
 
@@ -203,7 +203,7 @@ campaignRoutes.post('/campaigns', authenticateToken, async (c) => {
   const columnsCheck = await db.query(`
     SELECT column_name, data_type 
     FROM information_schema.columns 
-    WHERE table_name = 'campaigns' AND column_name IN (
+    WHERE table_name = 'campaigns' AND table_schema = 'public' AND column_name IN (
       'variations', 'delivery_payload', 'channels', 
       'interval_min_seconds', 'interval_max_seconds', 'updated_at'
     )
@@ -257,7 +257,7 @@ campaignRoutes.post('/campaigns', authenticateToken, async (c) => {
     pIdx++
   }
 
-  const finalSql = `INSERT INTO campaigns (${cols.join(', ')}) VALUES (${valPlaceholders.join(', ')}) RETURNING *`
+  const finalSql = `INSERT INTO public.campaigns (${cols.join(', ')}) VALUES (${valPlaceholders.join(', ')}) RETURNING *`
 
   try {
     const result = await db.query(finalSql, params)
@@ -278,7 +278,7 @@ campaignRoutes.get('/campaigns/:id', authenticateToken, async (c) => {
   await ensureCampaignsTable(db)
 
   const result = await db.query(
-    'SELECT id, name, status, list_name, channels, delivery_payload, interval_min_seconds, interval_max_seconds, created_at FROM campaigns WHERE id = $1 AND user_id = $2 LIMIT 1',
+    'SELECT id, name, status, list_name, channels, delivery_payload, interval_min_seconds, interval_max_seconds, created_at FROM public.campaigns WHERE id = $1 AND user_id = $2 LIMIT 1',
     [campaignId, userId]
   )
   const campaign = result.rows[0]
@@ -319,7 +319,7 @@ campaignRoutes.put('/campaigns/:id', authenticateToken, async (c) => {
   const columnsCheck = await db.query(`
     SELECT column_name, data_type 
     FROM information_schema.columns 
-    WHERE table_name = 'campaigns' AND column_name IN (
+    WHERE table_name = 'campaigns' AND table_schema = 'public' AND column_name IN (
       'variations', 'delivery_payload', 'channels', 
       'interval_min_seconds', 'interval_max_seconds', 'updated_at'
     )
@@ -377,7 +377,7 @@ campaignRoutes.put('/campaigns/:id', authenticateToken, async (c) => {
     sets.push('updated_at = CURRENT_TIMESTAMP')
   }
   
-  const finalSql = `UPDATE campaigns SET ${sets.join(', ')} WHERE id = $${pIdx} AND user_id = $${pIdx + 1} RETURNING *`
+  const finalSql = `UPDATE public.campaigns SET ${sets.join(', ')} WHERE id = $${pIdx} AND user_id = $${pIdx + 1} RETURNING *`
   params.push(campaignId, userId)
 
   try {
@@ -396,7 +396,7 @@ campaignRoutes.delete('/campaigns/:id', authenticateToken, async (c) => {
   const campaignId = c.req.param('id')
   const db = getDb(c.env)
   await ensureCampaignsTable(db)
-  await db.query('DELETE FROM campaigns WHERE id = $1 AND user_id = $2', [campaignId, userId])
+  await db.query('DELETE FROM public.campaigns WHERE id = $1 AND user_id = $2', [campaignId, userId])
   return c.json({ ok: true })
 })
 
@@ -405,7 +405,7 @@ campaignRoutes.delete('/campaigns', authenticateToken, async (c) => {
   if (!userId) return c.json({ error: 'Acesso negado.' }, 401)
   const db = getDb(c.env)
   await ensureCampaignsTable(db)
-  await db.query('DELETE FROM campaigns WHERE user_id = $1', [userId])
+  await db.query('DELETE FROM public.campaigns WHERE user_id = $1', [userId])
   return c.json({ ok: true })
 })
 
@@ -418,12 +418,12 @@ campaignRoutes.post('/campaigns/:id/send', authenticateToken, async (c) => {
   await ensureCampaignsTable(db)
   await ensureContactHistoryTable(db)
 
-  const campaignResult = await db.query('SELECT * FROM campaigns WHERE id = $1 AND user_id = $2 LIMIT 1', [campaignId, userId])
+  const campaignResult = await db.query('SELECT * FROM public.campaigns WHERE id = $1 AND user_id = $2 LIMIT 1', [campaignId, userId])
   const campaign = campaignResult.rows[0]
   if (!campaign) return c.json({ error: 'Campanha não encontrada.' }, 404)
 
   const listResult = await db.query(
-    'SELECT id, name FROM lists WHERE user_id = $1 AND name = $2 LIMIT 1',
+    'SELECT id, name FROM public.lists WHERE user_id = $1 AND name = $2 LIMIT 1',
     [userId, campaign.list_name]
   )
   const list = listResult.rows[0]
@@ -431,7 +431,7 @@ campaignRoutes.post('/campaigns/:id/send', authenticateToken, async (c) => {
 
   const contactsResult = await db.query(
     `SELECT id, name, phone, email, category, cep, address, city, rating
-       FROM contacts
+       FROM public.contacts
       WHERE user_id = $1
         AND list_id = $2`,
     [userId, list.id]
@@ -460,7 +460,7 @@ campaignRoutes.post('/campaigns/:id/send', authenticateToken, async (c) => {
   }
 
   // Marca campanha como "em processamento"
-  await db.query('UPDATE campaigns SET status = $1 WHERE id = $2', ['enviando', campaignId])
+  await db.query('UPDATE public.campaigns SET status = $1 WHERE id = $2', ['enviando', campaignId])
 
   const baseUrl = new URL(c.req.url).origin
   // IMPORTANTE: Não fazer spread de c.env - bindings como R2 podem se perder
@@ -534,7 +534,7 @@ campaignRoutes.post('/campaigns/:id/send', authenticateToken, async (c) => {
 
     // Atualiza status final da campanha no DB
     const finalStatus = errors > 0 ? 'enviada_com_erros' : 'enviada'
-    await db.query('UPDATE campaigns SET status = $1 WHERE id = $2', [finalStatus, campaignId])
+    await db.query('UPDATE public.campaigns SET status = $1 WHERE id = $2', [finalStatus, campaignId])
     console.log(`[Campaigns] Disparo concluido: ${campaignId} | Enviados: ${sent} | Erros: ${errors}`)
   })()
 

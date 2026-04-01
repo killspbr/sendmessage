@@ -80,7 +80,7 @@ export async function resolveMediaUrl(opts: {
 
     try {
       const fileResult = await env.db.query(
-        `SELECT storage_path FROM user_uploaded_files WHERE public_token = $1 AND stored_name = $2 AND deleted_at IS NULL LIMIT 1`,
+        `SELECT storage_path FROM public.user_uploaded_files WHERE public_token = $1 AND stored_name = $2 AND deleted_at IS NULL LIMIT 1`,
         [parsed.token, parsed.storedName]
       )
 

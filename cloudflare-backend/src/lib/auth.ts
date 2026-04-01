@@ -38,11 +38,11 @@ export const authenticateToken: MiddlewareHandler<{ Bindings: Bindings; Variable
   const db = getDb(c.env)
   let user: any = null
   try {
-    const result = await db.query('SELECT token_version FROM users WHERE id = $1 LIMIT 1', [payload.id])
+    const result = await db.query('SELECT token_version FROM public.users WHERE id = $1 LIMIT 1', [payload.id])
     user = result.rows[0]
   } catch (error) {
     if (isSchemaMissingError(error)) {
-      const fallback = await db.query('SELECT id FROM users WHERE id = $1 LIMIT 1', [payload.id])
+      const fallback = await db.query('SELECT id FROM public.users WHERE id = $1 LIMIT 1', [payload.id])
       user = fallback.rows[0] || null
     } else {
       throw error
@@ -77,8 +77,8 @@ export const checkAdmin: MiddlewareHandler<{ Bindings: Bindings; Variables: AppV
   try {
     result = await db.query(
       `SELECT 1
-         FROM user_profiles up
-         JOIN user_groups ug ON ug.id = up.group_id
+         FROM public.user_profiles up
+         JOIN public.user_groups ug ON ug.id = up.group_id
         WHERE up.id = $1
           AND ug.name = 'Administrador'
         LIMIT 1`,

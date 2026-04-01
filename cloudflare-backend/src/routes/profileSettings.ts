@@ -18,8 +18,8 @@ async function isAdminUser(userId: string, db: ReturnType<typeof getDb>) {
   try {
     const result = await db.query(
       `SELECT 1
-         FROM user_profiles up
-         JOIN user_groups ug ON ug.id = up.group_id
+         FROM public.user_profiles up
+         JOIN public.user_groups ug ON ug.id = up.group_id
         WHERE up.id = $1
           AND ug.name = 'Administrador'
         LIMIT 1`,
@@ -35,8 +35,8 @@ async function isAdminUser(userId: string, db: ReturnType<typeof getDb>) {
 async function ensureUserProfile(userId: string, db: ReturnType<typeof getDb>) {
   await runBestEffortDdl(db, 'profileSettings.ensureUserProfile', [
     `
-      CREATE TABLE IF NOT EXISTS user_profiles (
-        id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+      CREATE TABLE IF NOT EXISTS public.user_profiles (
+        id UUID PRIMARY KEY REFERENCES public.users(id) ON DELETE CASCADE,
         display_name TEXT,
         phone TEXT,
         group_id UUID,
@@ -50,25 +50,25 @@ async function ensureUserProfile(userId: string, db: ReturnType<typeof getDb>) {
         updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
       )
     `,
-    `ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS display_name TEXT`,
-    `ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS phone TEXT`,
-    `ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS group_id UUID`,
-    `ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS use_global_ai BOOLEAN DEFAULT true`,
-    `ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS ai_api_key TEXT`,
-    `ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS company_info TEXT`,
-    `ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS evolution_url TEXT`,
-    `ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS evolution_apikey TEXT`,
-    `ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS evolution_instance TEXT`,
-    `ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP`,
+    `ALTER TABLE public.user_profiles ADD COLUMN IF NOT EXISTS display_name TEXT`,
+    `ALTER TABLE public.user_profiles ADD COLUMN IF NOT EXISTS phone TEXT`,
+    `ALTER TABLE public.user_profiles ADD COLUMN IF NOT EXISTS group_id UUID`,
+    `ALTER TABLE public.user_profiles ADD COLUMN IF NOT EXISTS use_global_ai BOOLEAN DEFAULT true`,
+    `ALTER TABLE public.user_profiles ADD COLUMN IF NOT EXISTS ai_api_key TEXT`,
+    `ALTER TABLE public.user_profiles ADD COLUMN IF NOT EXISTS company_info TEXT`,
+    `ALTER TABLE public.user_profiles ADD COLUMN IF NOT EXISTS evolution_url TEXT`,
+    `ALTER TABLE public.user_profiles ADD COLUMN IF NOT EXISTS evolution_apikey TEXT`,
+    `ALTER TABLE public.user_profiles ADD COLUMN IF NOT EXISTS evolution_instance TEXT`,
+    `ALTER TABLE public.user_profiles ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP`,
   ])
 
-  await db.query('INSERT INTO user_profiles (id) VALUES ($1) ON CONFLICT (id) DO NOTHING', [userId])
+  await db.query('INSERT INTO public.user_profiles (id) VALUES ($1) ON CONFLICT (id) DO NOTHING', [userId])
 }
 
 async function ensureAppSettingsTable(db: ReturnType<typeof getDb>) {
   await runBestEffortDdl(db, 'profileSettings.ensureAppSettingsTable', [
     `
-      CREATE TABLE IF NOT EXISTS app_settings (
+      CREATE TABLE IF NOT EXISTS public.app_settings (
         id SERIAL PRIMARY KEY,
         global_ai_api_key TEXT,
         evolution_api_url TEXT,
@@ -88,22 +88,22 @@ async function ensureAppSettingsTable(db: ReturnType<typeof getDb>) {
         updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
       )
     `,
-    `ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS global_ai_api_key TEXT`,
-    `ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS evolution_api_url TEXT`,
-    `ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS evolution_api_key TEXT`,
-    `ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS evolution_shared_instance TEXT`,
-    `ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS google_maps_api_key TEXT`,
-    `ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS gemini_model TEXT`,
-    `ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS gemini_api_version TEXT`,
-    `ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS gemini_temperature NUMERIC(3,2)`,
-    `ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS gemini_max_tokens INTEGER`,
-    `ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS send_interval_min INTEGER`,
-    `ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS send_interval_max INTEGER`,
-    `ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS default_daily_message_limit INTEGER DEFAULT 300`,
-    `ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS default_monthly_message_limit INTEGER DEFAULT 9000`,
-    `ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS default_upload_quota_bytes BIGINT DEFAULT 104857600`,
-    `ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS global_gemini_daily_limit INTEGER DEFAULT 5000`,
-    `ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP`,
+    `ALTER TABLE public.app_settings ADD COLUMN IF NOT EXISTS global_ai_api_key TEXT`,
+    `ALTER TABLE public.app_settings ADD COLUMN IF NOT EXISTS evolution_api_url TEXT`,
+    `ALTER TABLE public.app_settings ADD COLUMN IF NOT EXISTS evolution_api_key TEXT`,
+    `ALTER TABLE public.app_settings ADD COLUMN IF NOT EXISTS evolution_shared_instance TEXT`,
+    `ALTER TABLE public.app_settings ADD COLUMN IF NOT EXISTS google_maps_api_key TEXT`,
+    `ALTER TABLE public.app_settings ADD COLUMN IF NOT EXISTS gemini_model TEXT`,
+    `ALTER TABLE public.app_settings ADD COLUMN IF NOT EXISTS gemini_api_version TEXT`,
+    `ALTER TABLE public.app_settings ADD COLUMN IF NOT EXISTS gemini_temperature NUMERIC(3,2)`,
+    `ALTER TABLE public.app_settings ADD COLUMN IF NOT EXISTS gemini_max_tokens INTEGER`,
+    `ALTER TABLE public.app_settings ADD COLUMN IF NOT EXISTS send_interval_min INTEGER`,
+    `ALTER TABLE public.app_settings ADD COLUMN IF NOT EXISTS send_interval_max INTEGER`,
+    `ALTER TABLE public.app_settings ADD COLUMN IF NOT EXISTS default_daily_message_limit INTEGER DEFAULT 300`,
+    `ALTER TABLE public.app_settings ADD COLUMN IF NOT EXISTS default_monthly_message_limit INTEGER DEFAULT 9000`,
+    `ALTER TABLE public.app_settings ADD COLUMN IF NOT EXISTS default_upload_quota_bytes BIGINT DEFAULT 104857600`,
+    `ALTER TABLE public.app_settings ADD COLUMN IF NOT EXISTS global_gemini_daily_limit INTEGER DEFAULT 5000`,
+    `ALTER TABLE public.app_settings ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP`,
   ])
 }
 
@@ -117,7 +117,7 @@ async function getEffectiveLimitSnapshot(userId: string, db: ReturnType<typeof g
            default_monthly_message_limit,
            default_upload_quota_bytes,
            global_gemini_daily_limit
-         FROM app_settings
+         FROM public.app_settings
          ORDER BY id DESC
          LIMIT 1`
       ),
@@ -127,14 +127,14 @@ async function getEffectiveLimitSnapshot(userId: string, db: ReturnType<typeof g
            daily_message_limit,
            monthly_message_limit,
            upload_quota_bytes
-         FROM user_profiles
+         FROM public.user_profiles
          WHERE id = $1
          LIMIT 1`,
         [userId]
       ),
       db.query(
         `SELECT COUNT(*)::int AS total
-         FROM contact_send_history
+         FROM public.contact_send_history
          WHERE user_id = $1
            AND channel = 'whatsapp'
            AND ok = true
@@ -143,7 +143,7 @@ async function getEffectiveLimitSnapshot(userId: string, db: ReturnType<typeof g
       ),
       db.query(
         `SELECT COUNT(*)::int AS total
-         FROM contact_send_history
+         FROM public.contact_send_history
          WHERE user_id = $1
            AND channel = 'whatsapp'
            AND ok = true
@@ -152,7 +152,7 @@ async function getEffectiveLimitSnapshot(userId: string, db: ReturnType<typeof g
       ),
       db.query(
         `SELECT COUNT(*)::int AS total
-         FROM gemini_api_usage_logs
+         FROM public.gemini_api_usage_logs
          WHERE source = 'global-pool'
            AND data_solicitacao >= CURRENT_DATE`
       ),
@@ -195,7 +195,7 @@ profileSettingsRoutes.get('/profile', authenticateToken, async (c) => {
   if (!userId) return c.json({ error: 'Acesso negado.' }, 401)
   const db = getDb(c.env)
   await ensureUserProfile(userId, db)
-  const result = await db.query('SELECT * FROM user_profiles WHERE id = $1 LIMIT 1', [userId])
+  const result = await db.query('SELECT * FROM public.user_profiles WHERE id = $1 LIMIT 1', [userId])
   return c.json(result.rows[0] || {})
 })
 
@@ -206,8 +206,8 @@ profileSettingsRoutes.get('/profile/full', authenticateToken, async (c) => {
   await ensureUserProfile(userId, db)
   const profile = await db.query(
     `SELECT up.*, ug.name as group_name
-       FROM user_profiles up
-       LEFT JOIN user_groups ug ON up.group_id = ug.id
+       FROM public.user_profiles up
+       LEFT JOIN public.user_groups ug ON up.group_id = ug.id
       WHERE up.id = $1
       LIMIT 1`,
     [userId]
@@ -216,9 +216,9 @@ profileSettingsRoutes.get('/profile/full', authenticateToken, async (c) => {
   try {
     const permissions = await db.query(
       `SELECT p.code
-         FROM user_profiles up
-         JOIN group_permissions gp ON up.group_id = gp.group_id
-         JOIN permissions p ON gp.permission_id = p.id
+         FROM public.user_profiles up
+         JOIN public.group_permissions gp ON up.group_id = gp.group_id
+         JOIN public.permissions p ON gp.permission_id = p.id
         WHERE up.id = $1`,
       [userId]
     )
@@ -249,7 +249,7 @@ profileSettingsRoutes.post('/profile', authenticateToken, async (c) => {
   await ensureUserProfile(userId, db)
 
   await db.query(
-    `UPDATE user_profiles SET
+    `UPDATE public.user_profiles SET
         webhook_email_url = COALESCE($1, webhook_email_url),
         use_global_ai = COALESCE($2, use_global_ai),
         ai_api_key = COALESCE($3, ai_api_key),
@@ -283,7 +283,7 @@ profileSettingsRoutes.put('/profile', authenticateToken, async (c) => {
   await ensureUserProfile(userId, db)
 
   if (body.display_name !== undefined) {
-    await db.query('UPDATE users SET name = $1 WHERE id = $2', [body.display_name, userId])
+    await db.query('UPDATE public.users SET name = $1 WHERE id = $2', [body.display_name, userId])
   }
 
   const fields: string[] = []
@@ -318,14 +318,14 @@ profileSettingsRoutes.put('/profile', authenticateToken, async (c) => {
   }
 
   values.push(userId)
-  await db.query(`UPDATE user_profiles SET ${fields.join(', ')} WHERE id = $${count}`, values as unknown[])
+  await db.query(`UPDATE public.user_profiles SET ${fields.join(', ')} WHERE id = $${count}`, values as unknown[])
   return c.json({ ok: true })
 })
 
 profileSettingsRoutes.get('/settings', authenticateToken, async (c) => {
   const db = getDb(c.env)
   await ensureAppSettingsTable(db)
-  const result = await db.query('SELECT * FROM app_settings LIMIT 1')
+  const result = await db.query('SELECT * FROM public.app_settings LIMIT 1')
   return c.json(result.rows[0] || {})
 })
 
@@ -333,12 +333,12 @@ profileSettingsRoutes.post('/settings', authenticateToken, async (c) => {
   const body = await c.req.json().catch(() => ({} as any))
   const db = getDb(c.env)
   await ensureAppSettingsTable(db)
-  const check = await db.query('SELECT id FROM app_settings LIMIT 1')
+  const check = await db.query('SELECT id FROM public.app_settings LIMIT 1')
 
   let result
   if (check.rows.length > 0) {
     result = await db.query(
-      `UPDATE app_settings SET
+      `UPDATE public.app_settings SET
           global_ai_api_key = $1,
           evolution_api_url = $2,
           evolution_api_key = $3,
@@ -367,7 +367,7 @@ profileSettingsRoutes.post('/settings', authenticateToken, async (c) => {
     )
   } else {
     result = await db.query(
-      `INSERT INTO app_settings (
+      `INSERT INTO public.app_settings (
           global_ai_api_key,
           evolution_api_url,
           evolution_api_key,

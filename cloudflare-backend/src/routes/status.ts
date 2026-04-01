@@ -20,7 +20,7 @@ statusRoutes.get('/debug-errors', async (c) => {
     const { getDb } = await import('../lib/db');
     const db = getDb(c.env);
     if (!db) return c.json({ error: "No DB" }, 500);
-    const result = await db.query('SELECT run_at, status, provider_status, error_detail, payload_raw FROM contact_send_history ORDER BY run_at DESC LIMIT 5');
+    const result = await db.query('SELECT run_at, status, provider_status, error_detail, payload_raw FROM public.contact_send_history ORDER BY run_at DESC LIMIT 5');
     return c.json(result.rows);
   } catch(e: any) {
     return c.json({ error: e.message }, 500);
@@ -42,8 +42,8 @@ statusRoutes.get('/api/status/evo-test', authenticateToken, async (c) => {
   
   const db = getDb(c.env)
   const [profileResult, globalSettingsResult] = await Promise.all([
-    db.query('SELECT evolution_url, evolution_apikey, evolution_instance FROM user_profiles WHERE id = $1 LIMIT 1', [userId]),
-    db.query('SELECT evolution_api_url, evolution_api_key, evolution_shared_instance FROM app_settings ORDER BY id DESC LIMIT 1'),
+    db.query('SELECT evolution_url, evolution_apikey, evolution_instance FROM public.user_profiles WHERE id = $1 LIMIT 1', [userId]),
+    db.query('SELECT evolution_api_url, evolution_api_key, evolution_shared_instance FROM public.app_settings ORDER BY id DESC LIMIT 1'),
   ])
 
   const profile = profileResult.rows[0] || {}

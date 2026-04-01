@@ -17,7 +17,7 @@ presenceRoutes.post('/auth/presence', authenticateToken, async (c) => {
 
   const db = getDb(c.env)
   await db.query(
-    `INSERT INTO active_user_sessions (session_id, user_id, current_page, user_agent, last_seen_at)
+    `INSERT INTO public.active_user_sessions (session_id, user_id, current_page, user_agent, last_seen_at)
      VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)
      ON CONFLICT (session_id) DO UPDATE SET
        user_id = EXCLUDED.user_id,
@@ -27,7 +27,7 @@ presenceRoutes.post('/auth/presence', authenticateToken, async (c) => {
     [sessionId, user.id, currentPage || null, c.req.header('user-agent') || null]
   )
 
-  await db.query(`DELETE FROM active_user_sessions WHERE last_seen_at < CURRENT_TIMESTAMP - INTERVAL '1 day'`)
+  await db.query(`DELETE FROM public.active_user_sessions WHERE last_seen_at < CURRENT_TIMESTAMP - INTERVAL '1 day'`)
 
   return c.json({ ok: true })
 })
@@ -46,7 +46,7 @@ presenceRoutes.post('/auth/presence/logout', authenticateToken, async (c) => {
   }
 
   const db = getDb(c.env)
-  await db.query(`DELETE FROM active_user_sessions WHERE session_id = $1 AND user_id = $2`, [sessionId, user.id])
+  await db.query(`DELETE FROM public.active_user_sessions WHERE session_id = $1 AND user_id = $2`, [sessionId, user.id])
   return c.json({ ok: true })
 })
 
@@ -62,8 +62,8 @@ presenceRoutes.get('/admin/active-users', authenticateToken, checkAdmin, async (
        s.last_seen_at,
        u.email,
        u.name
-     FROM active_user_sessions s
-     JOIN users u ON u.id = s.user_id
+     FROM public.active_user_sessions s
+     JOIN public.users u ON u.id = s.user_id
      WHERE s.last_seen_at >= CURRENT_TIMESTAMP - ($1::text || ' seconds')::interval
      ORDER BY s.last_seen_at DESC`,
     [String(windowSeconds)]

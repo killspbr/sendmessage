@@ -25,9 +25,9 @@ async function parseJsonResponseSafe(response: Response) {
 
 async function ensureGeminiTables(db: ReturnType<typeof getDb>) {
   await db.query(`
-    CREATE TABLE IF NOT EXISTS gemini_api_keys (
+    CREATE TABLE IF NOT EXISTS public.gemini_api_keys (
       id SERIAL PRIMARY KEY,
-      user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+      user_id UUID REFERENCES public.users(id) ON DELETE CASCADE,
       nome TEXT NOT NULL,
       api_key TEXT NOT NULL,
       status TEXT DEFAULT 'ativa',
@@ -39,7 +39,7 @@ async function ensureGeminiTables(db: ReturnType<typeof getDb>) {
   `)
 
   await db.query(`
-    CREATE TABLE IF NOT EXISTS gemini_api_usage_logs (
+    CREATE TABLE IF NOT EXISTS public.gemini_api_usage_logs (
       id SERIAL PRIMARY KEY,
       key_id INTEGER,
       user_id UUID,
@@ -74,7 +74,7 @@ async function logGeminiUsage(
   }
 ) {
   await db.query(
-    'INSERT INTO gemini_api_usage_logs (key_id, user_id, module, resultado, erro, source, key_label) VALUES ($1,$2,$3,$4,$5,$6,$7)',
+    'INSERT INTO public.gemini_api_usage_logs (key_id, user_id, module, resultado, erro, source, key_label) VALUES ($1,$2,$3,$4,$5,$6,$7)',
     [
       keyId,
       userId,
@@ -97,10 +97,10 @@ async function incrementPoolKeyUsage(
   source: string,
   keyLabel?: string | null
 ) {
-  await db.query('UPDATE gemini_api_keys SET requests_count = requests_count + 1, ultimo_uso = NOW() WHERE id = $1', [keyId])
-  const keyCheck = await db.query('SELECT requests_count FROM gemini_api_keys WHERE id = $1', [keyId])
+  await db.query('UPDATE public.gemini_api_keys SET requests_count = requests_count + 1, ultimo_uso = NOW() WHERE id = $1', [keyId])
+  const keyCheck = await db.query('SELECT requests_count FROM public.gemini_api_keys WHERE id = $1', [keyId])
   if (Number(keyCheck.rows[0]?.requests_count || 0) >= 20) {
-    await db.query('UPDATE gemini_api_keys SET status = $1 WHERE id = $2', ['limite_atingido', keyId])
+    await db.query('UPDATE public.gemini_api_keys SET status = $1 WHERE id = $2', ['limite_atingido', keyId])
   }
 
   await logGeminiUsage(db, { keyId, userId, module, resultText, error, source, keyLabel: keyLabel || null })
@@ -108,8 +108,8 @@ async function incrementPoolKeyUsage(
 
 async function resolveGeminiAccessForUser(userId: string, db: ReturnType<typeof getDb>, env: Bindings): Promise<GeminiAccess> {
   const [profileResult, settingsResult] = await Promise.all([
-    db.query('SELECT use_global_ai, ai_api_key FROM user_profiles WHERE id = $1 LIMIT 1', [userId]),
-    db.query('SELECT global_ai_api_key FROM app_settings ORDER BY id DESC LIMIT 1'),
+    db.query('SELECT use_global_ai, ai_api_key FROM public.user_profiles WHERE id = $1 LIMIT 1', [userId]),
+    db.query('SELECT global_ai_api_key FROM public.app_settings ORDER BY id DESC LIMIT 1'),
   ])
 
   const profile = profileResult.rows[0] || {}
@@ -124,7 +124,7 @@ async function resolveGeminiAccessForUser(userId: string, db: ReturnType<typeof 
 
   const pooled = await db.query(
     `SELECT *
-       FROM gemini_api_keys
+       FROM public.gemini_api_keys
       WHERE status = 'ativa'
         AND requests_count < 20
       ORDER BY requests_count ASC, ultimo_uso ASC

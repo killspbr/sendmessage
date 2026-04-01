@@ -22,9 +22,9 @@ export async function ensureCloudflareSchema(db: any) {
 
   try {
     await db.query(`
-      CREATE TABLE IF NOT EXISTS active_user_sessions (
+      CREATE TABLE IF NOT EXISTS public.active_user_sessions (
         session_id TEXT PRIMARY KEY,
-        user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
         current_page TEXT,
         user_agent TEXT,
         last_seen_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -34,18 +34,18 @@ export async function ensureCloudflareSchema(db: any) {
 
     await db.query(`
       CREATE INDEX IF NOT EXISTS idx_active_user_sessions_last_seen_at
-      ON active_user_sessions(last_seen_at DESC)
+      ON public.active_user_sessions(last_seen_at DESC)
     `)
 
     await db.query(`
       CREATE INDEX IF NOT EXISTS idx_active_user_sessions_user_last_seen_at
-      ON active_user_sessions(user_id, last_seen_at DESC)
+      ON public.active_user_sessions(user_id, last_seen_at DESC)
     `)
 
     await db.query(`
-      CREATE TABLE IF NOT EXISTS user_uploaded_files (
+      CREATE TABLE IF NOT EXISTS public.user_uploaded_files (
         id UUID PRIMARY KEY DEFAULT ${UUID_GEN},
-        user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
         original_name TEXT NOT NULL,
         stored_name TEXT NOT NULL,
         mime_type TEXT NOT NULL,
@@ -61,20 +61,20 @@ export async function ensureCloudflareSchema(db: any) {
 
     await db.query(`
       CREATE INDEX IF NOT EXISTS idx_user_uploaded_files_user_created_at
-      ON user_uploaded_files(user_id, created_at DESC)
+      ON public.user_uploaded_files(user_id, created_at DESC)
     `)
 
     await db.query(`
-      CREATE TABLE IF NOT EXISTS active_user_sessions_cf_migration (
+      CREATE TABLE IF NOT EXISTS public.active_user_sessions_cf_migration (
         id SERIAL PRIMARY KEY,
         created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
       )
     `)
 
     await db.query(`
-      CREATE TABLE IF NOT EXISTS warmer_configs (
+      CREATE TABLE IF NOT EXISTS public.warmer_configs (
         id UUID PRIMARY KEY DEFAULT ${UUID_GEN},
-        user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
         name TEXT,
         instance_a_id TEXT NOT NULL,
         instance_b_id TEXT NOT NULL,
@@ -96,10 +96,10 @@ export async function ensureCloudflareSchema(db: any) {
     `)
 
     await db.query(`
-      CREATE TABLE IF NOT EXISTS warmer_runs (
+      CREATE TABLE IF NOT EXISTS public.warmer_runs (
         id UUID PRIMARY KEY DEFAULT ${UUID_GEN},
-        warmer_id UUID NOT NULL REFERENCES warmer_configs(id) ON DELETE CASCADE,
-        initiated_by UUID REFERENCES users(id) ON DELETE SET NULL,
+        warmer_id UUID NOT NULL REFERENCES public.warmer_configs(id) ON DELETE CASCADE,
+        initiated_by UUID REFERENCES public.users(id) ON DELETE SET NULL,
         status TEXT NOT NULL DEFAULT 'queued' CHECK (status IN ('queued', 'running', 'completed', 'failed')),
         steps_total INTEGER NOT NULL DEFAULT 1,
         steps_completed INTEGER NOT NULL DEFAULT 0,
@@ -113,10 +113,10 @@ export async function ensureCloudflareSchema(db: any) {
     `)
 
     await db.query(`
-      CREATE TABLE IF NOT EXISTS warmer_logs (
+      CREATE TABLE IF NOT EXISTS public.warmer_logs (
         id BIGSERIAL PRIMARY KEY,
-        warmer_id UUID NOT NULL REFERENCES warmer_configs(id) ON DELETE CASCADE,
-        run_id UUID REFERENCES warmer_runs(id) ON DELETE SET NULL,
+        warmer_id UUID NOT NULL REFERENCES public.warmer_configs(id) ON DELETE CASCADE,
+        run_id UUID REFERENCES public.warmer_runs(id) ON DELETE SET NULL,
         from_phone TEXT NOT NULL,
         to_phone TEXT NOT NULL,
         from_instance TEXT,
