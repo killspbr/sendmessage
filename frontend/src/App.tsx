@@ -132,7 +132,7 @@ function App() {
   const [forceUpdate, setForceUpdate] = useState(false)
   const [isSearching, setIsSearching] = useState(false)
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
-  const APP_VERSION = '1.1.0'
+  const APP_VERSION = '1.1.4'
 
   // Verificar tokens de redefinição de senha na URL
   useEffect(() => {

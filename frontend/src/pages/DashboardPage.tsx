@@ -218,7 +218,7 @@ export function DashboardPage({
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 16v1a3 3 0 0 0 3 3h10a3 3 0 0 0 3-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
               </svg>
             </a>
-            <span className="text-[10px] text-emerald-100/90 font-medium px-2">v1.1.0 - 31/03/2026 as 20:59</span>
+            <span className="text-[10px] text-emerald-100/90 font-medium px-2">v1.1.4 - 31/03/2026 as 22:55</span>
           </div>
         </div>
       </div>

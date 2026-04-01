@@ -1,5 +1,5 @@
 /**
- * SendMessage Maps Extractor — Content Script (Refatorado v1.1.0)
+ * SendMessage Maps Extractor — Content Script (Refatorado v1.1.4)
  * Sistema Robusto de Extração via Máquina de Estados
  */
 ; (function () {
@@ -562,7 +562,7 @@
             MapsState.isStopRequested = false;
             MapsState.isRunning = true;
             this.updateUI(true);
-            MapsLogger.add("🚀 Iniciando Motor de Extração v1.1", "ok");
+            MapsLogger.add("🚀 Iniciando Motor de Extração v1.1.4", "ok");
             let consecutiveEmptyScrolls = 0;
 
             try {
