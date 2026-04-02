@@ -1,5 +1,5 @@
 import pg from 'pg'
-const { Client, Pool } = pg as any
+const { Pool } = pg as any
 import type { Bindings } from '../types'
 
 // Not using global pool because Cloudflare isolates don't always handle it well with Hyperdrive.
@@ -22,6 +22,8 @@ function isRetryableConnectionError(error: unknown) {
   ) return true
 
   return (
+    message.includes('server connection attempt failed') ||
+    message.includes('connection refused') ||
     message.includes('timeout exceeded when trying to connect') ||
     message.includes('connection terminated unexpectedly') ||
     message.includes('connection closed') ||
@@ -62,6 +64,23 @@ async function withTimeout<T>(promise: Promise<T>, timeoutMs: number) {
 }
 
 let dbInstance: { query: (text: string, params?: any[]) => Promise<any> } | null = null
+let poolInstance: any = null
+let poolConnKey = ''
+
+function getPool(connectionString: string) {
+  if (!poolInstance || poolConnKey !== connectionString) {
+    poolConnKey = connectionString
+    poolInstance = new Pool({
+      connectionString,
+      max: 10,
+      min: 1,
+      idleTimeoutMillis: 30_000,
+      connectionTimeoutMillis: 8_000,
+      maxUses: 500,
+    })
+  }
+  return poolInstance
+}
 
 export function getDb(env: Bindings) {
   if (dbInstance) return dbInstance
@@ -78,28 +97,24 @@ export function getDb(env: Bindings) {
       let lastError: any = null
 
       for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-        const client = new Client({
-          connectionString,
-          connectionTimeoutMillis: 5000,
-        })
+        const pool = getPool(connectionString)
 
         try {
-          // Connect phase
-          await withTimeout(client.connect(), 6000)
-
-          // Query phase
-          const result = await withTimeout(client.query(text, params), isReadOnly ? 8000 : 10000)
-          
-          // Cleanup
-          client.end().catch(() => {})
+          const result = await withTimeout(pool.query(text, params), isReadOnly ? 9000 : 12000)
           return result
         } catch (error) {
-          client.end().catch(() => {})
           lastError = error
           
           if (!isRetryableConnectionError(error) || attempt >= maxAttempts) {
             throw error
           }
+
+          // Recria pool para limpar conexões possivelmente corrompidas.
+          try {
+            await pool.end()
+          } catch {}
+          poolInstance = null
+          poolConnKey = ''
 
           const delay = 100 + attempt * 200
           console.warn(`[DB] Latencia/Instabilidade detectada (${attempt}/${maxAttempts}). Retentando em ${delay}ms...`)
