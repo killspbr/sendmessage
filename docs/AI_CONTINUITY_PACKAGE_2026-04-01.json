@@ -1,0 +1,49 @@
+{
+  "project": "sendmessage",
+  "workspace": "G:\\Dev\\sendmessage",
+  "date": "2026-04-01",
+  "branch": "main",
+  "entrypoints": {
+    "frontend_url": "https://sendmessage-frontend.pages.dev",
+    "backend_url": "https://sendmessage-backend.claudio-rodrigues-seconci.workers.dev"
+  },
+  "core_docs": [
+    "G:/Dev/sendmessage/docs/AI_HANDOFF_2026-03-29.md",
+    "G:/Dev/sendmessage/docs/ROUTE_INVENTORY_2026-04-01.md",
+    "G:/Dev/sendmessage/docs/AI_CONTINUITY_PACKAGE_2026-04-01.md"
+  ],
+  "recent_commits": [
+    "fea4b80",
+    "976d39a",
+    "3d6a1e5",
+    "9f1a42c",
+    "1bc29fc"
+  ],
+  "critical_endpoints": [
+    "/api/auth/me",
+    "/api/profile",
+    "/api/lists",
+    "/api/history",
+    "/api/schedules/professional",
+    "/api/queue/professional",
+    "/api/admin/users",
+    "/api/admin/queue",
+    "/api/status/evo-test"
+  ],
+  "cors_preflight_endpoints": [
+    {
+      "method": "OPTIONS",
+      "path": "/api/auth/login"
+    },
+    {
+      "method": "OPTIONS",
+      "path": "/api/lists"
+    }
+  ],
+  "open_risks": [
+    "Runtime DDL desativado exige migrações formais",
+    "Histórico sem paginação pode elevar latência",
+    "Revisar logs de body para evitar exposição de dados sensíveis"
+  ]
+}
+
