@@ -1,6 +1,10 @@
 import type { Pool } from 'pg'
 
-const ENABLE_RUNTIME_SCHEMA_ENSURE = true
+// IMPORTANTE:
+// Em Cloudflare Workers + Hyperdrive, rodar DDL no caminho de request
+// pode causar tempestade de conexoes/locks em cold starts.
+// Deixamos desabilitado por padrao em producao e usamos migracao manual/controlada.
+const ENABLE_RUNTIME_SCHEMA_ENSURE = false
 let schemaEnsureAttempted = false
 
 function isSkippableSchemaError(error: unknown) {
