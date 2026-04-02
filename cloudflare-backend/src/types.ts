@@ -11,6 +11,7 @@ export type Bindings = {
   SYSTEM_TIMEZONE?: string
   SYSTEM_TIMEZONE_LABEL?: string
   ACTIVE_USER_WINDOW_SECONDS?: string
+  WARMER_CRON_ENABLED?: string
 }
 
 export type AppVariables = {

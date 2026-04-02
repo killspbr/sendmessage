@@ -100,7 +100,7 @@ export function getDb(env: Bindings) {
         const pool = getPool(connectionString)
 
         try {
-          const result = await withTimeout(pool.query(text, params), isReadOnly ? 9000 : 12000)
+          const result = await withTimeout(pool.query(text, params), isReadOnly ? 20000 : 25000)
           return result
         } catch (error) {
           lastError = error

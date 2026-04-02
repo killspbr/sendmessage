@@ -137,6 +137,11 @@ app.onError((error, c) => {
 export default {
   fetch: app.fetch,
   async scheduled(event: any, env: Bindings, ctx: ExecutionContext) {
+    if (String(env.WARMER_CRON_ENABLED || '').trim().toLowerCase() !== 'true') {
+      console.log('[ScheduledTrigger] Warmer cron desabilitado por configuracao.')
+      return
+    }
+
     console.log(`[ScheduledTrigger] Executing at ${new Date().toISOString()}. Event: ${event.cron || 'manual'}`)
     
     // Importacao dinamica para evitar problemas de carregamento circular se houver
