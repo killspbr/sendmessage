@@ -37,14 +37,11 @@ export function useAuth(): UseAuthResult {
             setCurrentUser(null)
           } else {
             console.warn(
-              '[useAuth] Falha transitoria ao validar token. Mantendo cache local de sessao.',
+              '[useAuth] Falha ao validar token no backend. Entrando em modo seguro (sem sessao em cache).',
               e?.message
             )
-            try {
-              setCurrentUser(JSON.parse(storedUser))
-            } catch {
-              setCurrentUser(null)
-            }
+            setCurrentUser(null)
+            setAuthError('Nao foi possivel validar sua sessao com o servidor. Tente entrar novamente em instantes.')
           }
         }
       }

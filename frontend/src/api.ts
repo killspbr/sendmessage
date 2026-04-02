@@ -7,7 +7,8 @@ export const API_URL = import.meta.env.VITE_API_URL ||
     ? 'https://sendmessage-backend.claudio-rodrigues-seconci.workers.dev'
     : 'http://localhost:4000')
 
-const MAX_CONCURRENT_API_REQUESTS = 4
+// Mantemos baixa concorrencia para reduzir pico de conexoes no backend Cloudflare + Hyperdrive.
+const MAX_CONCURRENT_API_REQUESTS = 2
 let activeApiRequests = 0
 const apiRequestQueue: Array<() => void> = []
 
