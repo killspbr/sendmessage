@@ -215,7 +215,7 @@ adminUsersRoutes.get('/permissions/me', authenticateToken, async (c) => {
     [user.id]
   )
 
-  return c.json(result.rows.map((row) => row.code))
+  return c.json(result.rows.map((row: { code: string }) => row.code))
 })
 
 adminUsersRoutes.get('/admin/users', authenticateToken, checkAdmin, async (c) => {
