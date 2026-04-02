@@ -36,7 +36,7 @@ statusRoutes.get('/_migration-status', (c) => {
   })
 })
 
-statusRoutes.get('/api/status/evo-test', authenticateToken, async (c) => {
+statusRoutes.get('/status/evo-test', authenticateToken, async (c) => {
   const userId = c.get('user')?.id
   if (!userId) return c.json({ error: 'Auth required' }, 401)
   
