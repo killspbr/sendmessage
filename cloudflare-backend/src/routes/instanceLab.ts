@@ -499,7 +499,7 @@ async function createRunLog({
   responseTimeMs?: number | null
   errorDetail?: string | null
 }) {
-  const columns = await getTableColumns(db, 'public.warmer_logs')
+  const columns = await getTableColumns(db, 'warmer_logs')
   const values: unknown[] = []
   const fields: string[] = []
 
@@ -537,6 +537,7 @@ async function executeRunStep({
   pair,
   evolutionUrl,
   apiKey,
+  env,
   stepIndex,
   stepsTotal,
   preferredStartSide,
@@ -547,6 +548,7 @@ async function executeRunStep({
   pair: PairRecord
   evolutionUrl: string
   apiKey: string
+  env: Bindings
   stepIndex: number
   stepsTotal: number
   preferredStartSide: 'a' | 'b' | null
@@ -568,7 +570,7 @@ async function executeRunStep({
       const dynamicMessage = await generateLabMessage({
         db,
         userId,
-        env: (db as any).env || {}, // Fallback se env não estiver no DB proxy
+        env,
         fromPhone: direction.fromPhone,
         toPhone: direction.toPhone,
         pairId: pair.id
@@ -781,6 +783,7 @@ async function executeLabRun(env: Bindings, runId: string, baseUrl?: string) {
         pair,
         evolutionUrl: config.url,
         apiKey: config.apiKey,
+        env,
         stepIndex,
         stepsTotal: totalSteps,
         preferredStartSide: run.preferred_start_side,
@@ -966,10 +969,8 @@ export async function handleScheduledWarming(env: Bindings) {
         stepDelaySeconds: 1 
       })
 
-      // Executa no background (no cron, o ctx ja foi passado ou aguardamos a promise)
-      // Aqui usamos o backgroundEnv que ja criamos antes para garantir R2
-      const backgroundEnv = { UPLOADS_BUCKET: env.UPLOADS_BUCKET, db }
-      await executeLabRun(backgroundEnv as any, String(run.id), '')
+      // Executa com o env real do Worker para manter todos os bindings ativos.
+      await executeLabRun(env, String(run.id), '')
       
     } catch (err) {
       console.error(`[ScheduledWarming] Erro ao processar par ${pair.id}:`, err)
@@ -1203,10 +1204,7 @@ instanceLabRoutes.post('/admin/warmer/:id/force', authenticateToken, checkAdmin,
     }
 
     const run = await createRunRecord(db, warmerId, user?.id || null)
-    // GARANTIA DE BINDINGS NO BACKGROUND (PASSAR OBJETO ENV CORRETO)
-    const workerEnv = c.env
-    const backgroundEnv = { UPLOADS_BUCKET: workerEnv.UPLOADS_BUCKET, db }
-    runInBackground(c, executeLabRun(backgroundEnv as any, String(run.id), new URL(c.req.url).origin))
+    runInBackground(c, executeLabRun(c.env, String(run.id), new URL(c.req.url).origin))
     return c.json({ success: true, run })
   } catch (error) {
     console.error(`[InstanceLab] Erro ao forcar rodada para ${warmerId}:`, error)
@@ -1230,10 +1228,7 @@ instanceLabRoutes.post('/admin/warmer/:id/manual', authenticateToken, checkAdmin
       stepDelaySeconds: 1,
       preferredStartSide: side,
     })
-    // GARANTIA DE BINDINGS NO BACKGROUND (PASSAR OBJETO ENV CORRETO)
-    const workerEnv = c.env
-    const backgroundEnv = { UPLOADS_BUCKET: workerEnv.UPLOADS_BUCKET, db }
-    runInBackground(c, executeLabRun(backgroundEnv as any, String(run.id), new URL(c.req.url).origin))
+    runInBackground(c, executeLabRun(c.env, String(run.id), new URL(c.req.url).origin))
     return c.json({
       success: true,
       run,
