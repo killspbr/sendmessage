@@ -62,6 +62,23 @@ export function useChat() {
     }
   }, [])
 
+  const sendWhatsAppStatus = useCallback(async (instance: string, data: { text?: string, mediaUrl?: string, mediaType?: 'image' | 'video' }) => {
+    if (!instance) return
+    setLoadingChat(true)
+    try {
+      const res = await apiFetch<any>(`/chat/status-send/${instance}`, {
+        method: 'POST',
+        body: JSON.stringify(data)
+      })
+      return !!res.ok
+    } catch (err) {
+      console.warn('[useChat] Erro ao enviar status:', err)
+      return false
+    } finally {
+      setLoadingChat(false)
+    }
+  }, [])
+
   return { 
     labels, 
     groups, 
@@ -69,6 +86,7 @@ export function useChat() {
     fetchLabels, 
     fetchGroups,
     setupWebhook,
+    sendWhatsAppStatus,
     setLabels,
     setGroups
   }

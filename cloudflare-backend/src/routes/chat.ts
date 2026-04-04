@@ -119,3 +119,59 @@ chatRoutes.post('/webhook-setup/:instance', authenticateToken, async (c) => {
     return c.json({ error: `Erro no setup do webhook: ${error.message}` }, 500)
   }
 })
+
+/**
+ * POST /api/chat/status/send/:instance
+ * Envia um Status (Story) no WhatsApp para o broadcast do proprio numero
+ */
+chatRoutes.post('/status-send/:instance', authenticateToken, async (c) => {
+  const instance = c.req.param('instance')
+  const db = getDb(c.env)
+  const body = await c.req.json().catch(() => ({}))
+  
+  const settings = await db.query('SELECT evolution_url, evolution_key FROM public.settings LIMIT 1')
+  if (settings.rows.length === 0) return c.json({ error: 'Configuracao ausente.' }, 400)
+
+  const { evolution_url, evolution_key } = settings.rows[0]
+  const baseURL = evolution_url.replace(/\/$/, '')
+  
+  const text = body.text || ''
+  const mediaUrl = body.mediaUrl
+  const mediaType = body.mediaType || 'image'
+
+  const endpoint = mediaUrl ? '/message/sendMedia' : '/message/sendText'
+  const url = `${baseURL}${endpoint}/${instance}`
+
+  const payload: any = {
+    number: 'status@broadcast',
+  }
+
+  if (mediaUrl) {
+    payload.media = mediaUrl
+    payload.mediatype = mediaType
+    payload.caption = text
+    payload.mimetype = mediaType === 'image' ? 'image/jpeg' : 'video/mp4'
+  } else {
+    payload.text = text
+  }
+
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 
+        'apikey': evolution_key,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(payload)
+    })
+
+    const data = await response.json()
+    return c.json({ 
+        ok: response.ok, 
+        message: 'Status processado pela Evolution.',
+        evolution_response: data
+    })
+  } catch (error: any) {
+    return c.json({ error: `Erro ao enviar status: ${error.message}` }, 500)
+  }
+})

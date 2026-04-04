@@ -137,6 +137,46 @@ export function SettingsPage({
         </button>
       </div>
 
+      <div className="p-4 rounded-2xl bg-indigo-50 border border-indigo-100 flex flex-col gap-3 mb-2">
+        <div className="flex flex-col gap-0.5">
+          <span className="text-[11px] font-bold text-indigo-800">Maturação de Status (Anti-Ban)</span>
+          <span className="text-[10px] text-slate-500 leading-tight">Poste fotos/vídeos no Status do WhatsApp via API para aquecer o chip e evitar bloqueios.</span>
+        </div>
+        
+        <div className="flex flex-col gap-2">
+            <input 
+                id="status-text"
+                placeholder="Legenda do Status (ex: Novidade chegando!)"
+                className="w-full h-8 px-3 rounded-lg border border-indigo-200 text-[11px] outline-none"
+            />
+            <div className="flex gap-2">
+                <input 
+                    id="status-media"
+                    placeholder="URL da Imagem ou Vídeo (opcional)"
+                    className="flex-1 h-8 px-3 rounded-lg border border-indigo-200 text-[11px] outline-none"
+                />
+                <button
+                    type="button"
+                    disabled={chat.loadingChat || !instanceName}
+                    onClick={async () => {
+                        const text = (document.getElementById('status-text') as HTMLInputElement).value
+                        const media = (document.getElementById('status-media') as HTMLInputElement).value
+                        const ok = await chat.sendWhatsAppStatus(instanceName, { 
+                            text, 
+                            mediaUrl: media || undefined, 
+                            mediaType: 'image' 
+                        })
+                        if (ok) alert('Status enviado com sucesso! Seu chip está sendo aquecido.')
+                        else alert('Falha ao enviar status. Verifique as configurações.')
+                    }}
+                    className="h-8 px-4 rounded-lg bg-indigo-600 text-white text-[11px] font-bold hover:bg-indigo-700 transition-all disabled:opacity-50"
+                >
+                    {chat.loadingChat ? 'Enviando...' : 'Publicar Status'}
+                </button>
+            </div>
+        </div>
+      </div>
+
       <div className="flex flex-col gap-1">
         <label className="text-[10px] font-medium text-slate-600">Evolution API URL</label>
         <input
