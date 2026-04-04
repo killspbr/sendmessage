@@ -87,8 +87,9 @@ app.use('*', async (c, next) => {
   await ensureCloudflareSchema(db)
 
   // 2. Reparo proativo de permissao se detectarmos problemas repetitivos
-  // Tentamos rodar um GRANT apenas periodicamente (sample), agora em background para não travar a request.
-  if (Math.random() < 0.05) {
+  // Aumentamos para 20% temporariamente enquanto o usuario estabiliza o banco.
+  // Alem disso, rodamos síncrono no PRIMEIRO acesso se o schema ainda nao foi verificado.
+  if (Math.random() < 0.20) {
       const repairTask = (async () => {
           try {
               const dbInternal = getDb(c.env)

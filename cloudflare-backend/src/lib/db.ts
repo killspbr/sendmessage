@@ -100,6 +100,18 @@ export function getDb(env: Bindings) {
         const pool = getPool(connectionString)
 
         try {
+          // Otimizacao: Antes de rodar a query principal em ambientes com erro de catálogo, 
+          // garantimos que o search_path seja explicitamente 'public'.
+          // Usamos 'SET LOCAL' para que dure apenas na transacao se houver, ou na sessao do pooler.
+          if (attempt === 1 && !text.toLowerCase().includes('set search_path')) {
+            try {
+              await pool.query('SET search_path TO public, pg_catalog')
+            } catch (pathErr) {
+              // Se falhar o SET path, apenas logamos e tentamos a query original (melhor esforço).
+              console.warn('[DB] Falha ao definir search_path:', (pathErr as any).message)
+            }
+          }
+          
           const result = await withTimeout(pool.query(text, params), isReadOnly ? 20000 : 25000)
           return result
         } catch (error) {
