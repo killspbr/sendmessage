@@ -2,7 +2,7 @@ import { jwtVerify } from 'jose'
 import type { MiddlewareHandler } from 'hono'
 import type { Bindings, AppVariables } from '../types'
 import { getDb } from './db'
-import { isSchemaMissingError } from './ddl'
+import { isSchemaMissingError, isSchemaPermissionError } from './ddl'
 
 const DEFAULT_JWT_SECRET = 'sendmessage-cloudflare-jwt-secret-change-me-2026'
 let warnedWeakJwtSecret = false
@@ -91,6 +91,9 @@ export const checkAdmin: MiddlewareHandler<{ Bindings: Bindings; Variables: AppV
   } catch (error) {
     if (isSchemaMissingError(error)) {
       return c.json({ error: 'Controle de grupos/permissoes indisponivel no banco atual.' }, 503)
+    }
+    if (isSchemaPermissionError(error)) {
+        return c.json({ error: 'Falha de permissao ao validar administrador. Verifique o esquema public do banco.' }, 503)
     }
     throw error
   }

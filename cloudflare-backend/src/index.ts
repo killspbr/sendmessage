@@ -151,13 +151,22 @@ app.route('/api/chat', chatRoutes)
 app.route('/api/webhooks', webhookRoutes)
 
 app.notFound((c) => c.json({ error: 'Rota nao encontrada no backend Cloudflare.' }, 404))
-app.onError((error, c) => {
-  console.error('[CloudflareBackend] Erro nao tratado:', error)
-  const technical =
-    typeof (error as any)?.message === 'string'
-      ? (error as any).message
-      : String(error || 'Erro interno')
-  return c.json({ error: 'Erro interno no backend Cloudflare.', technical }, 500, CORS_HEADERS)
+app.onError((err, c) => {
+  console.error('[GlobalError]', err)
+  
+  // Garantimos CORS mesmo em erro 500 para o desenvolvedor ver o erro no console
+  c.header('Access-Control-Allow-Origin', '*')
+  c.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
+  c.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-api-key')
+
+  if (err instanceof Error && err.message.includes('timeout')) {
+    return c.json({ error: 'Erro de timeout no banco de dados. Tente novamente em instantes.', details: err.message }, 504)
+  }
+
+  return c.json({ 
+    error: 'Erro interno no servidor', 
+    message: err instanceof Error ? err.message : String(err)
+  }, 500)
 })
 
 export default {

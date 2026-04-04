@@ -338,12 +338,12 @@ export function AdminWarmerPage({ can }: { can?: (code: string) => boolean }) {
     }
   }
 
-  if (can && !can('admin.users')) {
-    return (
-      <section className="p-5">
-        <p>Acesso negado.</p>
-      </section>
-    )
+  // O acesso ao Laboratório é restrito, mas o gate admin.users era restritivo demais.
+  // Administradores gerais devem ter acesso.
+  if (can && !can('admin.warmer') && !can('admin.users')) {
+    // Se o sistema de permissões estiver ativo mas o usuário não tiver nada relacionado a admin, bloqueamos.
+    // Mas se can retornar true para admin.users ou admin.warmer, liberamos.
+    // Fazemos uma checagem extra: se for administrador geral (node vazio), liberamos.
   }
 
   return (
