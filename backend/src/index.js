@@ -1578,7 +1578,7 @@ app.post('/api/ai/address-from-cep', async (req, res) => {
 });
 
 // Dispara uma campanha por ID usando n8n, baseado no schema lists/contacts do Postgres
-app.post('/api/campaigns/:id/send', authenticateToken, async (req, res) => {
+app.post('/api/campaigns/:id/send', authenticateScheduler, async (req, res) => {
   try {
     const campaignId = req.params.id;
     if (!campaignId) {
@@ -1728,307 +1728,36 @@ app.post('/api/campaigns/:id/send', authenticateToken, async (req, res) => {
   }
 });
 
-app.post('/api/campaigns/:id/send', authenticateToken, async (req, res) => {
+// Agendar uma campanha (Database storage)
+app.post('/api/campaigns/:id/schedule', authenticateToken, async (req, res) => {
   try {
+    const { scheduled_at } = req.body;
     const campaignId = req.params.id;
-    if (!campaignId) {
-      return res.status(400).json({ error: 'campaignId é obrigatório.' });
+
+    if (!scheduled_at) {
+      return res.status(400).json({ error: 'Data de agendamento é obrigatória.' });
     }
 
-    // 1) Buscar campanha
+    // Verificar se a campanha existe e pertence ao usuário
     const campaignResult = await query(
-      'SELECT * FROM campaigns WHERE id = $1 AND user_id = $2',
+      'SELECT id FROM campaigns WHERE id = $1 AND user_id = $2',
       [campaignId, req.user.id]
     );
-    const campaign = campaignResult.rows[0];
 
-    if (!campaign) {
+    if (campaignResult.rows.length === 0) {
       return res.status(404).json({ error: 'Campanha não encontrada.' });
     }
 
-    // 2) Buscar lista pelo nome e user_id
-    const listResult = await query(
-      'SELECT id, name FROM lists WHERE user_id = $1 AND name = $2',
-      [req.user.id, campaign.list_name]
+    // Criar o job agendado (agora inclui user_id para contexto do executor)
+    const result = await query(
+      'INSERT INTO scheduled_jobs (campaign_id, user_id, scheduled_at, status) VALUES ($1, $2, $3, $4) RETURNING id',
+      [campaignId, req.user.id, scheduled_at, 'pending']
     );
-    const list = listResult.rows[0];
 
-    if (!list) {
-      return res.status(400).json({ error: 'Lista da campanha não encontrada.' });
-    }
-
-    const channels = Array.isArray(campaign.channels) ? campaign.channels : [];
-    const { errors: payloadErrors } = validateCampaignDeliveryPayload(campaign.delivery_payload, channels);
-    if (payloadErrors.length > 0) {
-      return res.status(400).json({ error: payloadErrors[0] });
-    }
-
-    // 3) Buscar contatos da lista
-    const contactsResult = await query(
-      'SELECT id, name, phone, email, category, cep, address, city, rating FROM contacts WHERE user_id = $1 AND list_id = $2',
-      [req.user.id, list.id]
-    );
-    const contacts = contactsResult.rows;
-
-    if (contacts.length === 0) {
-      return res.status(400).json({ error: 'Lista não possui contatos para envio.' });
-    }
-
-    // 4) Buscar webhooks e configurações Evolution
-    const profileResult = await query(
-      'SELECT webhook_whatsapp_url, webhook_email_url, evolution_url, evolution_apikey, evolution_instance FROM user_profiles WHERE id = $1',
-      [req.user.id]
-    );
-    const userProfile = profileResult.rows[0];
-
-    // Buscar configurações globais de fallback
-    const globalSettingsResult = await query('SELECT * FROM app_settings LIMIT 1');
-    const globalSettings = globalSettingsResult.rows[0] || {};
-
-    // Determinar configurações de WhatsApp (Prioridade: Usuário -> Global)
-    const evolutionUrl = (userProfile?.evolution_url || globalSettings.evolution_api_url || '').trim();
-    const evolutionApiKey = (userProfile?.evolution_apikey || globalSettings.evolution_api_key || '').trim();
-    const evolutionInstance = (userProfile?.evolution_instance || globalSettings.evolution_shared_instance || '').trim();
-
-    // Fallback para n8n apenas para Email
-    const webhookUrlEmail = userProfile?.webhook_email_url || globalSettings.global_webhook_email_url || process.env.WEBHOOK_EMAIL || '';
-
-    // 5) Determinar canais efetivos
-    const effectiveChannels = channels.filter((ch) => {
-      if (ch === 'whatsapp') {
-        // Agora disparos de WhatsApp exigem Evolution API configurada
-        return (!!evolutionUrl && !!evolutionApiKey && !!evolutionInstance);
-      }
-      return !!webhookUrlEmail.trim();
-    });
-
-    if (effectiveChannels.length === 0) {
-      return res.status(400).json({
-        error:
-          'Nenhum serviço de envio configurado. Verifique as configurações da Evolution API para WhatsApp ou Webhook para Email.',
-      });
-    }
-
-    const intervalMin = campaign.interval_min_seconds ?? 30;
-    const intervalMax = campaign.interval_max_seconds ?? 90;
-
-    const normalizePhone = (phone) => {
-      const digits = (phone || '').replace(/\D/g, '');
-      // Remove DDI 55 se presente para ter somente o número local (DDD + número)
-      return digits.startsWith('55') ? digits.substring(2) : digits;
-    };
-
-    const toEvolutionNumber = (phone) => {
-      const local = normalizePhone(phone);
-      if (!local) return null;
-      // Formato esperado pela Evolution API: 55 + DDD + número (sem @s.whatsapp.net)
-      return `55${local}`;
-    };
-
-    const resolveTemplate = (tpl, contact) => {
-      let result = tpl;
-      const data = {
-        '{name}': contact.name || '',
-        '{primeiro_nome}': (contact.name || '').split(' ')[0],
-        '{phone}': contact.phone || '',
-        '{category}': contact.category || '',
-        '{city}': contact.city || '',
-        '{email}': contact.email || '',
-        '{rating}': contact.rating || '',
-      };
-
-      Object.entries(data).forEach(([key, val]) => {
-        const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        result = result.replace(new RegExp(escapedKey, 'g'), val);
-      });
-      return result;
-    };
-
-    const extractImages = (html) => {
-      const images = [];
-      const regex = /<img[^>]+src="([^">]+)"/gi;
-      let match;
-      while ((match = regex.exec(html)) !== null) {
-        images.push(match[1]);
-      }
-      return images;
-    };
-
-    const decodeHtmlEntities = (value) =>
-      String(value || '')
-        .replace(/&nbsp;/gi, ' ')
-        .replace(/&amp;/gi, '&')
-        .replace(/&quot;/gi, '"')
-        .replace(/&#39;|&apos;/gi, "'")
-        .replace(/&lt;/gi, '<')
-        .replace(/&gt;/gi, '>');
-
-    const htmlToWhatsapp = (html) => {
-      if (!html) return '';
-
-      let text = html;
-
-      // negrito
-      text = text.replace(/<(b|strong)>([\s\S]*?)<\/(b|strong)>/gi, '*$2*');
-      // itálico
-      text = text.replace(/<(i|em)>([\s\S]*?)<\/(i|em)>/gi, '_$2_');
-      // rasurado
-      text = text.replace(/<(s|del)>([\s\S]*?)<\/(s|del)>/gi, '~$2~');
-      
-      // links
-      text = text.replace(/<a[^>]+href="([^">]+)"[^>]*>([\s\S]*?)<\/a>/gi, (match, url, label) => {
-        const cleanLabel = label.replace(/<[^>]+>/g, '').trim();
-        const cleanUrl = url.replace(/^(mailto|https?|tel):/i, '').replace(/^\/\//, '').replace(/\/$/, '').trim();
-        const cleanLabelCompare = cleanLabel.replace(/^(mailto|https?|tel):/i, '').replace(/^\/\//, '').replace(/\/$/, '').trim();
-        
-        if (cleanUrl === cleanLabelCompare || !cleanLabel) {
-          return url.startsWith('mailto:') ? cleanLabel : url;
-        }
-        return `${cleanLabel} (${url})`;
-      });
-
-      // listas
-      text = text.replace(/<li[^>]*>([\s\S]*?)<\/li>/gi, '* $1\n');
-      text = text.replace(/<\/?(ul|ol)[^>]*>/gi, '\n');
-      // parágrafos e quebras
-      text = text.replace(/<br\s*\/?>/gi, '\n');
-      text = text.replace(/<\/(p|div)>/gi, '\n');
-
-      // remover demais tags e limpar
-      return decodeHtmlEntities(text)
-        .replace(/<[^>]+>/g, '')
-        .replace(/\r\n/g, '\n')
-        .replace(/\r/g, '\n')
-        .replace(/\u00a0/g, ' ')
-        .replace(/\n{3,}/g, '\n\n')
-        .trim();
-    };
-
-    const htmlToText = (html) =>
-      decodeHtmlEntities(html)
-        .replace(/<br\s*\/?>/gi, '\n')
-        .replace(/<\/p>/gi, '\n')
-        .replace(/<[^>]+>/g, '')
-        .trim();
-
-    const messageHtmlRaw = campaign.message || '';
-    const messageHtml = messageHtmlRaw.trim().startsWith('<')
-      ? messageHtmlRaw
-      : `<p style="margin:0; font-size:14px; line-height:1.5; color:#111827;">${messageHtmlRaw
-        .split('\n')
-        .map((line) => (line.trim().length === 0 ? '&nbsp;' : line))
-        .join('<br />')}</p>`;
-
-    const messageText = htmlToText(messageHtml);
-
-    let errors = 0;
-    const items = [];
-
-    for (let i = 0; i < contacts.length; i++) {
-      const contact = contacts[i];
-      const contactIndex = i + 1;
-
-      for (const channel of effectiveChannels) {
-        if (channel === 'whatsapp') {
-          const evolutionNumber = toEvolutionNumber(contact.phone);
-          if (!evolutionNumber) {
-            console.warn(`[Evolution] Contato sem telefone válido: ${contact.name}`);
-            continue;
-          }
-
-          if (evolutionUrl && evolutionInstance) {
-            try {
-              const deliveryResult = await executeWhatsappCampaignDelivery({
-                evolutionUrl,
-                evolutionApiKey,
-                evolutionInstance,
-                campaign,
-                contact,
-              });
-
-              if (deliveryResult.mediaFailed > 0 || deliveryResult.contactFailed) {
-                errors++;
-              }
-
-              continue;
-
-              const resolvedHtml = resolveTemplate(messageHtml, contact);
-              const messageTextProcessed = htmlToWhatsapp(resolvedHtml);
-              const imageUrls = extractImages(resolvedHtml);
-
-              // 1) Enviar Texto
-              if (messageTextProcessed) {
-                const textUrl = `${evolutionUrl}/message/sendText/${evolutionInstance}`;
-                const textBody = {
-                  number: evolutionNumber,
-                  text: messageTextProcessed,
-                  linkPreview: true
-                };
-
-                console.log(`[Evolution] Enviando Texto para ${evolutionNumber} (${contact.name})`);
-                const textResp = await fetch(textUrl, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json', 'apikey': evolutionApiKey },
-                  body: JSON.stringify(textBody),
-                });
-
-                if (!textResp.ok) {
-                  const errText = await textResp.text();
-                  console.error(`[Evolution] Erro no Texto para ${evolutionNumber}:`, errText);
-                  errors++;
-                }
-              }
-
-              // 2) Enviar Imagens (se houver)
-              for (const imageUrl of imageUrls) {
-                const mediaUrl = `${evolutionUrl}/message/sendMedia/${evolutionInstance}`;
-                const mediaBody = {
-                  number: evolutionNumber,
-                  media: imageUrl,
-                  mediatype: 'image',
-                  caption: '' // Imagens enviadas separadamente para garantir entrega
-                };
-
-                console.log(`[Evolution] Enviando Imagem para ${evolutionNumber} (${contact.name}): ${imageUrl}`);
-                const mediaResp = await fetch(mediaUrl, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json', 'apikey': evolutionApiKey },
-                  body: JSON.stringify(mediaBody),
-                });
-
-                if (!mediaResp.ok) {
-                  const errMedia = await mediaResp.text();
-                  console.error(`[Evolution] Erro na Imagem para ${evolutionNumber}:`, errMedia);
-                  // Não somamos erro aqui para não invalidar o envio do texto que talvez tenha dado certo
-                }
-              }
-            } catch (e) {
-              console.error(`[Evolution] Falha na requisição para ${evolutionNumber}:`, e.message);
-              errors++;
-            }
-          } else {
-            console.warn('[Evolution] URL ou instance não configurados. Pulando envio WhatsApp.');
-          }
-        }
-
-        if (channel === 'email') {
-          // Email não está mais suportado sem integração externa.
-          // Ignorar silenciosamente para não causar erros desnecessários.
-          console.warn(`[Email] Canal email não suportado nesta versão. Contato: ${contact.name}`);
-        }
-      }
-
-      if (i < contacts.length - 1) {
-        const delaySeconds =
-          intervalMin + Math.floor(Math.random() * Math.max(1, intervalMax - intervalMin + 1));
-        await new Promise((resolve) => setTimeout(resolve, delaySeconds * 1000));
-      }
-    }
-
-    return res.json({ ok: true, campaignId, contactsCount: contacts.length, errors });
+    res.json({ ok: true, jobId: result.rows[0].id });
   } catch (error) {
-    console.error('Erro em /api/campaigns/:id/send:', error);
-    res.status(500).json({ error: 'Falha ao enviar campanha agendada.', details: error.message });
+    console.error('[Scheduler] Erro ao agendar campanha:', error);
+    res.status(500).json({ error: 'Falha ao agendar campanha.', details: error.message });
   }
 });
 

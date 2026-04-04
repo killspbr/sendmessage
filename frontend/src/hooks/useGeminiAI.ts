@@ -1,8 +1,10 @@
 import type { CampaignChannel } from '../types'
 
 export type GeminiAIParams = {
-    mode: 'suggest' | 'rewrite'
+    mode: 'suggest' | 'rewrite' | 'custom'
     currentContent: string
+    selectedContent?: string
+    customInstructions?: string
     campaignName: string
     listName: string
     channels: CampaignChannel[]
@@ -161,6 +163,8 @@ export function useGeminiAI({
         const {
             mode,
             currentContent,
+            selectedContent,
+            customInstructions,
             campaignName,
             listName,
             channels,
@@ -235,12 +239,13 @@ FORMATO DE SAÍDA:
 - Não inclua assunto de email.
 - Não use placeholders genéricos como "[Nome]".
 `
-        } else {
+        } else if (mode === 'rewrite') {
+            const contentToRewrite = selectedContent || currentContent
             prompt = `
 Você é um revisor e copywriter sênior. Sua tarefa é reescrever e expandir o texto HTML abaixo para deixá-lo mais persuasivo, mais claro e melhor adaptado ao canal.
 
-TEXTO ORIGINAL (HTML):
-${currentContent}
+TEXTO PARA REESCREVER (HTML):
+${contentToRewrite}
 
 DIRETRIZ DE TAMANHO:
 - Canal principal de escrita: ${channelStrategy.label}
@@ -266,6 +271,30 @@ ${emojiRule}
 FORMATO DE SAÍDA:
 - Retorne apenas o HTML reescrito com tags como <p>, <ul>, <li>, <strong>, <em> e <br>.
 - Não use markdown nem explicações fora do HTML.
+`
+        } else {
+            // mode === 'custom'
+            prompt = `
+Você é um copywriter sênior assistente. O usuário solicitou uma geração ou modificação baseada em uma instrução específica.
+
+INSTRUÇÃO DO USUÁRIO:
+"${customInstructions}"
+
+CONTEÚDO ATUAL (Contexto):
+${currentContent}
+
+DADOS DA CAMPANHA:
+- Canal: ${channelsLabel}
+- Tamanho: ${sizeLabelMap[messageSize]}
+- ${toneInstructions[tone]}
+- ${goalInstructions[goal]}${companyContext}
+
+REGRAS:
+- Siga estritamente a instrução do usuário.
+- Se a instrução pedir um novo texto, use o contexto da campanha.
+- Se a instrução pedir para mudar algo no conteúdo atual, preserve o que faz sentido.
+- Retorne apenas HTML semântico direto (<p>, <ul>, <li>, <strong>, <em>, <br>).
+- Não use blocos de código nem explicações.
 `
         }
 

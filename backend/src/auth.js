@@ -48,6 +48,24 @@ export const authenticateToken = async (req, res, next) => {
 };
 
 /**
+ * Middleware para o scheduler autenticar via Chave Secreta
+ */
+export const authenticateScheduler = async (req, res, next) => {
+    const scheduledKey = req.headers['x-scheduled-key'];
+    const schedulerSecret = process.env.SCHEDULER_SECRET || 'scheduler-secret-123';
+
+    if (scheduledKey && scheduledKey === schedulerSecret) {
+        const userId = req.headers['x-scheduled-user-id'];
+        if (userId) {
+            req.user = { id: userId };
+            return next();
+        }
+    }
+    
+    return authenticateToken(req, res, next);
+};
+
+/**
  * Registra um novo usuário
  */
 export const signup = async (req, res) => {

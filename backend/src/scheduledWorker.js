@@ -8,7 +8,7 @@ async function processScheduledJobs() {
 
   try {
     const jobsResult = await query(
-      'SELECT id, campaign_id FROM scheduled_jobs WHERE status = $1 AND scheduled_at <= $2 LIMIT 10',
+      'SELECT id, campaign_id, user_id FROM scheduled_jobs WHERE status = $1 AND scheduled_at <= $2 LIMIT 10',
       ['pending', nowIso]
     )
     const jobs = jobsResult.rows;
@@ -28,7 +28,13 @@ async function processScheduledJobs() {
       try {
         const resp = await fetch(
           `${BACKEND_PUBLIC_URL}/api/campaigns/${job.campaign_id}/send`,
-          { method: 'POST' },
+          { 
+            method: 'POST',
+            headers: {
+              'X-Scheduled-Key': process.env.SCHEDULER_SECRET || 'scheduler-secret-123',
+              'X-Scheduled-User-Id': job.user_id
+            }
+          },
         )
 
         if (!resp.ok) {

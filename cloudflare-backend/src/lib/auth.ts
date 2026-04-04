@@ -53,7 +53,11 @@ export const authenticateToken: MiddlewareHandler<{ Bindings: Bindings; Variable
     return c.json({ error: 'Usuario nao encontrado.' }, 401)
   }
 
-  if (payload.tv !== undefined && Number(payload.tv) !== Number(user.token_version)) {
+  if (
+    payload.tv !== undefined &&
+    user.token_version !== undefined &&
+    Number(payload.tv) !== Number(user.token_version)
+  ) {
     return c.json({ error: 'Sessao invalidada. Faca login novamente.' }, 401)
   }
 

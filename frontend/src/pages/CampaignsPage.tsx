@@ -80,7 +80,9 @@ type CampaignsPageProps = {
   geminiApiKey?: string
   userHasConfiguredAi?: boolean
   onGenerateCampaignContentWithAI?: (options: {
-    mode: 'suggest' | 'rewrite'
+    mode: 'suggest' | 'rewrite' | 'custom'
+    customInstructions?: string
+    selectedContent?: string
     currentContent: string
     campaignName: string
     listName: string
@@ -203,7 +205,7 @@ export function CampaignsPage({
 }: CampaignsPageProps) {
   const canViewCampaigns = !can || can('campaigns.view')
 
-  const [aiLoading, setAiLoading] = useState<'suggest' | 'rewrite' | null>(null)
+  const [aiLoading, setAiLoading] = useState<'suggest' | 'rewrite' | 'custom' | null>(null)
   const [aiTone, setAiTone] = useState<'neutral' | 'friendly' | 'sales' | 'educational'>('friendly')
   const [aiGoal, setAiGoal] = useState<'leads' | 'direct_sale' | 'engagement' | 'reactivation'>('leads')
   const [aiCampaignType, setAiCampaignType] = useState<'first_contact' | 'follow_up' | 'recovery'>('first_contact')
@@ -619,13 +621,15 @@ export function CampaignsPage({
                 aiLoading={aiLoading}
                 onGenerateAI={
                   onGenerateCampaignContentWithAI
-                    ? async ({ mode }) => {
+                    ? async ({ mode, customInstructions, selectedContent }) => {
                         const list = lists.find((l) => l.id === newCampaignListId) ?? lists[0]
                         const listName = list?.name ?? newCampaignListId
                         const segmentLabel = aiSegment === 'Outro' && aiSegmentOther.trim() ? aiSegmentOther.trim() : aiSegment
                         setAiLoading(mode)
-                        await onGenerateCampaignContentWithAI({
+                        const result = await onGenerateCampaignContentWithAI({
                           mode,
+                          customInstructions,
+                          selectedContent,
                           currentContent: newCampaignMessage,
                           campaignName: newCampaignName || 'Campanha sem nome',
                           listName,
@@ -637,6 +641,7 @@ export function CampaignsPage({
                           useEmojis: aiUseEmojis,
                           messageSize: aiMessageSize,
                         })
+                        if (result) onSetNewCampaignMessage(result)
                         setAiLoading(null)
                       }
                     : undefined

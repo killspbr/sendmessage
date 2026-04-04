@@ -10,8 +10,8 @@ import type { CampaignChannel, CampaignMediaItem, CampaignSharedContact } from '
 type CampaignEditorProps = {
   content: string
   onChange: (html: string) => void
-  onGenerateAI?: (options: { mode: 'suggest' | 'rewrite' }) => Promise<void>
-  aiLoading: 'suggest' | 'rewrite' | null
+  onGenerateAI?: (options: { mode: 'suggest' | 'rewrite' | 'custom'; customInstructions?: string; selectedContent?: string }) => Promise<void>
+  aiLoading: 'suggest' | 'rewrite' | 'custom' | null
   channels: CampaignChannel[]
   htmlToWhatsapp: (html: string) => string
   mediaItems?: CampaignMediaItem[]
@@ -97,6 +97,9 @@ export function CampaignEditor({
 }: CampaignEditorProps) {
   const [activeTab, setActiveTab] = useState<'editor' | 'preview'>('editor')
   const [useTestData, setUseTestData] = useState(false)
+  const [isAiModalOpen, setIsAiModalOpen] = useState(false)
+  const [customAiInstructions, setCustomAiInstructions] = useState('')
+  const [selectedText, setSelectedText] = useState('')
 
   const editor = useEditor({
     extensions: EDITOR_EXTENSIONS,
@@ -107,6 +110,14 @@ export function CampaignEditor({
       },
     },
     onUpdate: ({ editor }) => onChange(editor.getHTML()),
+    onSelectionUpdate: ({ editor }) => {
+      const { from, to } = editor.state.selection
+      if (from === to) {
+        setSelectedText('')
+      } else {
+        setSelectedText(editor.state.doc.textBetween(from, to, ' '))
+      }
+    },
   })
 
   useEffect(() => {
@@ -143,10 +154,65 @@ export function CampaignEditor({
   const insertVariable = (value: string) => editor?.chain().focus().insertContent(value).run()
   const insertQuickBlock = (html: string) => editor?.chain().focus().insertContent(html).run()
 
+  const handleCustomAiGenerate = async () => {
+    if (!customAiInstructions.trim()) return
+    await onGenerateAI?.({ mode: 'custom', customInstructions: customAiInstructions })
+    setIsAiModalOpen(false)
+    setCustomAiInstructions('')
+  }
+
+  const handleRewriteSelection = async () => {
+    if (!selectedText.trim()) return
+    await onGenerateAI?.({ mode: 'rewrite', selectedContent: selectedText })
+  }
+
   if (!editor) return null
 
   return (
-    <div className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm">
+    <div className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm relative">
+      {isAiModalOpen && (
+        <div className="absolute inset-0 z-[60] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-6">
+          <div className="w-full max-w-md rounded-[32px] bg-white p-8 shadow-2xl ring-1 ring-slate-900/5">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-lg font-bold text-slate-900 tracking-tight">O que você deseja gerar?</h3>
+              <button 
+                onClick={() => setIsAiModalOpen(false)}
+                className="text-slate-400 hover:text-slate-600 transition"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <p className="text-sm text-slate-600 mb-6 leading-relaxed">
+              Descreva com suas palavras o que a IA deve escrever ou como ela deve alterar o conteúdo atual.
+            </p>
+            <textarea
+              autoFocus
+              value={customAiInstructions}
+              onChange={(e) => setCustomAiInstructions(e.target.value)}
+              placeholder="Ex: Escreva uma saudação amigável para clientes de pet shop convidando para o banho e tosa..."
+              className="w-full h-40 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500/50 transition-all resize-none mb-6"
+            />
+            <div className="flex gap-3">
+              <button
+                onClick={() => setIsAiModalOpen(false)}
+                className="flex-1 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-600 transition hover:bg-slate-50"
+              >
+                Cancelar
+              </button>
+              <button
+                disabled={!customAiInstructions.trim() || aiLoading === 'custom'}
+                onClick={handleCustomAiGenerate}
+                className="flex-2 rounded-2xl bg-slate-900 px-6 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-slate-900/10"
+              >
+                {aiLoading === 'custom' ? 'Processando...' : 'Gerar com IA'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="border-b border-slate-200 bg-slate-50 px-5 py-4">
         <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
           <div>
@@ -257,16 +323,48 @@ export function CampaignEditor({
         </div>
 
         <aside className="flex flex-col gap-5 bg-slate-50 px-5 py-5">
-          <div className="rounded-3xl border border-slate-200 bg-white p-4">
+          <div className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm ring-1 ring-slate-900/[0.02]">
             <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Assistente IA</div>
-            <div className="mt-2 text-sm text-slate-600">Use a IA para começar um texto do zero ou refinar o conteúdo atual do editor.</div>
+            <div className="mt-2 text-sm text-slate-600">Use a IA para começar um texto do zero ou refinar o conteúdo.</div>
             <div className="mt-4 grid gap-2">
-              <button onClick={() => onGenerateAI?.({ mode: 'suggest' })} disabled={!onGenerateAI || !!aiLoading} className="rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60">
-                {aiLoading === 'suggest' ? 'Gerando texto...' : 'Gerar sugestão com IA'}
+              <button 
+                onClick={() => setIsAiModalOpen(true)} 
+                disabled={!onGenerateAI || !!aiLoading} 
+                className="flex items-center justify-center gap-2 rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:opacity-60 shadow-lg shadow-slate-900/10"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
+                </svg>
+                {aiLoading === 'custom' ? 'Gerando...' : 'Descrever conteúdo'}
               </button>
-              <button onClick={() => onGenerateAI?.({ mode: 'rewrite' })} disabled={!onGenerateAI || !!aiLoading || !content.trim()} className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60">
-                {aiLoading === 'rewrite' ? 'Reescrevendo...' : 'Reescrever texto atual'}
+              
+              <div className="h-[1px] bg-slate-100 my-1"></div>
+
+              <button 
+                onClick={() => onGenerateAI?.({ mode: 'suggest' })} 
+                disabled={!onGenerateAI || !!aiLoading} 
+                className="rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:opacity-60"
+              >
+                {aiLoading === 'suggest' ? 'Gerando sugestão...' : 'Sugestão dinâmica'}
               </button>
+
+              <button 
+                onClick={() => onGenerateAI?.({ mode: 'rewrite' })} 
+                disabled={!onGenerateAI || !!aiLoading || !content.trim()} 
+                className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-60"
+              >
+                {aiLoading === 'rewrite' ? 'Reescrevendo...' : 'Reescrever tudo'}
+              </button>
+
+              {selectedText && (
+                <button 
+                  onClick={handleRewriteSelection} 
+                  disabled={!onGenerateAI || !!aiLoading} 
+                  className="rounded-2xl bg-amber-50 border border-amber-200 px-4 py-3 text-sm font-semibold text-amber-700 transition hover:bg-amber-100 animate-in fade-in slide-in-from-top-1"
+                >
+                  {aiLoading === 'rewrite' ? 'Aprimorando...' : 'Melhorar seleção'}
+                </button>
+              )}
             </div>
           </div>
 
