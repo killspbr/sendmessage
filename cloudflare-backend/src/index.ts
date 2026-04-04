@@ -87,15 +87,22 @@ app.use('*', async (c, next) => {
   await ensureCloudflareSchema(db)
 
   // 2. Reparo proativo de permissao se detectarmos problemas repetitivos
-  // Tentamos rodar um GRANT apenas se falhar em rotas criticas ou periodicamente (sample)
-  if (Math.random() < 0.05) { // 5% das requisicoes tentam manter a saude do schema public
-      try {
-          await db.query('GRANT USAGE ON SCHEMA public TO CURRENT_USER')
-          await db.query('GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO CURRENT_USER')
-      } catch (err) {
-          if (!isSkippableRuntimeSchemaError(err)) {
-              console.warn('[AutoHeal:Permissions] Falha ao autorreparar privilegios:', (err as any).message)
+  // Tentamos rodar um GRANT apenas periodicamente (sample), agora em background para não travar a request.
+  if (Math.random() < 0.05) {
+      const repairTask = (async () => {
+          try {
+              const dbInternal = getDb(c.env)
+              await dbInternal.query('GRANT USAGE ON SCHEMA public TO CURRENT_USER')
+              await dbInternal.query('GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO CURRENT_USER')
+          } catch (err) {
+              if (!isSkippableRuntimeSchemaError(err)) {
+                  console.warn('[AutoHeal:Permissions] Falha ao autorreparar privilegios (background):', (err as any).message)
+              }
           }
+      })()
+
+      if (c.executionCtx && typeof c.executionCtx.waitUntil === 'function') {
+          c.executionCtx.waitUntil(repairTask)
       }
   }
 

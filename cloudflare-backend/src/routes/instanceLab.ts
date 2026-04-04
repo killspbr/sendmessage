@@ -243,7 +243,12 @@ async function tableExists(db: ReturnType<typeof getDb>, tableName: string) {
   }
 }
 
+let instanceLabSchemaEnsured = false
+
 async function ensureInstanceLabSchema(db: ReturnType<typeof getDb>) {
+  if (instanceLabSchemaEnsured) return
+  instanceLabSchemaEnsured = true
+
   const UUID_GEN = "(md5(random()::text || clock_timestamp()::text)::uuid)"
   
   // Proteção total contra falhas de permissão de schema no Hyperdrive/Workers
@@ -1012,47 +1017,32 @@ export const instanceLabRoutes = new Hono<{ Bindings: Bindings; Variables: AppVa
 instanceLabRoutes.get('/admin/warmer', authenticateToken, checkAdmin, async (c) => {
   const db = getDb(c.env)
   await ensureInstanceLabSchema(db)
-  const [hasWarmerLogs, hasWarmerRuns, warmerLogColumns] = await Promise.all([
-    tableExists(db, 'warmer_logs'),
-    tableExists(db, 'warmer_runs'),
-    getTableColumns(db, 'warmer_logs'),
-  ])
-  const hasOkColumn = hasWarmerLogs && hasColumn(warmerLogColumns, 'ok')
-  const failedEventsExpr = hasOkColumn ? 'COUNT(*) FILTER (WHERE l.ok = false)' : '0'
 
-  const todayJoin = hasWarmerLogs
-    ? `LEFT JOIN LATERAL (
-      SELECT COUNT(*) AS total_events, ${failedEventsExpr} AS failed_events
-       FROM public.warmer_logs l
-      WHERE l.warmer_id = w.id
-        AND l.sent_at >= CURRENT_DATE
-    ) today ON TRUE`
-    : `LEFT JOIN LATERAL (
-      SELECT 0::bigint AS total_events, 0::bigint AS failed_events
-    ) today ON TRUE`
+  // Otimizacao: Assumimos que o schema ja foi garantido pela linha acima.
+  // Evitamos queries excessivas ao information_schema na listagem publica.
+  const failedEventsExpr = 'COUNT(*) FILTER (WHERE l.ok = false)'
 
-  const recentRunJoin = hasWarmerRuns
-    ? `LEFT JOIN LATERAL (
-      SELECT * FROM public.warmer_runs r
-      WHERE r.warmer_id = w.id
-        AND r.status IN ('queued', 'running')
-      ORDER BY r.created_at DESC
-      LIMIT 1
-    ) recent_run ON TRUE`
-    : `LEFT JOIN LATERAL (
-      SELECT NULL::uuid AS id, NULL::text AS status, NULL::int AS steps_total, NULL::int AS steps_completed
-    ) recent_run ON TRUE`
+  const todayJoin = `LEFT JOIN LATERAL (
+    SELECT COUNT(*) AS total_events, ${failedEventsExpr} AS failed_events
+     FROM public.warmer_logs l
+    WHERE l.warmer_id = w.id
+      AND l.sent_at >= CURRENT_DATE
+  ) today ON TRUE`
 
-  const lastRunJoin = hasWarmerRuns
-    ? `LEFT JOIN LATERAL (
-      SELECT * FROM public.warmer_runs r
-      WHERE r.warmer_id = w.id
-      ORDER BY r.created_at DESC
-      LIMIT 1
-    ) last_run ON TRUE`
-    : `LEFT JOIN LATERAL (
-      SELECT NULL::text AS status, NULL::timestamptz AS finished_at, NULL::text AS last_error
-    ) last_run ON TRUE`
+  const recentRunJoin = `LEFT JOIN LATERAL (
+    SELECT * FROM public.warmer_runs r
+    WHERE r.warmer_id = w.id
+      AND r.status IN ('queued', 'running')
+    ORDER BY r.created_at DESC
+    LIMIT 1
+  ) recent_run ON TRUE`
+
+  const lastRunJoin = `LEFT JOIN LATERAL (
+    SELECT * FROM public.warmer_runs r
+    WHERE r.warmer_id = w.id
+    ORDER BY r.created_at DESC
+    LIMIT 1
+  ) last_run ON TRUE`
 
   const result = await db.query(`
     SELECT
