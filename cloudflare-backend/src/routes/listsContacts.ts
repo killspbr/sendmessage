@@ -54,9 +54,12 @@ async function ensureListsAndContactsTables(db: ReturnType<typeof getDb>) {
         facebook TEXT DEFAULT '',
         whatsapp TEXT DEFAULT '',
         website TEXT DEFAULT '',
+        labels JSONB DEFAULT '[]',
         created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
       )
     `)
+
+    await db.query(`ALTER TABLE public.contacts ADD COLUMN IF NOT EXISTS labels JSONB DEFAULT '[]'`)
 
     await db.query(`
       CREATE INDEX IF NOT EXISTS idx_contacts_user_list_name
@@ -235,8 +238,8 @@ listsContactsRoutes.post('/contacts', authenticateToken, async (c) => {
   const result = await db.query(
     `INSERT INTO public.contacts (
       user_id, list_id, name, phone, email, category, cep, rating,
-      address, city, state, instagram, facebook, whatsapp, website
-    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+      address, city, state, instagram, facebook, whatsapp, website, labels
+    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
     RETURNING *`,
     [
       userId,
@@ -254,6 +257,7 @@ listsContactsRoutes.post('/contacts', authenticateToken, async (c) => {
       normalizeText(body.facebook),
       normalizeText(body.whatsapp),
       normalizeText(body.website),
+      JSON.stringify(body.labels || []),
     ]
   )
 
@@ -282,8 +286,9 @@ listsContactsRoutes.put('/contacts/:id', authenticateToken, async (c) => {
       instagram = COALESCE($10, instagram),
       facebook = COALESCE($11, facebook),
       whatsapp = COALESCE($12, whatsapp),
-      website = COALESCE($13, website)
-    WHERE id = $14 AND user_id = $15
+      website = COALESCE($13, website),
+      labels = COALESCE($14, labels)
+    WHERE id = $15 AND user_id = $16
     RETURNING *`,
     [
       normalizeNullableText(body.name),
@@ -299,6 +304,7 @@ listsContactsRoutes.put('/contacts/:id', authenticateToken, async (c) => {
       normalizeNullableText(body.facebook),
       normalizeNullableText(body.whatsapp),
       normalizeNullableText(body.website),
+      body.labels ? JSON.stringify(body.labels) : null,
       contactId,
       userId,
     ]

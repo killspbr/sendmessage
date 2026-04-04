@@ -36,6 +36,7 @@ import { useContactsManager } from './hooks/useContactsManager'
 import { useGeminiAI } from './hooks/useGeminiAI'
 import { useToast } from './hooks/useToast'
 import { useUI } from './hooks/useUI'
+import { useChat } from './hooks/useChat'
 
 // Utilities & Types
 import type { Campaign, Contact, ContactList } from './types'
@@ -51,6 +52,7 @@ function App() {
   } = useUI()
 
   const { toastMessage, showToast } = useToast()
+  const chat = useChat()
   
   // 1.1 Auth states
   const [authEmail, setAuthEmail] = useState('')
@@ -280,7 +282,9 @@ function App() {
                 contactFormPhone={contactsManager.contactFormPhone} contactFormCategory={contactsManager.contactFormCategory}
                 contactFormEmail={contactsManager.contactFormEmail} contactFormCep={contactsManager.contactFormCep}
                 contactFormAddress={contactsManager.contactFormAddress} contactFormCity={contactsManager.contactFormCity}
-                contactFormRating={String(contactsManager.contactFormRating)} searchName={searchName} searchPhone={searchPhone}
+                contactFormRating={contactsManager.contactFormRating}
+                contactFormLabels={contactsManager.contactFormLabels}
+                searchName={searchName} searchPhone={searchPhone}
                 searchEmail={searchEmail} filterCategory={filterCategory} filterCity={filterCity}
                 importNewContacts={contactsManager.importNewContacts} importConflicts={contactsManager.importConflicts}
                 geminiApiKey={effectiveAiKey} isBackfillingAddress={contactsManager.isBackfillingAddress}
@@ -291,12 +295,15 @@ function App() {
                 onCreateContact={() => { contactsManager.resetContactForm(); contactsManager.setShowContactForm(true) }}
                 onEditContact={contactsManager.startEditContact}
                 onDeleteContact={async (id) => { if (confirm('Excluir contato?')) { await deleteContact(String(id)); reloadContacts() } }}
-                onSaveContactForm={async () => { await saveContact({ id: contactsManager.editingContactId ?? undefined, name: contactsManager.contactFormName, phone: contactsManager.contactFormPhone, category: contactsManager.contactFormCategory, email: contactsManager.contactFormEmail, cep: contactsManager.contactFormCep, address: contactsManager.contactFormAddress, city: contactsManager.contactFormCity, rating: Number(contactsManager.contactFormRating) }); contactsManager.resetContactForm(); reloadContacts() }}
+                onSaveContactForm={async () => { await saveContact({ id: contactsManager.editingContactId ?? undefined, name: contactsManager.contactFormName, phone: contactsManager.contactFormPhone, category: contactsManager.contactFormCategory, email: contactsManager.contactFormEmail, cep: contactsManager.contactFormCep, address: contactsManager.contactFormAddress, city: contactsManager.contactFormCity, rating: String(contactsManager.contactFormRating), labels: contactsManager.contactFormLabels }); contactsManager.resetContactForm(); reloadContacts() }}
                 onCancelContactForm={contactsManager.resetContactForm}
+                chat={chat}
+                instanceName={evolutionInstance}
                 onChangeContactFormName={contactsManager.setContactFormName} onChangeContactFormPhone={contactsManager.setContactFormPhone}
                 onChangeContactFormCategory={contactsManager.setContactFormCategory} onChangeContactFormEmail={contactsManager.setContactFormEmail}
                 onChangeContactFormCep={contactsManager.setContactFormCep} onChangeContactFormAddress={contactsManager.setContactFormAddress}
                 onChangeContactFormCity={contactsManager.setContactFormCity} onChangeContactFormRating={contactsManager.setContactFormRating}
+                onChangeContactFormLabels={contactsManager.setContactFormLabels}
                 onToggleSelectAll={(c) => handleToggleSelectAll(c, filteredContacts)} onToggleSelectOne={handleToggleSelectOne}
                 onResetSelection={() => setSelectedIds([])} onSetMoveTargetListId={setMoveTargetListId}
                 onMoveSelectedToList={async () => { showToast('Funcionalidade sendo migrada..') }}
@@ -350,6 +357,9 @@ function App() {
                 onScheduleCampaign={onScheduleCampaign}
                 htmlToWhatsapp={htmlToWhatsapp}
                 htmlToText={htmlToText}
+                currentUserGroupName={permissions?.groupName}
+                chat={chat}
+                instanceName={evolutionInstance}
               />
             )}
 
@@ -387,12 +397,15 @@ function App() {
                 onChangeGeminiTemperature={setGeminiTemperature} geminiMaxTokens={geminiMaxTokens} onChangeGeminiMaxTokens={setGeminiMaxTokens}
                 debugEnabled={debugEnabled} onChangeDebugEnabled={setDebugEnabled} googleMapsApiKey={googleMapsApiKey}
                 onChangeGoogleMapsApiKey={setGoogleMapsApiKey} onSave={handleSaveGlobalSettings} can={can}
-                // Adicionando props faltantes em SettingsPage
                 importPreview={null}
                 onExportData={async () => {}}
+                onSaveCampaign={async () => { }}
+                onCancelCampaign={() => { }}
                 onImportFile={async () => {}}
                 onCancelImport={() => {}}
                 onConfirmImport={async () => {}}
+                chat={chat}
+                instanceName={evolutionInstance}
               />
             )}
 

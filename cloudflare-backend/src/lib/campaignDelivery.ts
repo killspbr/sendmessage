@@ -317,6 +317,31 @@ async function sendEvolutionContact({
   })
 }
 
+async function sendEvolutionPoll({
+  fetchImpl,
+  evolutionUrl,
+  evolutionApiKey,
+  evolutionInstance,
+  number,
+  poll,
+}: {
+  fetchImpl: typeof fetch
+  evolutionUrl: string
+  evolutionApiKey: string
+  evolutionInstance: string
+  number: string
+  poll: { name: string; options: string[]; selectableCount: number }
+}) {
+  const payload = {
+    number,
+    name: poll.name,
+    options: poll.options.filter(o => o.trim().length > 0),
+    selectableCount: poll.selectableCount || 1,
+  }
+
+  await postEvolution(fetchImpl, `${evolutionUrl}/message/sendPoll/${evolutionInstance}`, evolutionApiKey, payload)
+}
+
 export async function executeWhatsappCampaignDelivery({
   fetchImpl = fetch,
   evolutionUrl,
@@ -351,6 +376,8 @@ export async function executeWhatsappCampaignDelivery({
     mediaFailed: 0,
     contactSent: false,
     contactFailed: false,
+    pollSent: false,
+    pollFailed: false,
     errors: [] as string[],
     mediaDetails: [] as Array<{ id: string; type: string; status: 'sent' | 'failed' | 'skipped'; error?: string }>,
   }
@@ -496,6 +523,30 @@ export async function executeWhatsappCampaignDelivery({
       } catch (error) {
         result.contactFailed = true
         result.errors.push(`Falha ao enviar contato compartilhado: ${String((error as any)?.message || error)}`)
+      }
+    }
+  }
+
+  if (campaign.poll) {
+    const poll = campaign.poll as any
+    if (poll.name && Array.isArray(poll.options)) {
+      try {
+        await sendEvolutionPoll({
+          fetchImpl,
+          evolutionUrl,
+          evolutionApiKey,
+          evolutionInstance,
+          number: evolutionNumber,
+          poll: {
+            name: resolveTemplate(poll.name, contact),
+            options: poll.options.map((opt: string) => resolveTemplate(opt, contact)),
+            selectableCount: poll.selectableCount || 1
+          }
+        })
+        result.pollSent = true
+      } catch (error) {
+        result.pollFailed = true
+        result.errors.push(`Falha ao enviar enquete: ${String((error as any)?.message || error)}`)
       }
     }
   }

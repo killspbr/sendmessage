@@ -17,10 +17,13 @@ export type ContactFormProps = {
   onChangeCep: (value: string) => void
   onChangeAddress: (value: string) => void
   onChangeCity: (value: string) => void
-  onChangeRating: (value: string) => void
+   onChangeRating: (value: string) => void
   onSave: () => void
   onClear: () => void
   onClose: () => void
+  labels: string[]
+  onChangeLabels: (value: string[]) => void
+  availableLabels: string[]
 }
 
 export function ContactForm({
@@ -45,6 +48,9 @@ export function ContactForm({
   onSave,
   onClear,
   onClose,
+  labels,
+  onChangeLabels,
+  availableLabels
 }: ContactFormProps) {
   return (
     <div
@@ -173,8 +179,40 @@ export function ContactForm({
                 placeholder="Rua, número, bairro..."
               />
             </div>
+            <div className="flex flex-col gap-1 sm:col-span-2">
+              <label className="text-[10px] font-semibold text-slate-500 px-1">Etiquetas de CRM (WhatsApp Labels)</label>
+              <div className="min-h-[40px] p-2 rounded-xl border border-slate-200 bg-white flex flex-wrap gap-1.5 transition-all focus-within:ring-2 focus-within:ring-emerald-500/20 focus-within:border-emerald-500">
+                {availableLabels.length === 0 ? (
+                  <span className="text-[10px] text-slate-400 italic px-1">Sincronize as etiquetas no topo da página para ver as opções aqui.</span>
+                ) : (
+                  availableLabels.map((label) => {
+                    const isSelected = labels.includes(label)
+                    return (
+                      <button
+                        key={label}
+                        type="button"
+                        onClick={() => {
+                          if (isSelected) {
+                            onChangeLabels(labels.filter(l => l !== label))
+                          } else {
+                            onChangeLabels([...labels, label])
+                          }
+                        }}
+                        className={`px-2 py-0.5 rounded-lg text-[9px] font-bold border transition-all uppercase tracking-tighter ${
+                          isSelected 
+                            ? 'bg-emerald-600 border-emerald-600 text-white shadow-sm' 
+                            : 'bg-white border-slate-200 text-slate-500 hover:border-emerald-300 hover:text-emerald-600'
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    )
+                  })
+                )}
+              </div>
+              <p className="text-[9px] text-slate-400 px-1 mt-0.5">As etiquetas selecionadas ajudam na segmentação e filtros das suas campanhas.</p>
+            </div>
             <div className="hidden">
-              {/* Campo rating pode ser mantido mas talvez simplificado no futuro */}
               <input type="hidden" value={rating} />
             </div>
           </div>

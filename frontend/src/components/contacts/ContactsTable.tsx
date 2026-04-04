@@ -6,6 +6,7 @@ type Contact = {
   email: string
   city?: string
   rating: string
+  labels?: string[]
 }
 
 export type ContactsTableProps = {
@@ -32,6 +33,8 @@ export type ContactsTableProps = {
   onToggleSelectOne: (id: number, checked: boolean) => void
   onEditContact: (contact: Contact) => void
   onDeleteContact: (id: number) => void
+  filterLabel: string
+  onChangeFilterLabel: (value: string) => void
 }
 
 export function ContactsTable({
@@ -58,6 +61,8 @@ export function ContactsTable({
   onToggleSelectOne,
   onEditContact,
   onDeleteContact,
+  filterLabel,
+  onChangeFilterLabel
 }: ContactsTableProps) {
   return (
     <>
@@ -120,6 +125,7 @@ export function ContactsTable({
               <th className="px-2 pt-1 pb-0.5 text-left font-medium text-slate-600">Nome</th>
               <th className="px-2 pt-1 pb-0.5 text-left font-medium text-slate-600">Telefone</th>
               <th className="px-2 pt-1 pb-0.5 text-left font-medium text-slate-600">Categoria</th>
+              <th className="px-2 pt-1 pb-0.5 text-left font-medium text-slate-600">Labels</th>
               <th className="px-2 pt-1 pb-0.5 text-left font-medium text-slate-600 w-[140px]">Email</th>
               <th className="px-2 pt-1 pb-0.5 text-left font-medium text-slate-600 min-w-[160px]">Cidade</th>
               <th className="px-2 pt-1 pb-0.5 text-left font-medium text-slate-600">Último envio</th>
@@ -160,6 +166,15 @@ export function ContactsTable({
                   ))}
                 </select>
               </td>
+              <td className="px-2 py-1">
+                <input
+                  type="text"
+                  placeholder="Filtrar label"
+                  value={filterLabel}
+                  onChange={(e) => onChangeFilterLabel(e.target.value)}
+                  className="w-full h-7 px-2 rounded-md border border-slate-200 bg-white text-[11px] text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-emerald-400/80"
+                />
+              </td>
               <td className="px-2 py-1 w-[140px]">
                 <input
                   type="text"
@@ -197,6 +212,15 @@ export function ContactsTable({
                 <td className="px-2 py-2">{contact.name}</td>
                 <td className="px-2 py-2">{contact.phone}</td>
                 <td className="px-2 py-2">{contact.category}</td>
+                <td className="px-2 py-2">
+                  <div className="flex flex-wrap gap-1">
+                    {Array.isArray(contact.labels) && contact.labels.map((label, idx) => (
+                      <span key={idx} className="inline-flex items-center px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 text-[9px] font-bold border border-emerald-200 uppercase tracking-tighter">
+                        {label}
+                      </span>
+                    ))}
+                  </div>
+                </td>
                 <td className="px-2 py-2 max-w-[140px] truncate" title={contact.email}>
                   {contact.email}
                 </td>

@@ -15,6 +15,7 @@ export function useContactsManager(effectiveUserId: string | null, currentListId
   const [contactFormAddress, setContactFormAddress] = useState('')
   const [contactFormCity, setContactFormCity] = useState('')
   const [contactFormRating, setContactFormRating] = useState('3')
+  const [contactFormLabels, setContactFormLabels] = useState<string[]>([])
 
   // 2. Import State
   const [importNewContacts, setImportNewContacts] = useState<Contact[] | null>(null)
@@ -34,6 +35,7 @@ export function useContactsManager(effectiveUserId: string | null, currentListId
     setContactFormAddress('')
     setContactFormCity('')
     setContactFormRating('3')
+    setContactFormLabels([])
     setShowContactForm(false)
   }, [])
 
@@ -47,6 +49,7 @@ export function useContactsManager(effectiveUserId: string | null, currentListId
     setContactFormAddress(contact.address || '')
     setContactFormCity(contact.city || '')
     setContactFormRating(String(contact.rating || 3))
+    setContactFormLabels(Array.isArray(contact.labels) ? contact.labels : [])
     setShowContactForm(true)
     
     // Scroll to form
@@ -85,6 +88,7 @@ export function useContactsManager(effectiveUserId: string | null, currentListId
     contactFormAddress, setContactFormAddress,
     contactFormCity, setContactFormCity,
     contactFormRating, setContactFormRating,
+    contactFormLabels, setContactFormLabels,
     resetContactForm,
     startEditContact,
 

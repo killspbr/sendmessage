@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react'
-import type { Campaign, CampaignChannel, CampaignMediaItem, CampaignSharedContact, ContactList } from '../types'
+import type { Campaign, CampaignChannel, CampaignMediaItem, CampaignSharedContact, ContactList, CampaignPoll, CampaignButton } from '../types'
 import { apiFetch } from '../api'
 import { logError } from '../utils'
 
@@ -20,6 +20,8 @@ export function useCampaignComposer() {
     const [newCampaignMessage, setNewCampaignMessage] = useState('')
     const [newCampaignMediaItems, setNewCampaignMediaItems] = useState<CampaignMediaItem[]>([])
     const [newCampaignSharedContact, setNewCampaignSharedContact] = useState<CampaignSharedContact | null>(null)
+    const [newCampaignPoll, setNewCampaignPoll] = useState<CampaignPoll | null>(null)
+    const [newCampaignButtons, setNewCampaignButtons] = useState<CampaignButton[] | null>(null)
 
     const resetComposer = useCallback(() => {
         setEditingCampaignId(null)
@@ -29,6 +31,8 @@ export function useCampaignComposer() {
         setNewCampaignMessage('')
         setNewCampaignMediaItems([])
         setNewCampaignSharedContact(null)
+        setNewCampaignPoll(null)
+        setNewCampaignButtons(null)
         setCampaignEditorOpen(false)
     }, [])
 
@@ -41,6 +45,8 @@ export function useCampaignComposer() {
         setNewCampaignMessage(campaign.message || '')
         setNewCampaignMediaItems(campaign.mediaItems || [])
         setNewCampaignSharedContact(campaign.sharedContact || null)
+        setNewCampaignPoll(campaign.poll || null)
+        setNewCampaignButtons(campaign.buttons || null)
         setCampaignEditorOpen(true)
     }, [])
 
@@ -53,6 +59,8 @@ export function useCampaignComposer() {
         setNewCampaignMessage(campaign.message || '')
         setNewCampaignMediaItems(campaign.mediaItems || [])
         setNewCampaignSharedContact(campaign.sharedContact || null)
+        setNewCampaignPoll(campaign.poll || null)
+        setNewCampaignButtons(campaign.buttons || null)
         setCampaignEditorOpen(true)
     }, [])
 
@@ -81,6 +89,8 @@ export function useCampaignComposer() {
                     message: newCampaignMessage,
                     mediaItems: newCampaignMediaItems,
                     sharedContact: newCampaignSharedContact,
+                    poll: newCampaignPoll,
+                    buttons: newCampaignButtons,
                     intervalMinSeconds: sendIntervalMinSeconds,
                     intervalMaxSeconds: sendIntervalMaxSeconds,
                 })
@@ -102,6 +112,8 @@ export function useCampaignComposer() {
         newCampaignMessage, setNewCampaignMessage,
         newCampaignMediaItems, setNewCampaignMediaItems,
         newCampaignSharedContact, setNewCampaignSharedContact,
+        newCampaignPoll, setNewCampaignPoll,
+        newCampaignButtons, setNewCampaignButtons,
         resetComposer,
         startEditCampaign,
         duplicateCampaign,

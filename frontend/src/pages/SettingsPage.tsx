@@ -39,6 +39,11 @@ type SettingsPageProps = {
   onSave: () => void
   // Permissões (opcional)
   can?: (code: string) => boolean
+  currentUserGroupName?: string | null
+  chat: any
+  instanceName: string
+  onSaveCampaign?: () => void
+  onCancelCampaign?: () => void
 }
 
 export function SettingsPage({
@@ -69,6 +74,11 @@ export function SettingsPage({
   onConfirmImport,
   onSave,
   can,
+  currentUserGroupName,
+  chat,
+  instanceName,
+  onSaveCampaign,
+  onCancelCampaign
 }: SettingsPageProps) {
   const canViewSettings = !can || can('settings.view')
 
@@ -88,6 +98,24 @@ export function SettingsPage({
         <p className="text-[11px] text-slate-500">
           Configure abaixo os dados globais da sua Evolution API para o envio de mensagens.
         </p>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-2">
+        <div className="p-3 rounded-2xl bg-emerald-50 border border-emerald-100 flex flex-col gap-1">
+          <span className="text-[9px] font-bold text-emerald-600 uppercase tracking-wider">Status API</span>
+          <div className="flex items-center gap-2">
+            <div className={`h-2 w-2 rounded-full ${evolutionApiUrl ? 'bg-emerald-500 animate-pulse' : 'bg-slate-300'}`}></div>
+            <span className="text-[11px] font-semibold text-slate-800">{evolutionApiUrl ? 'Online (V2)' : 'Desconectado'}</span>
+          </div>
+        </div>
+        <div className="p-3 rounded-2xl bg-blue-50 border border-blue-100 flex flex-col gap-1">
+          <span className="text-[9px] font-bold text-blue-600 uppercase tracking-wider">CRM Labels</span>
+          <span className="text-sm font-bold text-slate-800">{chat?.labels?.length || 0} Sincronizadas</span>
+        </div>
+        <div className="p-3 rounded-2xl bg-orange-50 border border-orange-100 flex flex-col gap-1">
+          <span className="text-[9px] font-bold text-orange-600 uppercase tracking-wider">Maturação Grupos</span>
+          <span className="text-sm font-bold text-slate-800">{chat?.groups?.length || 0} Ativos</span>
+        </div>
       </div>
 
       <div className="flex flex-col gap-1">

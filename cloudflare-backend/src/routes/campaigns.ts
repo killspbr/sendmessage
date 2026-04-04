@@ -77,6 +77,8 @@ async function ensureCampaignsTable(db: ReturnType<typeof getDb>) {
       // 1. Garante que as colunas novas existem (para quem tem schema antigo sem variations/payload)
       await db.query(`ALTER TABLE public.campaigns ADD COLUMN IF NOT EXISTS variations JSONB NOT NULL DEFAULT '[]'::jsonb`).catch(() => {})
       await db.query(`ALTER TABLE public.campaigns ADD COLUMN IF NOT EXISTS delivery_payload JSONB`).catch(() => {})
+      await db.query(`ALTER TABLE public.campaigns ADD COLUMN IF NOT EXISTS poll JSONB`).catch(() => {})
+      await db.query(`ALTER TABLE public.campaigns ADD COLUMN IF NOT EXISTS buttons JSONB`).catch(() => {})
       
       // 2. Converte channels de Array de Texto (text[]) para JSONB se necessário
       // Usamos uma query bruta que tenta a conversão se o tipo for ARRAY
@@ -213,6 +215,8 @@ campaignRoutes.post('/campaigns', authenticateToken, async (c) => {
   const hasPayload = columnsCheck.rows.some((r: any) => r.column_name === 'delivery_payload')
   const hasIntervalMin = columnsCheck.rows.some((r: any) => r.column_name === 'interval_min_seconds')
   const hasIntervalMax = columnsCheck.rows.some((r: any) => r.column_name === 'interval_max_seconds')
+  const hasPoll = columnsCheck.rows.some((r: any) => r.column_name === 'poll')
+  const hasButtons = columnsCheck.rows.some((r: any) => r.column_name === 'buttons')
   const channelsType = columnsCheck.rows.find((r: any) => r.column_name === 'channels')?.data_type || 'jsonb'
   const isChannelsArray = channelsType.toUpperCase() === 'ARRAY'
 
@@ -278,7 +282,7 @@ campaignRoutes.get('/campaigns/:id', authenticateToken, async (c) => {
   await ensureCampaignsTable(db)
 
   const result = await db.query(
-    'SELECT id, name, status, list_name, channels, delivery_payload, interval_min_seconds, interval_max_seconds, created_at FROM public.campaigns WHERE id = $1 AND user_id = $2 LIMIT 1',
+    'SELECT id, name, status, list_name, channels, poll, buttons, delivery_payload, interval_min_seconds, interval_max_seconds, created_at FROM public.campaigns WHERE id = $1 AND user_id = $2 LIMIT 1',
     [campaignId, userId]
   )
   const campaign = result.rows[0]
@@ -291,6 +295,8 @@ campaignRoutes.get('/campaigns/:id', authenticateToken, async (c) => {
       status: campaign.status,
       listName: campaign.list_name,
       channels: campaign.channels,
+      poll: campaign.poll,
+      buttons: campaign.buttons,
     },
   })
 })
@@ -329,6 +335,8 @@ campaignRoutes.put('/campaigns/:id', authenticateToken, async (c) => {
   const hasPayload = columnsCheck.rows.some((r: any) => r.column_name === 'delivery_payload')
   const hasIntervalMin = columnsCheck.rows.some((r: any) => r.column_name === 'interval_min_seconds')
   const hasIntervalMax = columnsCheck.rows.some((r: any) => r.column_name === 'interval_max_seconds')
+  const hasPoll = columnsCheck.rows.some((r: any) => r.column_name === 'poll')
+  const hasButtons = columnsCheck.rows.some((r: any) => r.column_name === 'buttons')
   const hasUpdatedAt = columnsCheck.rows.some((r: any) => r.column_name === 'updated_at')
   const channelsType = columnsCheck.rows.find((r: any) => r.column_name === 'channels')?.data_type || 'jsonb'
   const isChannelsArray = channelsType.toUpperCase() === 'ARRAY'
@@ -370,6 +378,18 @@ campaignRoutes.put('/campaigns/:id', authenticateToken, async (c) => {
   if (hasIntervalMax) {
     sets.push(`interval_max_seconds = $${pIdx}`)
     params.push(Number.isFinite(intervalMax) ? intervalMax : 90)
+    pIdx++
+  }
+
+  if (hasPoll) {
+    sets.push(`poll = $${pIdx}::jsonb`)
+    params.push(body.poll ? JSON.stringify(body.poll) : null)
+    pIdx++
+  }
+
+  if (hasButtons) {
+    sets.push(`buttons = $${pIdx}::jsonb`)
+    params.push(body.buttons ? JSON.stringify(body.buttons) : null)
     pIdx++
   }
   

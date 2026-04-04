@@ -94,6 +94,8 @@ type CampaignsPageProps = {
     useEmojis?: boolean
     messageSize?: 'short' | 'medium' | 'long'
   }) => Promise<string | null>
+  chat: any
+  instanceName: string
 }
 
 function getLocalDateInputValue(date = new Date()) {
@@ -202,6 +204,8 @@ export function CampaignsPage({
   userHasConfiguredAi,
   onGenerateCampaignContentWithAI,
   onScheduleCampaign,
+  chat,
+  instanceName
 }: CampaignsPageProps) {
   const canViewCampaigns = !can || can('campaigns.view')
 

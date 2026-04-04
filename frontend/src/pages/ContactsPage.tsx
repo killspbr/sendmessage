@@ -1,7 +1,9 @@
+import { useState, useEffect } from 'react'
 import { ContactsHeader } from '../components/contacts/ContactsHeader'
 import { ContactForm } from '../components/contacts/ContactForm'
 import type { Contact, ContactList, ContactSendHistoryItem, ImportConflict } from '../types'
 import { normalizePhone, formatRating, BACKEND_URL } from '../utils'
+import { useChat } from '../hooks/useChat'
 
 type ContactsPageProps = {
   // Dados
@@ -27,6 +29,7 @@ type ContactsPageProps = {
   contactFormAddress: string
   contactFormCity: string
   contactFormRating: string
+  contactFormLabels: string[]
 
   // Estado de filtros
   searchName: string
@@ -68,6 +71,7 @@ type ContactsPageProps = {
   onChangeContactFormAddress: (value: string) => void
   onChangeContactFormCity: (value: string) => void
   onChangeContactFormRating: (value: string) => void
+  onChangeContactFormLabels: (value: string[]) => void
 
   // Handlers de seleção
   onToggleSelectAll: (checked: boolean) => void
@@ -109,6 +113,8 @@ type ContactsPageProps = {
   onSetLastMoveMessage: (message: string) => void
   // Permissões (opcional)
   can?: (code: string) => boolean
+  chat: ReturnType<typeof useChat>
+  instanceName: string
 }
 
 export function ContactsPage({
@@ -130,6 +136,7 @@ export function ContactsPage({
   contactFormAddress,
   contactFormCity,
   contactFormRating,
+  contactFormLabels,
   searchName,
   searchPhone,
   searchEmail,
@@ -157,6 +164,7 @@ export function ContactsPage({
   onChangeContactFormAddress,
   onChangeContactFormCity,
   onChangeContactFormRating,
+  onChangeContactFormLabels,
   onToggleSelectAll,
   onToggleSelectOne,
   onResetSelection,
@@ -187,7 +195,10 @@ export function ContactsPage({
   onSetContactFormRating,
   onSetLastMoveMessage,
   can,
+  chat,
+  instanceName
 }: ContactsPageProps) {
+  const [filterLabel, setFilterLabel] = useState('')
   const canViewContacts = !can || can('contacts.view')
 
   const canCreateContact = !can || can('contacts.create')
@@ -216,6 +227,8 @@ export function ContactsPage({
         onResetSelection={onResetSelection}
         onCreateList={canManageLists ? onCreateList : undefined}
         onCreateContact={canCreateContact ? onCreateContact : undefined}
+        onSyncLabels={() => chat.fetchLabels(instanceName)}
+        isSyncing={chat.loadingChat}
       />
 
       <div className="flex items-center gap-2 text-[10px] md:text-[11px] mt-2 mb-3">
@@ -280,6 +293,9 @@ export function ContactsPage({
           onSave={onSaveContactForm}
           onClear={onCancelContactForm}
           onClose={onCancelContactForm}
+          labels={contactFormLabels}
+          onChangeLabels={onChangeContactFormLabels}
+          availableLabels={chat.labels.map(l => l.name)}
         />
 
         {!showContactForm && (

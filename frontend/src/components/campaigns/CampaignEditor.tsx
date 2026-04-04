@@ -5,7 +5,7 @@ import Underline from '@tiptap/extension-underline'
 import Link from '@tiptap/extension-link'
 import TextAlign from '@tiptap/extension-text-align'
 import Image from '@tiptap/extension-image'
-import type { CampaignChannel, CampaignMediaItem, CampaignSharedContact } from '../../types'
+import type { CampaignChannel, CampaignMediaItem, CampaignSharedContact, CampaignPoll, CampaignButton } from '../../types'
 
 type CampaignEditorProps = {
   content: string
@@ -16,6 +16,8 @@ type CampaignEditorProps = {
   htmlToWhatsapp: (html: string) => string
   mediaItems?: CampaignMediaItem[]
   sharedContact?: CampaignSharedContact | null
+  poll: CampaignPoll | null
+  onChangePoll: (poll: CampaignPoll | null) => void
 }
 
 const variables = [
@@ -94,6 +96,8 @@ export function CampaignEditor({
   htmlToWhatsapp,
   mediaItems = [],
   sharedContact = null,
+  poll,
+  onChangePoll,
 }: CampaignEditorProps) {
   const [activeTab, setActiveTab] = useState<'editor' | 'preview'>('editor')
   const [useTestData, setUseTestData] = useState(false)

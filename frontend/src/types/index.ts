@@ -11,6 +11,7 @@ export type Contact = {
   email: string
   address?: string
   city?: string
+  labels?: string[] | any[]
 }
 
 export type ContactList = {
@@ -68,6 +69,36 @@ export type Campaign = {
   deliveryPayload?: CampaignDeliveryPayload | null
   mediaItems?: CampaignMediaItem[]
   sharedContact?: CampaignSharedContact | null
+  poll?: CampaignPoll | null
+  buttons?: CampaignButton[] | null
+  listMessage?: CampaignListMessage | null
+}
+
+export type CampaignPoll = {
+  name: string
+  options: string[]
+  selectableCount: number
+}
+
+export type CampaignButton = {
+  type: 'reply' | 'url' | 'call'
+  displayText: string
+  url?: string
+  phoneNumber?: string
+}
+
+export type CampaignListMessage = {
+  title: string
+  description?: string
+  buttonText: string
+  sections: {
+    title: string
+    rows: {
+      title: string
+      description?: string
+      rowId?: string
+    }[]
+  }[]
 }
 
 export type SendHistoryItem = {
