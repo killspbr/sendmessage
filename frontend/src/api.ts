@@ -61,7 +61,7 @@ async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs = 0) {
   }
 }
 
-export async function apiFetch(endpoint: string, options: RequestInit = {}) {
+export async function apiFetch<T = any>(endpoint: string, options: RequestInit = {}): Promise<T> {
   await acquireApiSlot()
   try {
   const token = localStorage.getItem('auth_token')

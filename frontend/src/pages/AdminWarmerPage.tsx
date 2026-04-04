@@ -27,6 +27,10 @@ type InstanceLabPair = {
   last_run_error_actual?: string | null
   last_run_at?: string | null
   last_run_finished_at?: string | null
+  ai_persona?: string | null
+  night_mode_enabled?: boolean
+  night_mode_start?: string
+  night_mode_end?: string
 }
 
 type InstanceLabLog = {
@@ -58,6 +62,10 @@ type InstanceLabForm = {
   sample_document_url: string
   sample_audio_url: string
   notes: string
+  ai_persona: string
+  night_mode_enabled: boolean
+  night_mode_start: string
+  night_mode_end: string
 }
 
 const EMPTY_FORM: InstanceLabForm = {
@@ -72,6 +80,10 @@ const EMPTY_FORM: InstanceLabForm = {
   sample_document_url: '',
   sample_audio_url: '',
   notes: '',
+  ai_persona: 'participando de uma conversa informal e rápida para validar a conexão',
+  night_mode_enabled: true,
+  night_mode_start: '22:00',
+  night_mode_end: '07:00',
 }
 
 function formatDateTime(value?: string | null) {
@@ -138,6 +150,8 @@ export function AdminWarmerPage({ can }: { can?: (code: string) => boolean }) {
   const [logs, setLogs] = useState<InstanceLabLog[]>([])
   const [loadingLogs, setLoadingLogs] = useState(false)
   const [busyAction, setBusyAction] = useState<string | null>(null)
+  const [expandedChatId, setExpandedChatId] = useState<string | null>(null)
+  const [recentPairLogs, setRecentPairLogs] = useState<Record<string, InstanceLabLog[]>>({})
 
   const totals = useMemo(() => {
     return pairs.reduce(
@@ -158,6 +172,23 @@ export function AdminWarmerPage({ can }: { can?: (code: string) => boolean }) {
     setEditingId(null)
     setForm(EMPTY_FORM)
     setIsFormOpen(false)
+  }
+
+  const toggleChat = async (pairId: string) => {
+    if (expandedChatId === pairId) {
+      setExpandedChatId(null)
+      return
+    }
+
+    setExpandedChatId(pairId)
+    if (!recentPairLogs[pairId]) {
+      try {
+        const data = await apiFetch<InstanceLabLog[]>(`/api/admin/warmer/${pairId}/logs?limit=5`)
+        setRecentPairLogs(prev => ({ ...prev, [pairId]: data }))
+      } catch (err) {
+        console.error('Erro ao carregar logs curtos:', err)
+      }
+    }
   }
 
   const loadPairs = async (silent = false) => {
@@ -197,6 +228,10 @@ export function AdminWarmerPage({ can }: { can?: (code: string) => boolean }) {
       sample_document_url: pair.sample_document_url || '',
       sample_audio_url: pair.sample_audio_url || '',
       notes: pair.notes || '',
+      ai_persona: pair.ai_persona || 'participando de uma conversa informal e rápida para validar a conexão',
+      night_mode_enabled: pair.night_mode_enabled ?? true,
+      night_mode_start: pair.night_mode_start || '22:00',
+      night_mode_end: pair.night_mode_end || '07:00',
     })
     setIsFormOpen(true)
     setFeedback(null)
@@ -484,11 +519,60 @@ export function AdminWarmerPage({ can }: { can?: (code: string) => boolean }) {
               </label>
 
               <label className="block text-sm font-medium text-slate-700">
+                Persona da IA (Contexto)
+                <textarea
+                  value={form.ai_persona}
+                  onChange={(e) => setForm((prev) => ({ ...prev, ai_persona: e.target.value }))}
+                  className="mt-1 min-h-[80px] w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm outline-none transition focus:border-emerald-500"
+                  placeholder="Ex: participando de uma conversa informal sobre futebol entre amigos."
+                />
+              </label>
+
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-semibold text-slate-800">Modo Noturno (Repouso)</p>
+                    <p className="text-xs text-slate-500">Pausa as atividades automáticas neste intervalo.</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setForm(p => ({ ...p, night_mode_enabled: !p.night_mode_enabled }))}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${form.night_mode_enabled ? 'bg-emerald-600' : 'bg-slate-300'}`}
+                  >
+                    <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${form.night_mode_enabled ? 'translate-x-6' : 'translate-x-1'}`} />
+                  </button>
+                </div>
+
+                {form.night_mode_enabled && (
+                  <div className="mt-4 grid grid-cols-2 gap-4">
+                    <label className="block text-xs font-medium text-slate-600">
+                      Início (Dormir)
+                      <input
+                        type="time"
+                        value={form.night_mode_start}
+                        onChange={(e) => setForm(p => ({ ...p, night_mode_start: e.target.value }))}
+                        className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-emerald-500"
+                      />
+                    </label>
+                    <label className="block text-xs font-medium text-slate-600">
+                      Fim (Acordar)
+                      <input
+                        type="time"
+                        value={form.night_mode_end}
+                        onChange={(e) => setForm(p => ({ ...p, night_mode_end: e.target.value }))}
+                        className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-emerald-500"
+                      />
+                    </label>
+                  </div>
+                )}
+              </div>
+
+              <label className="block text-sm font-medium text-slate-700">
                 Observacoes
                 <textarea
                   value={form.notes}
                   onChange={(e) => setForm((prev) => ({ ...prev, notes: e.target.value }))}
-                  className="mt-1 min-h-[110px] w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm outline-none transition focus:border-emerald-500"
+                  className="mt-1 min-h-[80px] w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm outline-none transition focus:border-emerald-500"
                   placeholder="Anote objetivo do par, payloads habilitados ou restricoes."
                 />
               </label>
@@ -663,6 +747,13 @@ export function AdminWarmerPage({ can }: { can?: (code: string) => boolean }) {
                     <div className="flex flex-wrap gap-2">
                       <button
                         type="button"
+                        onClick={() => toggleChat(pair.id)}
+                        className={`rounded-2xl border px-4 py-2 text-sm font-semibold transition ${expandedChatId === pair.id ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'}`}
+                      >
+                        {expandedChatId === pair.id ? 'Fechar Chat' : 'Monitorar Chat'}
+                      </button>
+                      <button
+                        type="button"
                         onClick={() => void handleManual(pair.id, 'a')}
                         disabled={busyAction === `${pair.id}-a`}
                         className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
@@ -682,30 +773,75 @@ export function AdminWarmerPage({ can }: { can?: (code: string) => boolean }) {
                         onClick={() => void openLogs(pair.id)}
                         className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
                       >
-                        Ver logs
+                        Ver logs full
                       </button>
                     </div>
                   </div>
+
+                  {expandedChatId === pair.id && (
+                    <div className="mt-6 border-t border-slate-200 pt-6 animate-in fade-in slide-in-from-top-4 duration-300">
+                      <div className="flex items-center justify-between mb-4">
+                        <h4 className="text-xs font-bold uppercase tracking-widest text-slate-400">Mensagens Recentes</h4>
+                        <span className="flex h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+                      </div>
+                      
+                      <div className="flex flex-col gap-3">
+                        {!recentPairLogs[pair.id] || recentPairLogs[pair.id].length === 0 ? (
+                          <p className="text-center py-4 text-xs font-medium text-slate-400 bg-white rounded-2xl border border-slate-100">
+                            Nenhuma atividade recente registrada.
+                          </p>
+                        ) : (
+                          recentPairLogs[pair.id].map((log) => {
+                            const isFromA = log.from_phone === pair.phone_a
+                            return (
+                              <div key={log.id} className={`flex flex-col ${isFromA ? 'items-start' : 'items-end'}`}>
+                                <div className={`max-w-[85%] rounded-2xl px-4 py-2.5 shadow-sm text-xs ${isFromA ? 'bg-white border border-slate-200 text-slate-800 rounded-bl-none' : 'bg-emerald-600 text-white rounded-br-none shadow-emerald-100'}`}>
+                                  {log.content_summary}
+                                </div>
+                                <span className="mt-1 px-1 text-[9px] font-bold text-slate-400 uppercase tracking-tighter">
+                                  {formatDateTime(log.sent_at)}
+                                </span>
+                              </div>
+                            )
+                          })
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <div className="mt-5 flex flex-wrap gap-2">
-                  <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-600">Texto</span>
+                  <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-600">Texto Inteligente</span>
                   {pair.sample_image_url && (
-                    <span className="rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-xs font-semibold text-sky-700">Imagem</span>
+                    <span className="rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-sky-700">Imagens</span>
                   )}
                   {pair.sample_document_url && (
-                    <span className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700">Documento</span>
+                    <span className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-amber-700">Documentos</span>
                   )}
                   {pair.sample_audio_url && (
-                    <span className="rounded-full border border-violet-200 bg-violet-50 px-3 py-1 text-xs font-semibold text-violet-700">Audio</span>
+                    <span className="rounded-full border border-violet-200 bg-violet-50 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-violet-700">Audio</span>
+                  )}
+                  {pair.night_mode_enabled && (
+                    <span className="rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-indigo-700 flex items-center gap-1">
+                      <span>🌙</span> Repouso: {pair.night_mode_start} - {pair.night_mode_end}
+                    </span>
                   )}
                 </div>
 
-                {pair.notes && (
-                  <div className="mt-4 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
-                    {pair.notes}
-                  </div>
-                )}
+                <div className="mt-4 flex flex-col gap-3">
+                  {pair.ai_persona && (
+                    <div className="rounded-2xl border border-emerald-100 bg-emerald-50/50 px-4 py-3 text-xs text-slate-700">
+                      <p className="mb-1 font-bold uppercase tracking-wider text-emerald-700 opacity-70">Persona da IA</p>
+                      {pair.ai_persona}
+                    </div>
+                  )}
+                  {pair.notes && (
+                    <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-xs text-slate-600">
+                      <p className="mb-1 font-bold uppercase tracking-wider text-slate-400 opacity-70">Observações</p>
+                      {pair.notes}
+                    </div>
+                  )}
+                </div>
               </article>
             )
           })}

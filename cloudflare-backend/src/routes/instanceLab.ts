@@ -101,13 +101,17 @@ async function generateLabMessage({
       .map((r: any) => `${r.from_phone === fromPhone ? 'Eu' : 'Outro'}: ${r.content_summary}`)
       .join('\n')
 
+    // Persona personalizada ou padrão
+    const warmerData = await db.query('SELECT ai_persona FROM public.warmer_configs WHERE id = $1', [pairId])
+    const persona = warmerData.rows[0]?.ai_persona || 'participando de uma conversa informal e rápida para validar a conexão'
+
     const prompt = `
-Você é um usuário de WhatsApp participando de uma conversa informal e rápida para validar a conexão.
+Você é um usuário de WhatsApp ${persona}. 
 Histórico recente:
 ${contextStr || '(Sem histórico ainda)'}
 
 Gere a PRÓXIMA mensagem curta (máximo 15 palavras), informal, em Português do Brasil. 
-Não use emojis excessivos. Seja natural como um humano.
+Não use emojis excessivos. Seja natural como um humano. Responda apenas com o texto da mensagem.
 `.trim()
 
     const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${access.apiKey}`
@@ -232,81 +236,88 @@ async function tableExists(db: ReturnType<typeof getDb>, tableName: string) {
 async function ensureInstanceLabSchema(db: ReturnType<typeof getDb>) {
   const UUID_GEN = "(md5(random()::text || clock_timestamp()::text)::uuid)"
   
-  // 1. Configs
-  await db.query(`
-    CREATE TABLE IF NOT EXISTS public.warmer_configs (
-      id UUID PRIMARY KEY DEFAULT ${UUID_GEN},
-      user_id UUID,
-      name TEXT,
-      instance_a_id TEXT NOT NULL,
-      instance_b_id TEXT NOT NULL,
-      phone_a TEXT NOT NULL,
-      phone_b TEXT NOT NULL,
-      status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'paused', 'error')),
-      default_delay_seconds INTEGER DEFAULT 5,
-      default_messages_per_run INTEGER DEFAULT 4,
-      sample_image_url TEXT,
-      sample_document_url TEXT,
-      sample_audio_url TEXT,
-      notes TEXT,
-      last_run_status TEXT,
-      last_run_error TEXT,
-      last_run_at TIMESTAMP WITH TIME ZONE,
-      created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-      updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-    )
-  `)
+  // Proteção total contra falhas de permissão de schema no Hyperdrive/Workers
+  await runSchemaBestEffort(async () => {
+    // 1. Configs
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS public.warmer_configs (
+        id UUID PRIMARY KEY DEFAULT ${UUID_GEN},
+        user_id UUID,
+        name TEXT,
+        instance_a_id TEXT NOT NULL,
+        instance_b_id TEXT NOT NULL,
+        phone_a TEXT NOT NULL,
+        phone_b TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'paused', 'error')),
+        default_delay_seconds INTEGER DEFAULT 5,
+        default_messages_per_run INTEGER DEFAULT 4,
+        sample_image_url TEXT,
+        sample_document_url TEXT,
+        sample_audio_url TEXT,
+        notes TEXT,
+        last_run_status TEXT,
+        last_run_error TEXT,
+        last_run_at TIMESTAMP WITH TIME ZONE,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      )
+    `)
 
-  // 2. Runs
-  await db.query(`
-    CREATE TABLE IF NOT EXISTS public.warmer_runs (
-      id UUID PRIMARY KEY DEFAULT ${UUID_GEN},
-      warmer_id UUID NOT NULL REFERENCES public.warmer_configs(id) ON DELETE CASCADE,
-      initiated_by UUID,
-      status TEXT NOT NULL DEFAULT 'queued' CHECK (status IN ('queued', 'running', 'completed', 'failed')),
-      steps_total INTEGER NOT NULL DEFAULT 1,
-      steps_completed INTEGER NOT NULL DEFAULT 0,
-      step_delay_seconds INTEGER NOT NULL DEFAULT 5,
-      preferred_start_side TEXT CHECK (preferred_start_side IN ('a', 'b')),
-      last_error TEXT,
-      started_at TIMESTAMP WITH TIME ZONE,
-      finished_at TIMESTAMP WITH TIME ZONE,
-      created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-    )
-  `)
+    // 2. Runs
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS public.warmer_runs (
+        id UUID PRIMARY KEY DEFAULT ${UUID_GEN},
+        warmer_id UUID NOT NULL REFERENCES public.warmer_configs(id) ON DELETE CASCADE,
+        initiated_by UUID,
+        status TEXT NOT NULL DEFAULT 'queued' CHECK (status IN ('queued', 'running', 'completed', 'failed')),
+        steps_total INTEGER NOT NULL DEFAULT 1,
+        steps_completed INTEGER NOT NULL DEFAULT 0,
+        step_delay_seconds INTEGER NOT NULL DEFAULT 5,
+        preferred_start_side TEXT CHECK (preferred_start_side IN ('a', 'b')),
+        last_error TEXT,
+        started_at TIMESTAMP WITH TIME ZONE,
+        finished_at TIMESTAMP WITH TIME ZONE,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      )
+    `)
 
-  // 3. Logs
-  await db.query(`
-    CREATE TABLE IF NOT EXISTS public.warmer_logs (
-      id BIGSERIAL PRIMARY KEY,
-      warmer_id UUID NOT NULL REFERENCES public.warmer_configs(id) ON DELETE CASCADE,
-      from_phone TEXT NOT NULL,
-      to_phone TEXT NOT NULL,
-      message_type TEXT DEFAULT 'text',
-      content_summary TEXT,
-      sent_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-      run_id UUID REFERENCES public.warmer_runs(id) ON DELETE SET NULL,
-      from_instance TEXT,
-      to_instance TEXT,
-      payload_type TEXT,
-      ok BOOLEAN DEFAULT true,
-      provider_status INTEGER,
-      response_time_ms INTEGER,
-      error_detail TEXT
-    )
-  `)
+    // 3. Logs
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS public.warmer_logs (
+        id BIGSERIAL PRIMARY KEY,
+        warmer_id UUID NOT NULL REFERENCES public.warmer_configs(id) ON DELETE CASCADE,
+        from_phone TEXT NOT NULL,
+        to_phone TEXT NOT NULL,
+        message_type TEXT DEFAULT 'text',
+        content_summary TEXT,
+        sent_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        run_id UUID REFERENCES public.warmer_runs(id) ON DELETE SET NULL,
+        from_instance TEXT,
+        to_instance TEXT,
+        payload_type TEXT,
+        ok BOOLEAN DEFAULT true,
+        provider_status INTEGER,
+        response_time_ms INTEGER,
+        error_detail TEXT
+      )
+    `)
+  }, 'instanceLabSchemaInitial')
 
   // Updates e Indices
   await runSchemaBestEffort(async () => {
     await db.query(`ALTER TABLE public.warmer_configs ADD COLUMN IF NOT EXISTS name TEXT`)
     await db.query(`ALTER TABLE public.warmer_configs ADD COLUMN IF NOT EXISTS notes TEXT`)
+    await db.query(`ALTER TABLE public.warmer_configs ADD COLUMN IF NOT EXISTS ai_persona TEXT`)
+    await db.query(`ALTER TABLE public.warmer_configs ADD COLUMN IF NOT EXISTS night_mode_enabled BOOLEAN DEFAULT true`)
+    await db.query(`ALTER TABLE public.warmer_configs ADD COLUMN IF NOT EXISTS night_mode_start TEXT DEFAULT '22:00'`)
+    await db.query(`ALTER TABLE public.warmer_configs ADD COLUMN IF NOT EXISTS night_mode_end TEXT DEFAULT '07:00'`)
     await db.query(`ALTER TABLE public.warmer_configs ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP`)
 
     await db.query(`CREATE INDEX IF NOT EXISTS idx_warmer_configs_status ON public.warmer_configs(status)`)
     await db.query(`CREATE INDEX IF NOT EXISTS idx_warmer_logs_warmer_id_sent_at ON public.warmer_logs(warmer_id, sent_at DESC)`)
     await db.query(`CREATE INDEX IF NOT EXISTS idx_warmer_runs_warmer_created_at ON public.warmer_runs(warmer_id, created_at DESC)`)
     await db.query(`CREATE INDEX IF NOT EXISTS idx_warmer_runs_status_created_at ON public.warmer_runs(status, created_at DESC)`)
-  }, 'instanceLabUpdates')
+  }, 'instanceLabUpdatesV2')
 }
 
 async function getGlobalEvolutionConfig(db: ReturnType<typeof getDb>) {
@@ -928,17 +939,25 @@ export async function handleScheduledWarming(env: Bindings) {
   if (activePairs.length === 0) return
 
   const now = new Date()
-  const currentHour = now.getHours()
-
-  // 2. Filtro de "Horario Humano" (ex: entre 07h e 22h)
-  // TODO: Tornar isso configuravel, por enquanto fixo para seguranca
-  if (currentHour < 7 || currentHour > 22) {
-    console.log(`[ScheduledWarming] Fora do horario comercial (${currentHour}h). Pulando...`)
-    return
-  }
+  const currentTimeStr = now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', hour12: false })
 
   for (const pair of activePairs) {
     try {
+      // 2. Filtro de Night Mode configurável por par
+      if (pair.night_mode_enabled) {
+        const start = pair.night_mode_start || '22:00'
+        const end = pair.night_mode_end || '07:00'
+        
+        // Verifica se o horário atual está dentro do intervalo de repouso (handles overnight span)
+        const isNight = start <= end 
+          ? (currentTimeStr >= start && currentTimeStr <= end)
+          : (currentTimeStr >= start || currentTimeStr <= end)
+
+        if (isNight) {
+          // console.log(`[ScheduledWarming] Par ${pair.name || pair.id} em modo noturno (${currentTimeStr}). Pulando...`)
+          continue
+        }
+      }
       // 3. Verifica se ja existe uma rodada em execucao
       const activeRun = await db.query(
         "SELECT id FROM public.warmer_runs WHERE warmer_id = $1 AND status IN ('queued', 'running') LIMIT 1",
@@ -1066,8 +1085,9 @@ instanceLabRoutes.post('/admin/warmer', authenticateToken, checkAdmin, async (c)
     `INSERT INTO public.warmer_configs (
       id, user_id, name, instance_a_id, instance_b_id, phone_a, phone_b, status,
       default_delay_seconds, default_messages_per_run,
-      sample_image_url, sample_document_url, sample_audio_url, notes
-    ) VALUES ($1,$2,$3,$4,$5,$6,$7,'active',$8,$9,$10,$11,$12,$13)
+      sample_image_url, sample_document_url, sample_audio_url, notes,
+      ai_persona, night_mode_enabled, night_mode_start, night_mode_end
+    ) VALUES ($1,$2,$3,$4,$5,$6,$7,'active',$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
     RETURNING *`,
     [
       pairId,
@@ -1083,6 +1103,10 @@ instanceLabRoutes.post('/admin/warmer', authenticateToken, checkAdmin, async (c)
       safeTrim(body.sample_document_url) || null,
       safeTrim(body.sample_audio_url) || null,
       safeTrim(body.notes) || null,
+      safeTrim(body.ai_persona) || null,
+      body.night_mode_enabled ?? true,
+      safeTrim(body.night_mode_start) || '22:00',
+      safeTrim(body.night_mode_end) || '07:00',
     ]
   )
 
@@ -1118,8 +1142,12 @@ instanceLabRoutes.put('/admin/warmer/:id', authenticateToken, checkAdmin, async 
       sample_document_url = $9,
       sample_audio_url = $10,
       notes = $11,
+      ai_persona = $12,
+      night_mode_enabled = $13,
+      night_mode_start = $14,
+      night_mode_end = $15,
       updated_at = CURRENT_TIMESTAMP
-    WHERE id = $12
+    WHERE id = $16
     RETURNING *`,
     [
       safeTrim(body.name) || null,
@@ -1133,6 +1161,10 @@ instanceLabRoutes.put('/admin/warmer/:id', authenticateToken, checkAdmin, async 
       safeTrim(body.sample_document_url) || null,
       safeTrim(body.sample_audio_url) || null,
       safeTrim(body.notes) || null,
+      safeTrim(body.ai_persona) || null,
+      body.night_mode_enabled ?? true,
+      safeTrim(body.night_mode_start) || '22:00',
+      safeTrim(body.night_mode_end) || '07:00',
       id,
     ]
   )
