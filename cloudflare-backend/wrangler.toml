@@ -1,7 +1,7 @@
 name = "sendmessage-backend"
 main = "src/index.ts"
 compatibility_date = "2026-03-28"
-compatibility_flags = ["nodejs_compat"]
+compatibility_flags = [ "nodejs_compat" ]
 
 [observability.logs]
 enabled = true
@@ -12,7 +12,7 @@ bucket_name = "sendmessage-uploads"
 
 [[hyperdrive]]
 binding = "HYPERDRIVE"
-id = "12abb41244884c95a5ab078a0f17c62f"
+id = "aa4d950b0ebd4d7b86b39e689a665876"
 
 [vars]
 SYSTEM_TIMEZONE = "America/Sao_Paulo"
@@ -21,4 +21,4 @@ ACTIVE_USER_WINDOW_SECONDS = "120"
 WARMER_CRON_ENABLED = "false"
 
 [triggers]
-crons = ["* * * * *"]
+crons = [ "* * * * *" ]

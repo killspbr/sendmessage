@@ -1,0 +1,24 @@
+[31mX [41;31m[[41;97mERROR[41;31m][0m [1mA request to the Cloudflare API (/accounts/e910e5c51a8a41088aa09682471dedde/workers/scripts/sendmessage-backend) failed.[0m
+
+  Hyperdrive binding 'HYPERDRIVE' references config '12abb41244884c95a5ab078a0f17c62f' which was not found. Verify the config exists in your account and that the id in your configuration is correct. [code: 10157]
+  To learn more about this error, visit: [4mhttps://developers.cloudflare.com/hyperdrive/get-started/[0m
+
+  
+  If you think this is a bug, please open an issue at: [4mhttps://github.com/cloudflare/workers-sdk/issues/new/choose[0m
+
+
+🪵  Logs were written to "C:\Users\claud\AppData\Roaming\xdg.config\.wrangler\logs\wrangler-2026-04-04_01-07-45_310.log"
+
+ ⛅️ wrangler 4.78.0 (update available 4.80.0)
+─────────────────────────────────────────────
+Total Upload: 582.97 KiB / gzip: 124.26 KiB
+Your Worker has access to the following bindings:
+Binding                                                                Resource                  
+env.HYPERDRIVE (12abb41244884c95a5ab078a0f17c62f)                      Hyperdrive Config         
+env.UPLOADS_BUCKET (sendmessage-uploads)                               R2 Bucket                 
+env.SYSTEM_TIMEZONE ("America/Sao_Paulo")                              Environment Variable      
+env.SYSTEM_TIMEZONE_LABEL ("GMT-3 (America/Sao_Paulo)")                Environment Variable      
+env.ACTIVE_USER_WINDOW_SECONDS ("120")                                 Environment Variable      
+env.WARMER_CRON_ENABLED ("false")                                      Environment Variable      
+
+

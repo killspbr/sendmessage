@@ -1,0 +1,33 @@
+
+ ⛅️ wrangler 4.78.0 (update available 4.80.0)
+─────────────────────────────────────────────
+Getting User settings...
+👋 You are logged in with an OAuth Token, associated with the email engclrodrigues@gmail.com.
+┌────────────────────────────────────┬──────────────────────────────────┐
+│ Account Name                       │ Account ID                       │
+├────────────────────────────────────┼──────────────────────────────────┤
+│ Engclrodrigues@gmail.com's Account │ e910e5c51a8a41088aa09682471dedde │
+└────────────────────────────────────┴──────────────────────────────────┘
+🔓 Token Permissions:
+Scope (Access)
+- account (read)
+- user (read)
+- workers (write)
+- workers_kv (write)
+- workers_routes (write)
+- workers_scripts (write)
+- workers_tail (read)
+- d1 (write)
+- pages (write)
+- zone (read)
+- ssl_certs (write)
+- ai (write)
+- ai-search (write)
+- ai-search (run)
+- queues (write)
+- pipelines (write)
+- secrets_store (write)
+- containers (write)
+- cloudchamber (write)
+- connectivity (admin)
+- offline_access 
