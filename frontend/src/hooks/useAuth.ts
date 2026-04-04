@@ -29,19 +29,33 @@ export function useAuth(): UseAuthResult {
 
       if (token && storedUser) {
         try {
-          const user = await apiFetch('/api/auth/me')
-          setCurrentUser(user)
+          // Otimismo: define o usuário do cache para liberar a UI imediatamente
+          const cachedUser = JSON.parse(storedUser)
+          setCurrentUser(cachedUser)
+          setAuthLoading(false) // Libera a UI
+
+          // Validação real em background
+          const user = await apiFetch<any>('/api/auth/me')
+          if (isMounted) {
+            setCurrentUser(user)
+            localStorage.setItem('auth_user', JSON.stringify(user))
+          }
         } catch (e: any) {
-          if (e?.message === 'AUTH_EXPIRED') {
-            console.warn('[useAuth] Token expirado, redirecionando ao login.')
-            setCurrentUser(null)
-          } else {
-            console.warn(
-              '[useAuth] Falha ao validar token no backend. Entrando em modo seguro (sem sessao em cache).',
-              e?.message
-            )
-            setCurrentUser(null)
-            setAuthError('Nao foi possivel validar sua sessao com o servidor. Tente entrar novamente em instantes.')
+          if (isMounted) {
+            if (e?.message === 'AUTH_EXPIRED') {
+              console.warn('[useAuth] Token expirado, redirecionando ao login.')
+              logout()
+            } else {
+              console.warn(
+                '[useAuth] Falha ao validar token no backend. Entrando em modo seguro (sem sessao em cache).',
+                e?.message
+              )
+              // Em caso de erro de rede, mantemos o local se possível, ou nulamos se for crítico
+              // Aqui decidimos por remover se não for um erro genérico de rede
+              if (e?.status === 401 || e?.status === 403) {
+                  logout()
+              }
+            }
           }
         }
       }

@@ -1,23 +1,23 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, lazy, Suspense } from 'react'
 
 // Layout & Components
 import { Sidebar } from './components/layout/Sidebar'
 import { Header } from './components/layout/Header'
 import { VersionUpdater } from './components/common/VersionUpdater'
-import {
-  DashboardPage,
-  SettingsPage,
-  CampaignsPage,
-  ContactsPage,
-  AuthPage,
-  AdminUsersPage,
-  AdminWarmerPage,
-  UserSettingsPage,
-  ReportsPage,
-  SchedulesPage,
-} from './pages'
-import GeminiKeysPage from './pages/GeminiKeysPage'
-import SecurityDashboardPage from './pages/SecurityDashboardPage'
+
+// Lazy loaded pages for performance
+const DashboardPage = lazy(() => import('./pages/DashboardPage').then(m => ({ default: m.DashboardPage })))
+const SettingsPage = lazy(() => import('./pages/SettingsPage').then(m => ({ default: m.SettingsPage })))
+const CampaignsPage = lazy(() => import('./pages/CampaignsPage').then(m => ({ default: m.CampaignsPage })))
+const ContactsPage = lazy(() => import('./pages/ContactsPage').then(m => ({ default: m.ContactsPage })))
+const AuthPage = lazy(() => import('./pages/AuthPage').then(m => ({ default: m.AuthPage })))
+const AdminUsersPage = lazy(() => import('./pages/AdminUsersPage').then(m => ({ default: m.AdminUsersPage })))
+const AdminWarmerPage = lazy(() => import('./pages/AdminWarmerPage').then(m => ({ default: m.AdminWarmerPage })))
+const UserSettingsPage = lazy(() => import('./pages/UserSettingsPage').then(m => ({ default: m.UserSettingsPage })))
+const ReportsPage = lazy(() => import('./pages/ReportsPage').then(m => ({ default: m.ReportsPage })))
+const SchedulesPage = lazy(() => import('./pages/SchedulesPage').then(m => ({ default: m.SchedulesPage })))
+const GeminiKeysPage = lazy(() => import('./pages/GeminiKeysPage'))
+const SecurityDashboardPage = lazy(() => import('./pages/SecurityDashboardPage'))
 
 // Custom Hooks
 import { useAuth } from './hooks/useAuth'
@@ -259,6 +259,11 @@ function App() {
 
         <main className="flex-1 overflow-y-auto">
           <div className="max-w-6xl mx-auto px-6 py-6">
+            <Suspense fallback={
+                <div className="h-48 flex items-center justify-center">
+                    <div className="h-8 w-8 border-2 border-slate-200 border-t-emerald-500 rounded-full animate-spin" />
+                </div>
+            }>
             {currentPage === 'dashboard' && (
               <DashboardPage
                 contactsByList={contactsByList} contacts={currentContacts} lists={lists} currentListId={currentListId}
@@ -412,7 +417,9 @@ function App() {
             {currentPage === 'admin' && <AdminUsersPage can={can} onImpersonateUser={setImpersonatedUserId} />}
             {currentPage === 'warmer' && <AdminWarmerPage can={can} />}
             {currentPage === 'gemini-keys' && <GeminiKeysPage />}
+            {currentPage === 'gemini-keys' && <GeminiKeysPage />}
             {currentPage === 'security' && <SecurityDashboardPage />}
+            </Suspense>
           </div>
         </main>
 

@@ -8,9 +8,13 @@ export const API_URL = import.meta.env.PROD
     : (import.meta.env.VITE_API_URL || 'http://localhost:4000')
 
 // Mantemos um limite seguro, mas permissivo para não travar a UI ao trocar de telas.
-const MAX_CONCURRENT_API_REQUESTS = 15
+const MAX_CONCURRENT_API_REQUESTS = 25
 let activeApiRequests = 0
 const apiRequestQueue: Array<() => void> = []
+
+// Simples cache de memória para evitar duplicatas em trocas de tela rápidas (2s)
+const apiCache = new Map<string, { data: any, timestamp: number }>()
+const CACHE_TTL = 2000 
 
 async function acquireApiSlot() {
   if (activeApiRequests < MAX_CONCURRENT_API_REQUESTS) {
@@ -62,6 +66,16 @@ async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs = 0) {
 }
 
 export async function apiFetch<T = any>(endpoint: string, options: RequestInit = {}): Promise<T> {
+  const method = String(options.method || 'GET').toUpperCase()
+  const cacheKey = `${method}:${endpoint}:${options.body ? JSON.stringify(options.body) : ''}`
+
+  if (method === 'GET') {
+    const cached = apiCache.get(cacheKey)
+    if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+      return cached.data
+    }
+  }
+
   await acquireApiSlot()
   try {
   const token = localStorage.getItem('auth_token')
@@ -145,7 +159,13 @@ export async function apiFetch<T = any>(endpoint: string, options: RequestInit =
       throw apiError
     }
 
-    return response.json()
+    const result = await response.json()
+
+    if (method === 'GET' && response.ok) {
+        apiCache.set(cacheKey, { data: result, timestamp: Date.now() })
+    }
+
+    return result
   } finally {
     releaseApiSlot()
   }
