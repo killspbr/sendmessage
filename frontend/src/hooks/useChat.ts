@@ -48,12 +48,27 @@ export function useChat() {
     }
   }, [])
 
+  const setupWebhook = useCallback(async (instance: string) => {
+    if (!instance) return
+    setLoadingChat(true)
+    try {
+      await apiFetch(`/chat/webhook-setup/${instance}`, { method: 'POST' })
+      return true
+    } catch (err) {
+      console.warn('[useChat] Erro ao configurar webhook:', err)
+      return false
+    } finally {
+      setLoadingChat(false)
+    }
+  }, [])
+
   return { 
     labels, 
     groups, 
     loadingChat, 
     fetchLabels, 
     fetchGroups,
+    setupWebhook,
     setLabels,
     setGroups
   }

@@ -118,6 +118,25 @@ export function SettingsPage({
         </div>
       </div>
 
+      <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 flex items-center justify-between gap-4 mb-2">
+        <div className="flex flex-col gap-0.5">
+          <span className="text-[11px] font-bold text-slate-800">Automação de Feedback (Fase 5)</span>
+          <span className="text-[10px] text-slate-500 leading-tight">Votos em enquetes e cliques em botões atualizarão o status dos seus leads automaticamente no banco de dados.</span>
+        </div>
+        <button
+          type="button"
+          disabled={chat.loadingChat || !instanceName}
+          onClick={async () => {
+            const ok = await chat.setupWebhook(instanceName)
+            if (ok) alert('Inteligência CRM v2 Ativada! Suas enquetes agora automatizam o CRM.')
+            else alert('Erro ao configurar. Verifique a URL da API.')
+          }}
+          className="shrink-0 h-9 px-4 rounded-xl bg-slate-900 text-white text-[11px] font-bold hover:bg-slate-800 transition-all disabled:opacity-50"
+        >
+          {chat.loadingChat ? 'Configurando...' : '✨ Ativar Inteligência'}
+        </button>
+      </div>
+
       <div className="flex flex-col gap-1">
         <label className="text-[10px] font-medium text-slate-600">Evolution API URL</label>
         <input

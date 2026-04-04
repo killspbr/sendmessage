@@ -70,3 +70,52 @@ chatRoutes.get('/groups/:instance', authenticateToken, async (c) => {
     return c.json({ error: error.message }, 500)
   }
 })
+
+/**
+ * POST /api/chat/webhook-setup/:instance
+ * Configura o webhook na Evolution API v2 para apontar para o nosso backend
+ */
+chatRoutes.post('/webhook-setup/:instance', authenticateToken, async (c) => {
+  const instance = c.req.param('instance')
+  const db = getDb(c.env)
+  
+  const settings = await db.query('SELECT evolution_url, evolution_key FROM public.settings LIMIT 1')
+  if (settings.rows.length === 0) return c.json({ error: 'Configuracao ausente.' }, 400)
+
+  const { evolution_url, evolution_key } = settings.rows[0]
+  const baseURL = evolution_url.replace(/\/$/, '')
+  const url = `${baseURL}/webhook/set/${instance}`
+
+  // Detectar a URL do nosso proprio backend (Worker) para passar para a Evolution
+  const myBackendUrl = new URL(c.req.url).origin
+  const webhookUrl = `${myBackendUrl}/api/webhooks/evolution`
+
+  const payload = {
+    enabled: true,
+    url: webhookUrl,
+    webhook_by_events: false,
+    events: ["MESSAGES_UPSERT", "POLL_VOTE", "MESSAGES_UPDATE"],
+    webhook_base64: false
+  }
+
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 
+        'apikey': evolution_key,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(payload)
+    })
+
+    const data = await response.json()
+    return c.json({ 
+        ok: true, 
+        message: 'Webhook configurado com sucesso na Evolution API.',
+        evolution_response: data,
+        webhook_target: webhookUrl
+    })
+  } catch (error: any) {
+    return c.json({ error: `Erro no setup do webhook: ${error.message}` }, 500)
+  }
+})
