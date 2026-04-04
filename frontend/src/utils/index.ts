@@ -1,10 +1,9 @@
 // Funções utilitárias compartilhadas
 
 // URL do backend - prioritiza variável de ambiente VITE_API_URL
-export const BACKEND_URL = import.meta.env.VITE_API_URL ||
-  (import.meta.env.PROD
+export const BACKEND_URL = import.meta.env.PROD
     ? 'https://sendmessage-backend.engclrodrigues.workers.dev'
-    : 'http://localhost:4000');
+    : (import.meta.env.VITE_API_URL || 'http://localhost:4000');
 
 // Normaliza telefone removendo caracteres não numéricos
 export function normalizePhone(phone: string): string {
