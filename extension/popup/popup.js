@@ -1,4 +1,4 @@
-const BACKEND_URL = 'https://sendmessage-backend.claudio-rodrigues-seconci.workers.dev'
+const BACKEND_URL = 'https://sendmessage-backend.engclrodrigues.workers.dev'
 const SYSTEM_URL = 'https://sendmessage-frontend.pages.dev'
 
 document.addEventListener('DOMContentLoaded', () => {
