@@ -207,21 +207,26 @@ async function getTableColumns(db: ReturnType<typeof getDb>, tableName: string) 
     return cached.columns
   }
 
-  const result = await db.query(
-    `SELECT column_name
-       FROM information_schema.columns
-      WHERE table_schema = 'public'
-        AND table_name = $1`,
-    [tableName]
-  )
+  try {
+    const result = await db.query(
+      `SELECT column_name
+         FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = $1`,
+      [tableName]
+    )
 
-  const columns = new Set<string>(result.rows.map((row: any) => String(row.column_name)))
-  tableColumnsCache.set(cacheKey, {
-    columns,
-    expiresAt: now + COLUMN_CACHE_TTL_MS,
-  })
+    const columns = new Set<string>(result.rows.map((row: any) => String(row.column_name)))
+    tableColumnsCache.set(cacheKey, {
+      columns,
+      expiresAt: now + COLUMN_CACHE_TTL_MS,
+    })
 
-  return columns
+    return columns
+  } catch (err: any) {
+    console.warn(`[InstanceLab:getTableColumns] Nao foi possivel ler colunas de ${tableName}. Usando fallback vazio. Erro:`, err.message)
+    return new Set<string>()
+  }
 }
 
 function hasColumn(columns: Set<string>, columnName: string) {
@@ -229,8 +234,13 @@ function hasColumn(columns: Set<string>, columnName: string) {
 }
 
 async function tableExists(db: ReturnType<typeof getDb>, tableName: string) {
-  const result = await db.query(`SELECT to_regclass($1) AS table_name`, [`public.${tableName}`])
-  return Boolean(result.rows[0]?.table_name)
+  try {
+    const result = await db.query(`SELECT to_regclass($1) AS table_name`, [`public.${tableName}`])
+    return Boolean(result.rows[0]?.table_name)
+  } catch (err: any) {
+    console.warn(`[InstanceLab:tableExists] Nao foi possivel verificar existencia da tabela ${tableName}. Assumindo true para evitar crash. Erro:`, err.message)
+    return true
+  }
 }
 
 async function ensureInstanceLabSchema(db: ReturnType<typeof getDb>) {

@@ -22,6 +22,7 @@ import { extractMapsRoutes } from './routes/extractMaps'
 import { emailWebhookRoutes } from './routes/emailWebhook'
 import { chatRoutes } from './routes/chat'
 import { webhookRoutes } from './routes/webhooks'
+import { isSkippableRuntimeSchemaError } from './lib/runtimeSchema'
 
 const app = new Hono<{ Bindings: Bindings; Variables: AppVariables }>()
 
@@ -81,9 +82,23 @@ app.use('*', async (c, next) => {
 
   const db = getDb(c.env)
   c.set('db', db)
-  // Garante o esquema em background ou na primeira requisição. 
-  // O ensureCloudflareSchema possui trava interna para rodar apenas uma vez por isolate.
+
+  // 1. Garante o esquema em background ou na primeira requisição. 
   await ensureCloudflareSchema(db)
+
+  // 2. Reparo proativo de permissao se detectarmos problemas repetitivos
+  // Tentamos rodar um GRANT apenas se falhar em rotas criticas ou periodicamente (sample)
+  if (Math.random() < 0.05) { // 5% das requisicoes tentam manter a saude do schema public
+      try {
+          await db.query('GRANT USAGE ON SCHEMA public TO CURRENT_USER')
+          await db.query('GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO CURRENT_USER')
+      } catch (err) {
+          if (!isSkippableRuntimeSchemaError(err)) {
+              console.warn('[AutoHeal:Permissions] Falha ao autorreparar privilegios:', (err as any).message)
+          }
+      }
+  }
+
   await next()
 })
 

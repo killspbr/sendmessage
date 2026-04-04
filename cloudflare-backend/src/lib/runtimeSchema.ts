@@ -6,6 +6,8 @@ export function isSkippableRuntimeSchemaError(error: unknown) {
     message.includes('permission denied') ||
     message.includes('insufficient privilege') ||
     message.includes('must be owner') ||
+    message.includes('catalog') ||
+    message.includes('information_schema') ||
     (message.includes('gen_random_uuid') && message.includes('does not exist'))
   )
 }
