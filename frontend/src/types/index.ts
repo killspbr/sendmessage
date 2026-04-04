@@ -66,6 +66,8 @@ export type Campaign = {
   intervalMinSeconds?: number
   intervalMaxSeconds?: number
   deliveryPayload?: CampaignDeliveryPayload | null
+  mediaItems?: CampaignMediaItem[]
+  sharedContact?: CampaignSharedContact | null
 }
 
 export type SendHistoryItem = {

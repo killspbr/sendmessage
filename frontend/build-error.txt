@@ -1,0 +1,24 @@
+
+> frontend@1.0.0 build
+> tsc -b && vite build
+
+src/App.tsx(145,47): error TS2339: Property 'gemini_temperature' does not exist on type 'GlobalSettings'.
+src/App.tsx(146,45): error TS2339: Property 'gemini_max_tokens' does not exist on type 'GlobalSettings'.
+src/App.tsx(147,34): error TS2339: Property 'gemini_model' does not exist on type 'GlobalSettings'.
+src/App.tsx(148,39): error TS2339: Property 'gemini_api_version' does not exist on type 'GlobalSettings'.
+src/App.tsx(181,72): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/App.tsx(181,78): error TS2322: Type 'Promise<void>' is not assignable to type 'void'.
+src/App.tsx(250,105): error TS2345: Argument of type 'number' is not assignable to parameter of type 'string'.
+src/App.tsx(251,410): error TS2322: Type 'number' is not assignable to type 'string'.
+src/App.tsx(276,16): error TS2739: Type '{ campaigns: Campaign[]; lists: ContactList[]; contactsByList: Record<string, Contact[]>; sendHistory: SendHistoryItem[]; contactSendHistory: ContactSendHistoryItem[]; ... 45 more ...; onSetReportViewMode: any; }' is missing the following properties from type 'CampaignsPageProps': onSetEditingCampaignId, onScheduleCampaign, htmlToWhatsapp, htmlToText
+src/App.tsx(303,35): error TS2304: Cannot find name 'reportCampaignId'.
+src/App.tsx(304,33): error TS2304: Cannot find name 'reportViewMode'.
+src/App.tsx(305,40): error TS2304: Cannot find name 'setReportCampaignId'.
+src/App.tsx(306,38): error TS2304: Cannot find name 'setReportViewMode'.
+src/App.tsx(312,95): error TS2322: Type '{ effectiveUserId: any; userSettings: UserSettings | null; setUserSettings: any; onSave: (overrides: { displayName?: string | null | undefined; phone?: string | null | undefined; ... 4 more ...; companyInfo?: string | ... 1 more ... | undefined; }) => Promise<...>; }' is not assignable to type 'IntrinsicAttributes & UserSettingsPageProps'.
+  Property 'userSettings' does not exist on type 'IntrinsicAttributes & UserSettingsPageProps'.
+src/App.tsx(315,16): error TS2739: Type '{ evolutionApiUrl: string; evolutionApiKey: string; evolutionInstance: string; onChangeEvolutionApiUrl: Dispatch<SetStateAction<string>>; onChangeEvolutionApiKey: Dispatch<...>; ... 16 more ...; can: (code: string) => boolean; }' is missing the following properties from type 'SettingsPageProps': importPreview, onExportData, onImportFile, onCancelImport, onConfirmImport
+src/hooks/useCampaignComposer.ts(42,43): error TS2339: Property 'mediaItems' does not exist on type 'Campaign'.
+src/hooks/useCampaignComposer.ts(43,46): error TS2339: Property 'sharedContact' does not exist on type 'Campaign'.
+src/hooks/useCampaignComposer.ts(54,43): error TS2339: Property 'mediaItems' does not exist on type 'Campaign'.
+src/hooks/useCampaignComposer.ts(55,46): error TS2339: Property 'sharedContact' does not exist on type 'Campaign'.

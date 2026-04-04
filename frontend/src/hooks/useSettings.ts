@@ -20,6 +20,10 @@ export type GlobalSettings = {
   evolution_api_key: string | null
   evolution_shared_instance: string | null
   google_maps_api_key: string | null
+  gemini_model: string | null
+  gemini_api_version: string | null
+  gemini_temperature: number | null
+  gemini_max_tokens: number | null
 }
 
 type UseSettingsParams = {
@@ -114,6 +118,10 @@ export function useSettings({ effectiveUserId, currentUserId }: UseSettingsParam
             evolution_api_key: data.evolution_api_key ?? null,
             evolution_shared_instance: data.evolution_shared_instance ?? null,
             google_maps_api_key: data.google_maps_api_key ?? null,
+            gemini_model: data.gemini_model ?? null,
+            gemini_api_version: data.gemini_api_version ?? null,
+            gemini_temperature: data.gemini_temperature ?? null,
+            gemini_max_tokens: data.gemini_max_tokens ?? null,
           })
 
           if (data.global_ai_api_key) setGeminiApiKey(data.global_ai_api_key)
@@ -217,6 +225,10 @@ export function useSettings({ effectiveUserId, currentUserId }: UseSettingsParam
         evolution_api_key: data.evolution_api_key ?? null,
         evolution_shared_instance: data.evolution_shared_instance ?? null,
         google_maps_api_key: data.google_maps_api_key ?? null,
+        gemini_model: data.gemini_model ?? null,
+        gemini_api_version: data.gemini_api_version ?? null,
+        gemini_temperature: data.gemini_temperature ?? null,
+        gemini_max_tokens: data.gemini_max_tokens ?? null,
       })
 
       return 'Configurações globais salvas com sucesso.'

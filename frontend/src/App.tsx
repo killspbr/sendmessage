@@ -51,6 +51,14 @@ function App() {
   } = useUI()
 
   const { toastMessage, showToast } = useToast()
+  
+  // 1.1 Auth states
+  const [authEmail, setAuthEmail] = useState('')
+  const [authPassword, setAuthPassword] = useState('')
+  const [authName, setAuthName] = useState('')
+  const [authMode, setAuthMode] = useState<'login'|'signup'>('login')
+  const [rememberMe, setRememberMe] = useState(true)
+  const [localAuthError, setLocalAuthError] = useState<string|null>(null)
 
   // 2. Authentication & Guard
   const { currentUser, authLoading, authError, login, logout } = useAuth()
@@ -89,7 +97,7 @@ function App() {
   // 7. Base Entities
   const {
     lists, currentListId, setCurrentListId,
-    createList, renameList, deleteList, reloadLists
+    createList, renameList, deleteList, reloadLists, setLists
   } = useLists({ effectiveUserId })
 
   const {
@@ -139,6 +147,20 @@ function App() {
   const effectiveAiKey = useGlobalAi ? '__global_pool__' : userAiKey || ''
   const userHasConfiguredAi = useGlobalAi || (!useGlobalAi && !!userAiKey)
 
+  // 8.1 Reporting & Specialized States
+  const [reportCampaignId, setReportCampaignId] = useState<string | null>(null)
+  const [reportViewMode, setReportViewMode] = useState<'all'|'last'>('all')
+
+  const htmlToWhatsapp = (html: string) => html.replace(/<br\s*\/?>/gi, '\n').replace(/<\/p>/gi, '\n\n').replace(/<[^>]*>/g, '')
+  const htmlToText = (html: string) => html.replace(/<[^>]*>/g, '')
+  const onScheduleCampaign = async (id: string, config: any) => { 
+    try {
+      await apiFetch(`/api/campaigns/${id}/schedule`, { method: 'POST', body: JSON.stringify(config) })
+      reloadCampaigns()
+      showToast('Campanha agendada')
+    } catch { showToast('Erro ao agendar') }
+  }
+
   const { callGeminiForCampaign } = useGeminiAI({
     effectiveAiKey,
     userCompanyInfo: userSettings?.company_info,
@@ -178,7 +200,28 @@ function App() {
 
   // Views logic
   if (authLoading) return <div className="h-screen bg-slate-50 flex items-center justify-center"><div className="animate-spin rounded-full h-8 w-8 border-t-2 border-emerald-500" /></div>
-  if (!currentUser) return <AuthPage authMode="login" onSubmit={async (c) => login(c)} authError={authError} onSetAuthMode={() => {}} onSignOut={logout} authEmail="" authPassword="" authName="" rememberMe={true} onSetAuthEmail={() => {}} onSetAuthPassword={() => {}} onSetAuthName={() => {}} onToggleRememberMe={() => {}} onSetAuthError={() => {}} />
+  if (!currentUser) return (
+    <AuthPage 
+      authMode={authMode as any} 
+      authEmail={authEmail} 
+      authPassword={authPassword} 
+      authName={authName} 
+      authError={authError || localAuthError} 
+      rememberMe={rememberMe}
+      onSetAuthMode={setAuthMode as any} 
+      onSetAuthEmail={setAuthEmail} 
+      onSetAuthPassword={setAuthPassword} 
+      onSetAuthName={setAuthName}
+      onToggleRememberMe={() => setRememberMe(!rememberMe)}
+      onSetAuthError={setLocalAuthError}
+      onSubmit={async () => {
+        try {
+          if (authMode === 'login') await login({ email: authEmail, password: authPassword })
+          else await login({ email: authEmail, password: authPassword, name: authName })
+        } catch {}
+      }} 
+    />
+  )
   
   if (forceUpdate) {
     return (
@@ -237,7 +280,7 @@ function App() {
                 contactFormPhone={contactsManager.contactFormPhone} contactFormCategory={contactsManager.contactFormCategory}
                 contactFormEmail={contactsManager.contactFormEmail} contactFormCep={contactsManager.contactFormCep}
                 contactFormAddress={contactsManager.contactFormAddress} contactFormCity={contactsManager.contactFormCity}
-                contactFormRating={contactsManager.contactFormRating} searchName={searchName} searchPhone={searchPhone}
+                contactFormRating={String(contactsManager.contactFormRating)} searchName={searchName} searchPhone={searchPhone}
                 searchEmail={searchEmail} filterCategory={filterCategory} filterCity={filterCity}
                 importNewContacts={contactsManager.importNewContacts} importConflicts={contactsManager.importConflicts}
                 geminiApiKey={effectiveAiKey} isBackfillingAddress={contactsManager.isBackfillingAddress}
@@ -247,7 +290,7 @@ function App() {
                 onDeleteCurrentList={() => setConfirmDeleteListOpen(true)}
                 onCreateContact={() => { contactsManager.resetContactForm(); contactsManager.setShowContactForm(true) }}
                 onEditContact={contactsManager.startEditContact}
-                onDeleteContact={async (id) => { if (confirm('Excluir contato?')) { await deleteContact(id); reloadContacts() } }}
+                onDeleteContact={async (id) => { if (confirm('Excluir contato?')) { await deleteContact(String(id)); reloadContacts() } }}
                 onSaveContactForm={async () => { await saveContact({ id: contactsManager.editingContactId ?? undefined, name: contactsManager.contactFormName, phone: contactsManager.contactFormPhone, category: contactsManager.contactFormCategory, email: contactsManager.contactFormEmail, cep: contactsManager.contactFormCep, address: contactsManager.contactFormAddress, city: contactsManager.contactFormCity, rating: Number(contactsManager.contactFormRating) }); contactsManager.resetContactForm(); reloadContacts() }}
                 onCancelContactForm={contactsManager.resetContactForm}
                 onChangeContactFormName={contactsManager.setContactFormName} onChangeContactFormPhone={contactsManager.setContactFormPhone}
@@ -262,7 +305,7 @@ function App() {
                 onCancelImport={() => { contactsManager.setImportNewContacts(null); contactsManager.setImportConflicts(null) }}
                 onApplyImport={() => { }} onSetImportConflicts={contactsManager.setImportConflicts}
                 onBackfillAddressFromCep={() => contactsManager.handleBackfillAddressFromCep(currentContacts, () => reloadContacts())}
-                onAiExtractContact={(f) => { }} can={can} onSetLists={() => { }} onSetContactsByList={() => { }}
+                onAiExtractContact={(f) => { }} can={can} onSetLists={setLists as any} onSetContactsByList={setContactsByList as any}
                 onSetCurrentListId={setCurrentListId} onSetEditingContactId={contactsManager.setEditingContactId}
                 onSetContactFormName={contactsManager.setContactFormName} onSetContactFormPhone={contactsManager.setContactFormPhone}
                 onSetContactFormEmail={contactsManager.setContactFormEmail} onSetContactFormCategory={contactsManager.setContactFormCategory}
@@ -294,7 +337,6 @@ function App() {
                 onRequestSendCampaign={c => execution.setSendConfirmCampaignId(c.id)} onSetSendConfirmCampaignId={execution.setSendConfirmCampaignId}
                 getPendingContacts={execution.getPendingContacts} can={can} geminiApiKey={effectiveAiKey}
                 userHasConfiguredAi={userHasConfiguredAi} onGenerateCampaignContentWithAI={callGeminiForCampaign}
-                // Adicionando props faltantes exigidos pela CareersPage (CampaignsPage)
                 sortedLists={lists}
                 sendIntervalMinSeconds={sendIntervalMinSeconds}
                 sendIntervalMaxSeconds={sendIntervalMaxSeconds}
@@ -304,12 +346,37 @@ function App() {
                 reportViewMode={reportViewMode}
                 onSetReportCampaignId={setReportCampaignId}
                 onSetReportViewMode={setReportViewMode}
+                onSetEditingCampaignId={composer.setEditingCampaignId}
+                onScheduleCampaign={onScheduleCampaign}
+                htmlToWhatsapp={htmlToWhatsapp}
+                htmlToText={htmlToText}
               />
             )}
 
             {currentPage === 'schedules' && <SchedulesPage campaigns={campaigns} effectiveUserId={effectiveUserId} />}
             {currentPage === 'reports' && <ReportsPage campaigns={campaigns} contactSendHistory={contactSendHistory} />}
-            {currentPage === 'profile' && <UserSettingsPage effectiveUserId={effectiveUserId} userSettings={userSettings} setUserSettings={setUserSettings as any} onSave={handleSaveUserOverrides} />}
+            {currentPage === 'profile' && (
+              <UserSettingsPage 
+                effectiveUserId={effectiveUserId} 
+                userDisplayName={userSettings?.display_name || ''} 
+                userPhone={userSettings?.phone || ''} 
+                useGlobalAi={userSettings?.use_global_ai ?? true} 
+                userAiKey={userSettings?.ai_api_key || ''} 
+                userCompanyInfo={userSettings?.company_info || null} 
+                onChangeUserDisplayName={(v) => setUserSettings(prev => prev ? {...prev, display_name: v} : prev)} 
+                onChangeUserPhone={(v) => setUserSettings(prev => prev ? {...prev, phone: v} : prev)} 
+                onChangeUseGlobalAi={(v) => setUserSettings(prev => prev ? {...prev, use_global_ai: v} : prev)} 
+                onChangeUserAiKey={(v) => setUserSettings(prev => prev ? {...prev, ai_api_key: v} : prev)} 
+                onChangeUserCompanyInfo={(v) => setUserSettings(prev => prev ? {...prev, company_info: v} : prev)} 
+                userEvolutionUrl={userSettings?.evolution_url || ''} 
+                userEvolutionApiKey={userSettings?.evolution_apikey || ''} 
+                userEvolutionInstance={userSettings?.evolution_instance || ''} 
+                onChangeUserEvolutionUrl={(v) => setUserSettings(prev => prev ? {...prev, evolution_url: v} : prev)} 
+                onChangeUserEvolutionApiKey={(v) => setUserSettings(prev => prev ? {...prev, evolution_apikey: v} : prev)} 
+                onChangeUserEvolutionInstance={(v) => setUserSettings(prev => prev ? {...prev, evolution_instance: v} : prev)} 
+                onSave={handleSaveUserOverrides} 
+              />
+            )}
             
             {currentPage === 'settings' && (
               <SettingsPage
@@ -320,6 +387,12 @@ function App() {
                 onChangeGeminiTemperature={setGeminiTemperature} geminiMaxTokens={geminiMaxTokens} onChangeGeminiMaxTokens={setGeminiMaxTokens}
                 debugEnabled={debugEnabled} onChangeDebugEnabled={setDebugEnabled} googleMapsApiKey={googleMapsApiKey}
                 onChangeGoogleMapsApiKey={setGoogleMapsApiKey} onSave={handleSaveGlobalSettings} can={can}
+                // Adicionando props faltantes em SettingsPage
+                importPreview={null}
+                onExportData={async () => {}}
+                onImportFile={async () => {}}
+                onCancelImport={() => {}}
+                onConfirmImport={async () => {}}
               />
             )}
 
