@@ -328,6 +328,35 @@ async function ensureInstanceLabSchema(db: ReturnType<typeof getDb>) {
     await db.query(`ALTER TABLE public.warmer_configs ADD COLUMN IF NOT EXISTS night_mode_end TEXT DEFAULT '07:00'`)
     await db.query(`ALTER TABLE public.warmer_configs ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP`)
 
+    // Colunas que o código usa mas a migração SQL original não criou
+    await db.query(`ALTER TABLE public.warmer_runs ADD COLUMN IF NOT EXISTS step_delay_seconds INTEGER NOT NULL DEFAULT 5`)
+    await db.query(`ALTER TABLE public.warmer_logs ADD COLUMN IF NOT EXISTS from_instance TEXT`)
+    await db.query(`ALTER TABLE public.warmer_logs ADD COLUMN IF NOT EXISTS to_instance TEXT`)
+    await db.query(`ALTER TABLE public.warmer_logs ADD COLUMN IF NOT EXISTS payload_type TEXT`)
+    await db.query(`ALTER TABLE public.warmer_logs ADD COLUMN IF NOT EXISTS run_id UUID REFERENCES public.warmer_runs(id) ON DELETE SET NULL`)
+    await db.query(`ALTER TABLE public.warmer_logs ADD COLUMN IF NOT EXISTS ok BOOLEAN DEFAULT true`)
+    await db.query(`ALTER TABLE public.warmer_logs ADD COLUMN IF NOT EXISTS provider_status INTEGER`)
+    await db.query(`ALTER TABLE public.warmer_logs ADD COLUMN IF NOT EXISTS response_time_ms INTEGER`)
+    await db.query(`ALTER TABLE public.warmer_logs ADD COLUMN IF NOT EXISTS error_detail TEXT`)
+
+    // Migrar id de UUID para BIGSERIAL
+    await db.query(`
+      DO $$
+      BEGIN
+        IF EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_schema = 'public' AND table_name = 'warmer_logs' AND column_name = 'id' AND data_type = 'uuid'
+        ) THEN
+          -- Se id é UUID, precisamos converter
+          ALTER TABLE public.warmer_logs ADD COLUMN id_new BIGSERIAL;
+          UPDATE public.warmer_logs SET id_new = row_number() OVER (ORDER BY sent_at);
+          ALTER TABLE public.warmer_logs DROP COLUMN id;
+          ALTER TABLE public.warmer_logs RENAME COLUMN id_new TO id;
+          ALTER TABLE public.warmer_logs ALTER COLUMN id SET NOT NULL;
+        END IF;
+      END $$
+    `)
+
     await db.query(`CREATE INDEX IF NOT EXISTS idx_warmer_configs_status ON public.warmer_configs(status)`)
     await db.query(`CREATE INDEX IF NOT EXISTS idx_warmer_logs_warmer_id_sent_at ON public.warmer_logs(warmer_id, sent_at DESC)`)
     await db.query(`CREATE INDEX IF NOT EXISTS idx_warmer_runs_warmer_created_at ON public.warmer_runs(warmer_id, created_at DESC)`)

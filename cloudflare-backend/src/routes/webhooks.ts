@@ -5,15 +5,14 @@ import { getDb } from '../lib/db'
 export const webhookRoutes = new Hono<{ Bindings: Bindings; Variables: AppVariables }>()
 
 function authenticateWebhookSecret(c: any) {
-  const apiKey = c.req.header('x-webhook-secret') || c.req.headers.get('x-webhook-secret')
+  const querySecret = c.req.query('secret') || c.req.query('apikey')
   const env: Bindings = c.env
   const expected = String(env.WEBHOOK_SECRET || '').trim()
 
-  if (!expected) {
-    return null
-  }
+  // Se WEBHOOK_SECRET nao estiver configurado, permitimos (modo permissivo)
+  if (!expected) return null
 
-  if (apiKey !== expected) {
+  if (querySecret !== expected) {
     return c.json({ error: 'Webhook secret invalid ou ausente.' }, 401)
   }
   return null
@@ -21,7 +20,8 @@ function authenticateWebhookSecret(c: any) {
 
 // Webhook para integração com a Evolution API v2
 // Este endpoint recebe eventos de mensagens, status e enquetes
-// Protegido por header x-webhook-secret (configurar WEBHOOK_SECRET no Workers)
+// Protegido por query param ?secret (configurado na URL do webhook na Evolution)
+// Exemplo: https://seu-worker/api/webhooks/evolution?secret=SEU_SECRET
 webhookRoutes.post('/evolution', async (c) => {
   const authError = authenticateWebhookSecret(c)
   if (authError) return authError
