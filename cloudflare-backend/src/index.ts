@@ -81,32 +81,11 @@ app.use('*', async (c, next) => {
     )
   }
 
-  // 1. Garante o esquema em background ou na primeira requisição.
-  try {
-    await ensureCloudflareSchema(db)
-  } catch {
-    // Schema init falhou — continuamos mesmo assim (best effort)
-  }
-
-  // 2. Reparo proativo de permissao se detectarmos problemas repetitivos
-  // Aumentamos para 20% temporariamente enquanto o usuario estabiliza o banco.
-  // Alem disso, rodamos síncrono no PRIMEIRO acesso se o schema ainda nao foi verificado.
-  if (Math.random() < 0.20) {
-      const repairTask = (async () => {
-          try {
-              const dbInternal = getDb(c.env)
-              await dbInternal.query('GRANT USAGE ON SCHEMA public TO CURRENT_USER')
-              await dbInternal.query('GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO CURRENT_USER')
-          } catch (err) {
-              if (!isSkippableRuntimeSchemaError(err)) {
-                  console.warn('[AutoHeal:Permissions] Falha ao autorreparar privilegios (background):', (err as any).message)
-              }
-          }
-      })()
-
-      if (c.executionCtx && typeof c.executionCtx.waitUntil === 'function') {
-          c.executionCtx.waitUntil(repairTask)
-      }
+  // Schema e repair rodam apenas 1x em background — nunca bloqueiam request
+  if (c.executionCtx && typeof c.executionCtx.waitUntil === 'function') {
+    c.executionCtx.waitUntil(
+      ensureCloudflareSchema(db).catch(() => {})
+    )
   }
 
   await next()

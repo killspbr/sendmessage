@@ -15,19 +15,23 @@ presenceRoutes.post('/auth/presence', authenticateToken, async (c) => {
     return c.json({ error: 'sessionId e obrigatorio.' }, 400)
   }
 
-  const db = getDb(c.env)
-  await db.query(
-    `INSERT INTO public.active_user_sessions (session_id, user_id, current_page, user_agent, last_seen_at)
-     VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)
-     ON CONFLICT (session_id) DO UPDATE SET
-       user_id = EXCLUDED.user_id,
-       current_page = EXCLUDED.current_page,
-       user_agent = EXCLUDED.user_agent,
-       last_seen_at = CURRENT_TIMESTAMP`,
-    [sessionId, user.id, currentPage || null, c.req.header('user-agent') || null]
-  )
+  try {
+    const db = getDb(c.env)
+    await db.query(
+      `INSERT INTO public.active_user_sessions (session_id, user_id, current_page, user_agent, last_seen_at)
+       VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)
+       ON CONFLICT (session_id) DO UPDATE SET
+         user_id = EXCLUDED.user_id,
+         current_page = EXCLUDED.current_page,
+         user_agent = EXCLUDED.user_agent,
+         last_seen_at = CURRENT_TIMESTAMP`,
+      [sessionId, user.id, currentPage || null, c.req.header('user-agent') || null]
+    )
 
-  await db.query(`DELETE FROM public.active_user_sessions WHERE last_seen_at < CURRENT_TIMESTAMP - INTERVAL '1 day'`)
+    await db.query(`DELETE FROM public.active_user_sessions WHERE last_seen_at < CURRENT_TIMESTAMP - INTERVAL '1 day'`)
+  } catch {
+    // Se tabela nao existe ou DB falha, ignora — nao é critico
+  }
 
   return c.json({ ok: true })
 })

@@ -44,19 +44,17 @@ function normalizeDeliveryPayload(input: unknown) {
   return input
 }
 
-let migrationV3Attempted = false
+let campaignsSchemaChecked = false
 
 async function ensureCampaignsTable(db: ReturnType<typeof getDb>) {
-  if (migrationV3Attempted) return
-  migrationV3Attempted = true
-  
-  const UUID_GEN = "gen_random_uuid()"
-  await db.query(`CREATE EXTENSION IF NOT EXISTS "pgcrypto"`).catch(() => {})
+  if (campaignsSchemaChecked) return
+  campaignsSchemaChecked = true
 
   await runSchemaBestEffort(async () => {
+    await db.query(`CREATE EXTENSION IF NOT EXISTS "pgcrypto"`).catch(() => {})
     await db.query(`
       CREATE TABLE IF NOT EXISTS public.campaigns (
-        id UUID PRIMARY KEY DEFAULT ${UUID_GEN},
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
         name TEXT NOT NULL,
         status TEXT NOT NULL DEFAULT 'rascunho',
@@ -67,43 +65,24 @@ async function ensureCampaignsTable(db: ReturnType<typeof getDb>) {
         interval_min_seconds INTEGER NOT NULL DEFAULT 30,
         interval_max_seconds INTEGER NOT NULL DEFAULT 90,
         delivery_payload JSONB,
+        poll JSONB,
+        buttons JSONB,
         created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
       )
-    `)
-
-    // MIGRAÇÃO CRÍTICA FORÇADA
-    try {
-      // 1. Garante que as colunas novas existem (para quem tem schema antigo sem variations/payload)
-      await db.query(`ALTER TABLE public.campaigns ADD COLUMN IF NOT EXISTS variations JSONB NOT NULL DEFAULT '[]'::jsonb`).catch(() => {})
-      await db.query(`ALTER TABLE public.campaigns ADD COLUMN IF NOT EXISTS delivery_payload JSONB`).catch(() => {})
-      await db.query(`ALTER TABLE public.campaigns ADD COLUMN IF NOT EXISTS poll JSONB`).catch(() => {})
-      await db.query(`ALTER TABLE public.campaigns ADD COLUMN IF NOT EXISTS buttons JSONB`).catch(() => {})
-      
-      // 2. Converte channels de Array de Texto (text[]) para JSONB se necessário
-      // Usamos uma query bruta que tenta a conversão se o tipo for ARRAY
-      await db.query(`
-        DO $$
-        BEGIN
-          IF EXISTS (
-            SELECT 1 FROM information_schema.columns 
-            WHERE table_name = 'campaigns' AND table_schema = 'public' AND column_name = 'channels' AND data_type = 'ARRAY'
-          ) THEN
-            ALTER TABLE public.campaigns ALTER COLUMN channels TYPE JSONB USING to_jsonb(channels);
-          END IF;
-        END $$;
-      `)
-    } catch (err) {
-      console.warn('[MigrationV3] Falha na migracao de colunas:', err)
-    }
-
+    `).catch(() => {})
+    await db.query(`ALTER TABLE public.campaigns ADD COLUMN IF NOT EXISTS variations JSONB NOT NULL DEFAULT '[]'::jsonb`).catch(() => {})
+    await db.query(`ALTER TABLE public.campaigns ADD COLUMN IF NOT EXISTS delivery_payload JSONB`).catch(() => {})
+    await db.query(`ALTER TABLE public.campaigns ADD COLUMN IF NOT EXISTS poll JSONB`).catch(() => {})
+    await db.query(`ALTER TABLE public.campaigns ADD COLUMN IF NOT EXISTS buttons JSONB`).catch(() => {})
     await db.query(`ALTER TABLE public.campaigns ADD COLUMN IF NOT EXISTS interval_min_seconds INTEGER NOT NULL DEFAULT 30`).catch(() => {})
     await db.query(`ALTER TABLE public.campaigns ADD COLUMN IF NOT EXISTS interval_max_seconds INTEGER NOT NULL DEFAULT 90`).catch(() => {})
-
+    await db.query(`ALTER TABLE public.campaigns ADD COLUMN IF NOT EXISTS created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP`).catch(() => {})
+    await db.query(`ALTER TABLE public.campaigns ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP`).catch(() => {})
     await db.query(`
       CREATE INDEX IF NOT EXISTS idx_campaigns_user_created_at
         ON public.campaigns(user_id, created_at DESC)
-    `)
+    `).catch(() => {})
   }, 'campaigns_v3')
 }
 
@@ -165,17 +144,22 @@ function sleep(ms: number) {
 export const campaignRoutes = new Hono<{ Bindings: Bindings; Variables: AppVariables }>()
 
 campaignRoutes.get('/campaigns', authenticateToken, async (c) => {
-  const userId = getAuthenticatedUserId(c)
-  if (!userId) return c.json({ error: 'Acesso negado.' }, 401)
+  try {
+    const userId = getAuthenticatedUserId(c)
+    if (!userId) return c.json({ error: 'Acesso negado.' }, 401)
 
-  const db = getDb(c.env)
-  await ensureCampaignsTable(db)
-  const result = await db.query(
-    'SELECT * FROM public.campaigns WHERE user_id = $1 ORDER BY created_at DESC',
-    [userId]
-  )
+    const db = getDb(c.env)
+    await ensureCampaignsTable(db)
+    const result = await db.query(
+      'SELECT * FROM public.campaigns WHERE user_id = $1 ORDER BY created_at DESC',
+      [userId]
+    )
 
-  return c.json(result.rows)
+    return c.json(result.rows)
+  } catch (err: any) {
+    console.error('[Campaigns.get] Erro:', err.message)
+    return c.json({ error: 'Erro ao carregar campanhas.', technical: err.message }, 500)
+  }
 })
 
 campaignRoutes.post('/campaigns', authenticateToken, async (c) => {
@@ -201,75 +185,30 @@ campaignRoutes.post('/campaigns', authenticateToken, async (c) => {
   if (!listName) return c.json({ error: 'Lista da campanha é obrigatória.' }, 400)
   if (!message) return c.json({ error: 'Mensagem da campanha é obrigatória.' }, 400)
 
-  // Detector de Schema Legado
-  const columnsCheck = await db.query(`
-    SELECT column_name, data_type 
-    FROM information_schema.columns 
-    WHERE table_name = 'campaigns' AND table_schema = 'public' AND column_name IN (
-      'variations', 'delivery_payload', 'channels', 
-      'interval_min_seconds', 'interval_max_seconds', 'updated_at'
-    )
-  `).catch(() => ({ rows: [] }))
-  
-  const hasVariations = columnsCheck.rows.some((r: any) => r.column_name === 'variations')
-  const hasPayload = columnsCheck.rows.some((r: any) => r.column_name === 'delivery_payload')
-  const hasIntervalMin = columnsCheck.rows.some((r: any) => r.column_name === 'interval_min_seconds')
-  const hasIntervalMax = columnsCheck.rows.some((r: any) => r.column_name === 'interval_max_seconds')
-  const hasPoll = columnsCheck.rows.some((r: any) => r.column_name === 'poll')
-  const hasButtons = columnsCheck.rows.some((r: any) => r.column_name === 'buttons')
-  const channelsType = columnsCheck.rows.find((r: any) => r.column_name === 'channels')?.data_type || 'jsonb'
-  const isChannelsArray = channelsType.toUpperCase() === 'ARRAY'
-
   const campaignId = crypto.randomUUID()
-  const cols = ['id', 'user_id', 'name', 'status', 'channels', 'list_name', 'message']
-  const params: any[] = [
-    campaignId,
-    userId,
-    name,
-    status || 'rascunho',
-    isChannelsArray ? normalizedChannels : JSON.stringify(normalizedChannels),
-    listName,
-    message
-  ]
-  const valPlaceholders = ['$1', '$2', '$3', '$4', isChannelsArray ? '$5' : '$5::jsonb', '$6', '$7']
-  
-  let pIdx = 8
-  if (hasVariations) {
-    cols.push('variations')
-    valPlaceholders.push(`$${pIdx}::jsonb`)
-    params.push(JSON.stringify(variations))
-    pIdx++
-  }
-  if (hasPayload) {
-    cols.push('delivery_payload')
-    valPlaceholders.push(`$${pIdx}::jsonb`)
-    params.push(deliveryPayload ? JSON.stringify(deliveryPayload) : null)
-    pIdx++
-  }
-  
-  if (hasIntervalMin) {
-    cols.push('interval_min_seconds')
-    valPlaceholders.push(`$${pIdx}`)
-    params.push(Number.isFinite(intervalMin) ? intervalMin : 30)
-    pIdx++
-  }
 
-  if (hasIntervalMax) {
-    cols.push('interval_max_seconds')
-    valPlaceholders.push(`$${pIdx}`)
-    params.push(Number.isFinite(intervalMax) ? intervalMax : 90)
-    pIdx++
-  }
+  const result = await db.query(
+    `INSERT INTO public.campaigns (
+      id, user_id, name, status, channels, list_name, message,
+      variations, delivery_payload, interval_min_seconds, interval_max_seconds
+    ) VALUES ($1,$2,$3,$4,$5::jsonb,$6,$7,$8::jsonb,$9::jsonb,$10,$11)
+    RETURNING *`,
+    [
+      campaignId,
+      userId,
+      name,
+      status || 'rascunho',
+      JSON.stringify(normalizedChannels),
+      listName,
+      message,
+      JSON.stringify(variations),
+      deliveryPayload ? JSON.stringify(deliveryPayload) : null,
+      Number.isFinite(intervalMin) ? intervalMin : 30,
+      Number.isFinite(intervalMax) ? intervalMax : 90,
+    ]
+  )
 
-  const finalSql = `INSERT INTO public.campaigns (${cols.join(', ')}) VALUES (${valPlaceholders.join(', ')}) RETURNING *`
-
-  try {
-    const result = await db.query(finalSql, params)
-    return c.json(result.rows[0], 201)
-  } catch (err: any) {
-    console.error('[CreateCampaign] Erro na query:', err.message, finalSql)
-    throw err
-  }
+  return c.json(result.rows[0], 201)
 })
 
 // GET individual campaign (polling de status)
@@ -321,93 +260,34 @@ campaignRoutes.put('/campaigns/:id', authenticateToken, async (c) => {
   const intervalMin = Number(body.interval_min_seconds || 30)
   const intervalMax = Number(body.interval_max_seconds || 90)
 
-  // Detector de Schema Legado (para evitar erros se o ALTER TABLE falhou por falta de permissão)
-  const columnsCheck = await db.query(`
-    SELECT column_name, data_type 
-    FROM information_schema.columns 
-    WHERE table_name = 'campaigns' AND table_schema = 'public' AND column_name IN (
-      'variations', 'delivery_payload', 'channels', 
-      'interval_min_seconds', 'interval_max_seconds', 'updated_at'
-    )
-  `).catch(() => ({ rows: [] }))
-  
-  const hasVariations = columnsCheck.rows.some((r: any) => r.column_name === 'variations')
-  const hasPayload = columnsCheck.rows.some((r: any) => r.column_name === 'delivery_payload')
-  const hasIntervalMin = columnsCheck.rows.some((r: any) => r.column_name === 'interval_min_seconds')
-  const hasIntervalMax = columnsCheck.rows.some((r: any) => r.column_name === 'interval_max_seconds')
-  const hasPoll = columnsCheck.rows.some((r: any) => r.column_name === 'poll')
-  const hasButtons = columnsCheck.rows.some((r: any) => r.column_name === 'buttons')
-  const hasUpdatedAt = columnsCheck.rows.some((r: any) => r.column_name === 'updated_at')
-  const channelsType = columnsCheck.rows.find((r: any) => r.column_name === 'channels')?.data_type || 'jsonb'
-  const isChannelsArray = channelsType.toUpperCase() === 'ARRAY'
+  const result = await db.query(
+    `UPDATE public.campaigns SET
+      name = $1, status = $2, channels = $3::jsonb, list_name = $4, message = $5,
+      variations = $6::jsonb, delivery_payload = $7::jsonb,
+      interval_min_seconds = $8, interval_max_seconds = $9,
+      poll = $10::jsonb, buttons = $11::jsonb,
+      updated_at = CURRENT_TIMESTAMP
+    WHERE id = $12 AND user_id = $13
+    RETURNING *`,
+    [
+      name,
+      status || 'rascunho',
+      JSON.stringify(normalizedChannels),
+      listName,
+      message,
+      JSON.stringify(variations),
+      deliveryPayload ? JSON.stringify(deliveryPayload) : null,
+      Number.isFinite(intervalMin) ? intervalMin : 30,
+      Number.isFinite(intervalMax) ? intervalMax : 90,
+      body.poll ? JSON.stringify(body.poll) : null,
+      body.buttons ? JSON.stringify(body.buttons) : null,
+      campaignId,
+      userId,
+    ]
+  )
 
-  // Montagem da query dinâmica de UPDATE
-  const sets = [
-    'name = $1',
-    'status = $2',
-    isChannelsArray ? 'channels = $3' : 'channels = $3::jsonb',
-    'list_name = $4',
-    'message = $5'
-  ]
-  const params: any[] = [
-    name,
-    status || 'rascunho',
-    isChannelsArray ? normalizedChannels : JSON.stringify(normalizedChannels),
-    listName,
-    message
-  ]
-
-  let pIdx = 6
-  if (hasVariations) {
-    sets.push(`variations = $${pIdx}::jsonb`)
-    params.push(JSON.stringify(variations))
-    pIdx++
-  }
-  if (hasPayload) {
-    sets.push(`delivery_payload = $${pIdx}::jsonb`)
-    params.push(deliveryPayload ? JSON.stringify(deliveryPayload) : null)
-    pIdx++
-  }
-  
-  if (hasIntervalMin) {
-    sets.push(`interval_min_seconds = $${pIdx}`)
-    params.push(Number.isFinite(intervalMin) ? intervalMin : 30)
-    pIdx++
-  }
-  
-  if (hasIntervalMax) {
-    sets.push(`interval_max_seconds = $${pIdx}`)
-    params.push(Number.isFinite(intervalMax) ? intervalMax : 90)
-    pIdx++
-  }
-
-  if (hasPoll) {
-    sets.push(`poll = $${pIdx}::jsonb`)
-    params.push(body.poll ? JSON.stringify(body.poll) : null)
-    pIdx++
-  }
-
-  if (hasButtons) {
-    sets.push(`buttons = $${pIdx}::jsonb`)
-    params.push(body.buttons ? JSON.stringify(body.buttons) : null)
-    pIdx++
-  }
-  
-  if (hasUpdatedAt) {
-    sets.push('updated_at = CURRENT_TIMESTAMP')
-  }
-  
-  const finalSql = `UPDATE public.campaigns SET ${sets.join(', ')} WHERE id = $${pIdx} AND user_id = $${pIdx + 1} RETURNING *`
-  params.push(campaignId, userId)
-
-  try {
-    const result = await db.query(finalSql, params)
-    if (result.rows.length === 0) return c.json({ error: 'Campanha não encontrada ou acesso negado.' }, 404)
-    return c.json(result.rows[0])
-  } catch (err: any) {
-    console.error('[UpdateCampaign] Erro na query:', err.message, finalSql)
-    throw err
-  }
+  if (result.rows.length === 0) return c.json({ error: 'Campanha não encontrada ou acesso negado.' }, 404)
+  return c.json(result.rows[0])
 })
 
 campaignRoutes.delete('/campaigns/:id', authenticateToken, async (c) => {

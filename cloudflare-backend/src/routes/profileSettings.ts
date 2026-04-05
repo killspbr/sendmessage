@@ -323,10 +323,15 @@ profileSettingsRoutes.put('/profile', authenticateToken, async (c) => {
 })
 
 profileSettingsRoutes.get('/settings', authenticateToken, async (c) => {
-  const db = getDb(c.env)
-  await ensureAppSettingsTable(db)
-  const result = await db.query('SELECT * FROM public.app_settings LIMIT 1')
-  return c.json(result.rows[0] || {})
+  try {
+    const db = getDb(c.env)
+    await ensureAppSettingsTable(db)
+    const result = await db.query('SELECT * FROM public.app_settings LIMIT 1')
+    return c.json(result.rows[0] || {})
+  } catch (err: any) {
+    console.error('[Settings.get] Erro:', err.message)
+    return c.json({ error: 'Erro ao carregar configuracoes.', technical: err.message }, 500)
+  }
 })
 
 profileSettingsRoutes.post('/settings', authenticateToken, async (c) => {
