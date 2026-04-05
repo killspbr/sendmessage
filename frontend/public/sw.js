@@ -1,23 +1,19 @@
-const CACHE_NAME = 'cl-marketing-v4';
+const CACHE_NAME = 'cl-marketing-v5';
+
 const urlsToCache = [
   '/',
   '/index.html',
-  '/manifest.json',
 ];
 
-// Install event - cache essential files da nova versão
+// Install event - cache essential files
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      console.log('[SW] Cache opened');
-      return cache.addAll(urlsToCache);
-    })
+    caches.open(CACHE_NAME).then((cache) => cache.addAll(urlsToCache))
   );
-  // Garante que o novo SW seja ativado imediatamente, sem esperar as abas antigas
   self.skipWaiting();
 });
 
-// Activate event - clean old caches e notificar clientes sobre nova versão
+// Activate event - clean ALL old caches and take control immediately
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     (async () => {
@@ -31,15 +27,15 @@ self.addEventListener('activate', (event) => {
         })
       );
 
-      // Habilita navigation preload se suportado
+      // Enable navigation preload if supported
       if (self.registration.navigationPreload) {
         await self.registration.navigationPreload.enable();
       }
 
-      // Assume controle imediatamente das abas abertas
+      // Take control immediately
       await self.clients.claim();
 
-      // Notifica todas as abas controladas de que há uma nova versão ativa
+      // Notify all clients to reload
       const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
       for (const client of clients) {
         client.postMessage({ type: 'NEW_VERSION_AVAILABLE' });
@@ -48,27 +44,23 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-// Fetch event - network first, fallback to cache
+// Fetch event - API always goes to network, pages use network-first with cache fallback
 self.addEventListener('fetch', (event) => {
-  // Skip non-GET requests
   if (event.request.method !== 'GET') return;
 
-  // Skip API requests (always go to network)
+  // Skip API requests, chrome-extension, and non-http(s)
   if (event.request.url.includes('/api/')) return;
+  if (!event.request.url.startsWith('http')) return;
 
   event.respondWith(
     (async () => {
-      // 1. Tenta usar a preloadResponse se disponível
+      // Try preload response first
       try {
         const preloadResponse = await event.preloadResponse;
-        if (preloadResponse) {
-          return preloadResponse;
-        }
-      } catch (e) {
-        // Ignora erros de preload
-      }
+        if (preloadResponse) return preloadResponse;
+      } catch (e) {}
 
-      // 2. Se for navegação, tenta rede primeiro
+      // Network first
       try {
         const networkResponse = await fetch(event.request);
         if (networkResponse && networkResponse.status === 200) {
@@ -77,7 +69,7 @@ self.addEventListener('fetch', (event) => {
         }
         return networkResponse;
       } catch (error) {
-        // 3. Se rede falhar, busca no cache
+        // Fallback to cache
         const cachedResponse = await caches.match(event.request);
         if (cachedResponse) return cachedResponse;
         throw error;

@@ -8,13 +8,3 @@ createRoot(document.getElementById('root')!).render(
     <App />
   </StrictMode>,
 )
-
-// Listener para mensagens do Service Worker (nova versão disponível)
-if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.addEventListener('message', (event) => {
-    if (event.data && event.data.type === 'NEW_VERSION_AVAILABLE') {
-      // Dispara um evento global para que o React exiba um banner de atualização
-      window.dispatchEvent(new CustomEvent('app:new-version-available'))
-    }
-  })
-}
