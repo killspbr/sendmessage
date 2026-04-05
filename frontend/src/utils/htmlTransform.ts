@@ -3,8 +3,22 @@
 export function decodeHtml(html: string): string {
   if (typeof document === 'undefined') return html
   const txt = document.createElement('textarea')
-  txt.innerHTML = html
+  // Sanitiza: remove scripts e event handlers antes de decodificar entidades
+  const sanitized = html
+    .replace(/<script[\s\S]*?<\/script>/gi, '')
+    .replace(/\son\w+\s*=\s*"[^"]*"/gi, '')
+    .replace(/\son\w+\s*=\s*'[^']*'/gi, '')
+    .replace(/\bon\w+\s*=\s*/gi, 'data-x-on=')
+  txt.innerHTML = sanitized
   return txt.value
+}
+
+export function sanitizeHtmlForEmail(html: string): string {
+  return html
+    .replace(/<script[\s\S]*?<\/script>/gi, '')
+    .replace(/\son\w+\s*=\s*"[^"]*"/gi, '')
+    .replace(/\son\w+\s*=\s*'[^']*'/gi, '')
+    .replace(/\bon\w+\s*=\s*/gi, 'data-x-on=')
 }
 
 export function htmlToText(html: string): string {

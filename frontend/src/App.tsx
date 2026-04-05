@@ -417,7 +417,6 @@ function App() {
             {currentPage === 'admin' && <AdminUsersPage can={can} onImpersonateUser={setImpersonatedUserId} />}
             {currentPage === 'warmer' && <AdminWarmerPage can={can} />}
             {currentPage === 'gemini-keys' && <GeminiKeysPage />}
-            {currentPage === 'gemini-keys' && <GeminiKeysPage />}
             {currentPage === 'security' && <SecurityDashboardPage />}
             </Suspense>
           </div>

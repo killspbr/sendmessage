@@ -616,7 +616,8 @@ export function SchedulesPage({ effectiveUserId }: SchedulesPageProps) {
                                                         <div className="mt-2 p-2 bg-slate-900 rounded-lg text-[8px] font-mono text-emerald-400 space-y-1">
                                                             <div className="text-white border-b border-slate-700 pb-1 mb-1 font-bold">Auditoria de recuperação</div>
                                                             {q.recovery_logs.map((log) => {
-                                                                const details = JSON.parse(log.details)
+                                                                let details: any
+                                                                try { details = JSON.parse(log.details) } catch { details = { motivo: log.details, tentativa_final: '?' } }
                                                                 return (
                                                                     <div key={log.id} className="leading-tight">
                                                                         [{new Date(log.data_evento).toLocaleTimeString('pt-BR')}] {log.event === 'zombie_recovered' ? 'RETOMADA' : 'FALHA'}

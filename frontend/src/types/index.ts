@@ -244,8 +244,3 @@ export type ActiveUserPresenceSnapshot = {
   generatedAt: string
   users: ActiveUserPresenceItem[]
 }
-
-export type SupabaseListRow = {
-  id: string
-  name: string
-}

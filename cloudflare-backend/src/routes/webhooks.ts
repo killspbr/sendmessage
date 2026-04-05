@@ -4,9 +4,27 @@ import { getDb } from '../lib/db'
 
 export const webhookRoutes = new Hono<{ Bindings: Bindings; Variables: AppVariables }>()
 
+function authenticateWebhookSecret(c: any) {
+  const apiKey = c.req.header('x-webhook-secret') || c.req.headers.get('x-webhook-secret')
+  const env: Bindings = c.env
+  const expected = String(env.WEBHOOK_SECRET || '').trim()
+
+  if (!expected) {
+    return null
+  }
+
+  if (apiKey !== expected) {
+    return c.json({ error: 'Webhook secret invalid ou ausente.' }, 401)
+  }
+  return null
+}
+
 // Webhook para integração com a Evolution API v2
 // Este endpoint recebe eventos de mensagens, status e enquetes
+// Protegido por header x-webhook-secret (configurar WEBHOOK_SECRET no Workers)
 webhookRoutes.post('/evolution', async (c) => {
+  const authError = authenticateWebhookSecret(c)
+  if (authError) return authError
   const body = await c.req.json().catch(() => ({}))
   const db = getDb(c.env)
 
@@ -99,11 +117,13 @@ async function handleAiResponse(c: any, db: any, instance: string, remoteJid: st
 
         const evolutionUrl = evolution_url.replace(/\/$/, '')
         
-        // 2. Chama Gemini
-        const aiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${gemini_api_key}`
-        const aiRes = await fetch(aiUrl, {
+        // 2. Chama Gemini (API key no header, nao na URL)
+        const aiRes = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+              'Content-Type': 'application/json',
+              'x-goog-api-key': gemini_api_key,
+            },
             body: JSON.stringify({
                 contents: [{ parts: [{ text: userText }] }],
                 systemInstruction: gemini_prompt ? { parts: [{ text: gemini_prompt }] } : undefined,

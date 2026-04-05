@@ -207,10 +207,21 @@ export function AdminWarmerPage({ can }: { can?: (code: string) => boolean }) {
   }
 
   useEffect(() => {
+    let _loading = false
+    let _failures = 0
     void loadPairs()
+
     const timer = setInterval(() => {
-      void loadPairs(true)
+      if (_loading) return
+      if (_failures > 3) return // Para de pollar se o banco está morto ou indisponível
+      
+      _loading = true
+      loadPairs(true)
+        .then(() => { _failures = 0 })
+        .catch(() => { _failures += 1 })
+        .finally(() => { _loading = false })
     }, 15000)
+    
     return () => clearInterval(timer)
   }, [])
 

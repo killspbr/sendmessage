@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { sanitizeHtmlForEmail } from '../../utils/htmlTransform'
 import { EditorContent, useEditor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import Underline from '@tiptap/extension-underline'
@@ -318,7 +319,7 @@ export function CampaignEditor({
                 <div className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
                   <div className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Email</div>
                   <div className="prose prose-sm max-w-none text-slate-800">
-                    {finalContent.trim() ? <div dangerouslySetInnerHTML={{ __html: finalContent }} /> : <p className="italic text-slate-400">Conteúdo vazio...</p>}
+                    {finalContent.trim() ? <div dangerouslySetInnerHTML={{ __html: sanitizeHtmlForEmail(finalContent) }} /> : <p className="italic text-slate-400">Conteúdo vazio...</p>}
                   </div>
                 </div>
               )}

@@ -3,6 +3,22 @@ import type { Bindings, AppVariables } from '../types'
 import { authenticateToken } from '../lib/auth'
 import { getDb } from '../lib/db'
 
+async function callGeminiWithKey(apiKey: string, model: string, apiVersion: string, body: Record<string, unknown>) {
+  const baseUrl = `https://generativelanguage.googleapis.com/${apiVersion}/models/${model}:generateContent`
+  const res = await fetch(baseUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-goog-api-key': apiKey,
+    },
+    body: JSON.stringify(body),
+  })
+  const raw = await res.text()
+  let data: any
+  try { data = JSON.parse(raw) } catch { data = { error: raw } }
+  return { response: res, data }
+}
+
 type GeminiAccess = {
   apiKey: string | null
   source: 'global-pool' | 'legacy-global-settings' | 'user-profile' | 'environment' | 'none'
@@ -220,14 +236,7 @@ aiRoutes.post('/ai/proxy', authenticateToken, async (c) => {
     requestBody.systemInstruction = { parts: [{ text: systemInstruction }] }
   }
 
-  const url = `https://generativelanguage.googleapis.com/${apiVersion}/models/${model}:generateContent?key=${access.apiKey}`
-  const aiRes = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(requestBody),
-  })
-
-  const data = await parseJsonResponseSafe(aiRes)
+  const { response: aiRes, data } = await callGeminiWithKey(access.apiKey, model, apiVersion, requestBody)
 
   if (access.keyData?.id) {
     await incrementPoolKeyUsage(
@@ -267,7 +276,7 @@ aiRoutes.post('/ai/proxy', authenticateToken, async (c) => {
   return c.json(data as any)
 })
 
-aiRoutes.post('/ai/address-from-cep', async (c) => {
+aiRoutes.post('/ai/address-from-cep', authenticateToken, async (c) => {
   const body = await c.req.json().catch(() => ({} as Record<string, unknown>))
   const cep = safeString(body.cep).replace(/\D/g, '')
   if (cep.length !== 8) {
@@ -296,12 +305,18 @@ aiRoutes.post('/ai/address-from-cep', async (c) => {
   })
 })
 
-aiRoutes.post('/ai/extract-contact', async (c) => {
+aiRoutes.post('/ai/extract-contact', authenticateToken, async (c) => {
+  const user = c.get('user')
+  if (!user?.id) return c.json({ ok: false, error: 'Acesso negado.' }, 401)
+
   const body = await c.req.json().catch(() => ({} as Record<string, unknown>))
   const imageBase64 = safeString(body.imageBase64)
-  const apiKey = safeString(body.geminiApiKey) || safeString(c.env.GEMINI_API_KEY)
+  const providedApiKey = safeString(body.geminiApiKey)
 
   if (!imageBase64) return c.json({ ok: false, error: 'imageBase64 é obrigatório.' }, 400)
+
+  // Resolve API key: priority user-provided > env
+  const apiKey = providedApiKey || safeString(c.env.GEMINI_API_KEY)
   if (!apiKey) return c.json({ ok: false, error: 'geminiApiKey é obrigatório.' }, 400)
 
   const base64Data = imageBase64.includes(',') ? imageBase64.split(',')[1] : imageBase64
@@ -320,32 +335,25 @@ Extraia os dados de contato da imagem e retorne SOMENTE JSON válido no formato:
 Se algum campo não existir, retorne string vazia.
 `.trim()
 
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`
-  const aiRes = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      contents: [
-        {
-          parts: [
-            { text: prompt },
-            {
-              inlineData: {
-                mimeType,
-                data: base64Data,
-              },
+  const { response: aiRes, data } = await callGeminiWithKey(apiKey, 'gemini-2.5-flash', 'v1beta', {
+    contents: [
+      {
+        parts: [
+          { text: prompt },
+          {
+            inlineData: {
+              mimeType,
+              data: base64Data,
             },
-          ],
-        },
-      ],
-      generationConfig: {
-        temperature: 0.2,
-        maxOutputTokens: 600,
+          },
+        ],
       },
-    }),
+    ],
+    generationConfig: {
+      temperature: 0.2,
+      maxOutputTokens: 600,
+    },
   })
-
-  const data = await parseJsonResponseSafe(aiRes)
   if (!aiRes.ok) return c.json({ ok: false, error: data }, aiRes.status as any)
 
   const text = String((data as any)?.candidates?.[0]?.content?.parts?.[0]?.text || '')

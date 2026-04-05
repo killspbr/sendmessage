@@ -33,14 +33,7 @@ const CORS_HEADERS = {
 }
 
 app.use('*', async (c, next) => {
-  console.log(`[REQUEST] ${c.req.method} ${c.req.url}`)
-  if (c.req.method !== 'GET' && c.req.method !== 'OPTIONS') {
-    try {
-      const cloned = c.req.raw.clone()
-      const body = await cloned.json().catch(() => ({}))
-      console.log(`[BODY]`, JSON.stringify(body))
-    } catch {}
-  }
+  console.log(`[REQUEST] ${c.req.method} ${c.req.url} ${c.req.header('content-type') || ''}`)
   await next()
 })
 
@@ -51,17 +44,12 @@ app.use('*', async (c, next) => {
     await next()
   } catch (error) {
     console.error('[CloudflareBackend] Erro capturado no guard global:', error)
-    const errObj = error instanceof Error ? {
-      message: error.message,
-      stack: error.stack,
-      name: error.name
-    } : { message: String(error) }
+    const message = error instanceof Error ? error.message : String(error)
 
     return c.json(
       {
         error: 'Erro interno no backend Cloudflare.',
-        technical: errObj.message,
-        details: errObj
+        technical: message,
       },
       500,
       CORS_HEADERS
@@ -111,6 +99,11 @@ app.use('*', async (c, next) => {
 })
 
 app.get('/api/rescue-migration', async (c) => {
+  const secret = c.req.query('secret')
+  const expected = String(c.env.MIGRATION_SECRET || '').trim()
+  if (!expected || secret !== expected) {
+    return c.json({ error: 'Acesso negado.' }, 401)
+  }
   const db = getDb(c.env)
   try {
     await db.query(`
@@ -118,7 +111,7 @@ app.get('/api/rescue-migration', async (c) => {
     `)
     return c.json({ ok: true, message: 'Schema migrado para JSONB com sucesso!' })
   } catch (err: any) {
-    return c.json({ ok: false, error: err.message, stack: err.stack }, 500)
+    return c.json({ ok: false, error: 'Falha na migracao.' }, 500)
   }
 })
 

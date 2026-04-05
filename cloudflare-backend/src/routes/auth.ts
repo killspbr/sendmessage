@@ -8,19 +8,12 @@ import { toEvolutionNumber } from '../lib/messageUtils'
 
 export const authRoutes = new Hono<{ Bindings: Bindings; Variables: AppVariables }>()
 
-const DEFAULT_JWT_SECRET = 'sendmessage-cloudflare-jwt-secret-change-me-2026'
-let warnedWeakJwtSecret = false
-
 function getJwtSecret(env: Bindings) {
   const candidate = String(env.JWT_SECRET || '').trim()
-  const secret = candidate.length >= 32 ? candidate : DEFAULT_JWT_SECRET
-
-  if (!warnedWeakJwtSecret && candidate.length < 32) {
-    warnedWeakJwtSecret = true
-    console.warn('[Auth] JWT_SECRET ausente ou curto no Worker. Usando fallback temporario. Configure um secret forte no Cloudflare.')
+  if (candidate.length < 32) {
+    throw new Error('JWT_SECRET nao configurado ou e muito curto (minimo 32 caracteres). Configure no Cloudflare Workers secrets.')
   }
-
-  return new TextEncoder().encode(secret)
+  return new TextEncoder().encode(candidate)
 }
 
 async function signAuthToken(env: Bindings, payload: { id: string; email: string; tv: number }) {

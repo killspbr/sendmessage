@@ -4,19 +4,12 @@ import type { Bindings, AppVariables } from '../types'
 import { getDb } from './db'
 import { isSchemaMissingError, isSchemaPermissionError } from './ddl'
 
-const DEFAULT_JWT_SECRET = 'sendmessage-cloudflare-jwt-secret-change-me-2026'
-let warnedWeakJwtSecret = false
-
 function getJwtSecret(env: Bindings) {
   const candidate = String(env.JWT_SECRET || '').trim()
-  const secret = candidate.length >= 32 ? candidate : DEFAULT_JWT_SECRET
-
-  if (!warnedWeakJwtSecret && candidate.length < 32) {
-    warnedWeakJwtSecret = true
-    console.warn('[AuthMiddleware] JWT_SECRET ausente ou curto no Worker. Usando fallback temporario. Configure um secret forte no Cloudflare.')
+  if (candidate.length < 32) {
+    throw new Error('JWT_SECRET nao configurado ou e muito curto (minimo 32 caracteres). Configure no Cloudflare Workers secrets.')
   }
-
-  return new TextEncoder().encode(secret)
+  return new TextEncoder().encode(candidate)
 }
 
 export const authenticateToken: MiddlewareHandler<{ Bindings: Bindings; Variables: AppVariables }> = async (c, next) => {
@@ -44,6 +37,8 @@ export const authenticateToken: MiddlewareHandler<{ Bindings: Bindings; Variable
     if (isSchemaMissingError(error)) {
       const fallback = await db.query('SELECT id FROM public.users WHERE id = $1 LIMIT 1', [payload.id])
       user = fallback.rows[0] || null
+    } else if (isSchemaPermissionError(error)) {
+      return c.json({ error: 'Falha de permissao no banco de dados. Tentando autorrecuperacao...' }, 503)
     } else {
       throw error
     }
