@@ -72,11 +72,11 @@ function getPool(connectionString: string) {
     poolConnKey = connectionString
     poolInstance = new Pool({
       connectionString,
-      max: 10,
-      min: 1,
-      idleTimeoutMillis: 30_000,
-      connectionTimeoutMillis: 8_000,
-      maxUses: 500,
+      max: 5,
+      min: 0,
+      idleTimeoutMillis: 15_000,
+      connectionTimeoutMillis: 10_000,
+      maxUses: 200,
     })
   }
   return poolInstance

@@ -68,11 +68,25 @@ app.use('*', async (c, next) => {
     return
   }
 
-  const db = getDb(c.env)
-  c.set('db', db)
+  let db
+  try {
+    db = getDb(c.env)
+    c.set('db', db)
+  } catch (dbError) {
+    console.error('[DBInit] Falha ao obter pool do banco:', (dbError as Error).message)
+    return c.json(
+      { error: 'Servidor temporariamente indisponivel. Tente novamente.', technical: (dbError as Error).message },
+      503,
+      CORS_HEADERS
+    )
+  }
 
-  // 1. Garante o esquema em background ou na primeira requisição. 
-  await ensureCloudflareSchema(db)
+  // 1. Garante o esquema em background ou na primeira requisição.
+  try {
+    await ensureCloudflareSchema(db)
+  } catch {
+    // Schema init falhou — continuamos mesmo assim (best effort)
+  }
 
   // 2. Reparo proativo de permissao se detectarmos problemas repetitivos
   // Aumentamos para 20% temporariamente enquanto o usuario estabiliza o banco.
@@ -147,19 +161,24 @@ app.route('/api/webhooks', webhookRoutes)
 app.notFound((c) => c.json({ error: 'Rota nao encontrada no backend Cloudflare.' }, 404))
 app.onError((err, c) => {
   console.error('[GlobalError]', err)
-  
+
   // Garantimos CORS mesmo em erro 500 para o desenvolvedor ver o erro no console
   c.header('Access-Control-Allow-Origin', '*')
   c.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
   c.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-api-key')
 
-  if (err instanceof Error && err.message.includes('timeout')) {
-    return c.json({ error: 'Erro de timeout no banco de dados. Tente novamente em instantes.', details: err.message }, 504)
+  const msg = err instanceof Error ? err.message : String(err)
+  if (msg.includes('timeout') || msg.includes('DB_QUERY_TIMEOUT')) {
+    return c.json({ error: 'Erro de timeout no banco de dados. Tente novamente em instantes.', details: msg }, 504)
   }
 
-  return c.json({ 
-    error: 'Erro interno no servidor', 
-    message: err instanceof Error ? err.message : String(err)
+  if (msg.includes('HYPERDRIVE') || msg.includes('DATABASE_URL') || msg.includes('ECONN') || msg.includes('ETIMEDOUT')) {
+    return c.json({ error: 'Banco de dados temporariamente indisponivel. Tente novamente.', details: msg }, 503)
+  }
+
+  return c.json({
+    error: 'Erro interno no servidor',
+    message: msg
   }, 500)
 })
 
