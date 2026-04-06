@@ -14,7 +14,7 @@ function bytesToHex(bytes: Uint8Array): string {
 }
 
 async function sha256(data: Uint8Array): Promise<string> {
-  const hash = await crypto.subtle.digest('SHA-256', data)
+  const hash = await crypto.subtle.digest('SHA-256', data as any)
   return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, '0')).join('')
 }
 
@@ -24,7 +24,20 @@ export async function hashPassword(password: string): Promise<string> {
   return `sha256:${bytesToHex(salt)}:${hash}`
 }
 
+// @ts-ignore
+import bcrypt from 'bcryptjs'
+
 export async function comparePassword(password: string, stored: string): Promise<boolean> {
+  // Legacy bcrypt hash migration support
+  if (stored.startsWith('$2')) {
+    try {
+      return await bcrypt.compare(password, stored)
+    } catch (err) {
+      console.error('[Passwd] Error comparing bcrypt hash:', err)
+      return false
+    }
+  }
+
   // Format: sha256:<salt_hex>:<hash_hex>
   const parts = stored.split(':')
   if (parts.length !== 3 || parts[0] !== 'sha256') {

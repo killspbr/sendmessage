@@ -1,0 +1,1 @@
+This folder contains the built output assets for the worker "sendmessage-backend" generated at 2026-04-05T21:14:58.038Z.

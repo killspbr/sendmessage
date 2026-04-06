@@ -26,18 +26,21 @@ import { isSkippableRuntimeSchemaError } from './lib/runtimeSchema'
 
 const app = new Hono<{ Bindings: Bindings; Variables: AppVariables }>()
 
-const CORS_HEADERS = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type,Authorization,X-Requested-With,Accept,Origin',
-}
 
+// Logger para monitorar requisições
 app.use('*', async (c, next) => {
   console.log(`[REQUEST] ${c.req.method} ${c.req.url} ${c.req.header('content-type') || ''}`)
   await next()
 })
 
-app.use('*', cors({ origin: '*' }))
+// Configuração CENTRALIZADA de CORS
+app.use('*', cors({
+  origin: '*',
+  allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
+  exposeHeaders: ['Content-Length'],
+  maxAge: 86400,
+}))
 
 app.use('*', async (c, next) => {
   try {
@@ -51,16 +54,12 @@ app.use('*', async (c, next) => {
         error: 'Erro interno no backend Cloudflare.',
         technical: message,
       },
-      500,
-      CORS_HEADERS
+      500
     )
   }
 })
 
-app.options('*', (c) => {
-  Object.entries(CORS_HEADERS).forEach(([key, value]) => c.header(key, value))
-  return c.body(null, 204)
-})
+
 
 app.use('*', async (c, next) => {
   if (c.req.method === 'OPTIONS') {
@@ -76,8 +75,7 @@ app.use('*', async (c, next) => {
     console.error('[DBInit] Falha ao obter pool do banco:', (dbError as Error).message)
     return c.json(
       { error: 'Servidor temporariamente indisponivel. Tente novamente.', technical: (dbError as Error).message },
-      503,
-      CORS_HEADERS
+      503
     )
   }
 
@@ -141,24 +139,22 @@ app.notFound((c) => c.json({ error: 'Rota nao encontrada no backend Cloudflare.'
 app.onError((err, c) => {
   console.error('[GlobalError]', err)
 
-  // Garantimos CORS mesmo em erro 500 para o desenvolvedor ver o erro no console
-  c.header('Access-Control-Allow-Origin', '*')
-  c.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
-  c.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-api-key')
-
   const msg = err instanceof Error ? err.message : String(err)
+  let status = 500
+  let body: Record<string, string> = { error: 'Erro interno no servidor.' }
+
   if (msg.includes('timeout') || msg.includes('DB_QUERY_TIMEOUT')) {
-    return c.json({ error: 'Erro de timeout no banco de dados. Tente novamente em instantes.', details: msg }, 504)
+    status = 504
+    body = { error: 'Erro de timeout no banco de dados. Tente novamente em instantes.' }
   }
 
   if (msg.includes('HYPERDRIVE') || msg.includes('DATABASE_URL') || msg.includes('ECONN') || msg.includes('ETIMEDOUT')) {
-    return c.json({ error: 'Banco de dados temporariamente indisponivel. Tente novamente.', details: msg }, 503)
+    status = 503
+    body = { error: 'Banco de dados temporariamente indisponivel. Tente novamente.' }
   }
 
-  return c.json({
-    error: 'Erro interno no servidor',
-    message: msg
-  }, 500)
+  // set CORS headers explicitly via Response init to ensure Workers compliance
+  return c.json(body, status as any)
 })
 
 export default {

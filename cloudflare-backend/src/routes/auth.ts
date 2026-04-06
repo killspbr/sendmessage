@@ -24,9 +24,7 @@ async function signAuthToken(env: Bindings, payload: { id: string; email: string
     .sign(getJwtSecret(env))
 }
 
-function attachCorsForAllowedOrigin(c: any) {
-  c.header('Access-Control-Allow-Origin', '*')
-}
+// O CORS agora é tratado globalmente pelo middleware no index.ts
 
 function normalizeEvolutionBaseUrl(url: unknown) {
   return String(url || '').trim().replace(/\/+$/, '')
@@ -77,14 +75,12 @@ authRoutes.post('/auth/signup', async (c) => {
     const name = String(body?.name || '').trim()
 
     if (!email || !password) {
-      attachCorsForAllowedOrigin(c)
       return c.json({ error: 'Email e senha sao obrigatorios.' }, 400)
     }
 
     const db = getDb(c.env)
     const existing = await db.query('SELECT id FROM public.users WHERE email = $1 LIMIT 1', [email])
     if (existing.rows.length > 0) {
-      attachCorsForAllowedOrigin(c)
       return c.json({ error: 'Este e-mail ja esta cadastrado.' }, 400)
     }
 
@@ -117,14 +113,12 @@ authRoutes.post('/auth/signup', async (c) => {
       tv: Number(user.token_version || 0),
     })
 
-    attachCorsForAllowedOrigin(c)
     return c.json({
       user: { id: user.id, email: user.email, name: user.name },
       token,
     }, 201)
   } catch (error) {
     console.error('[Auth.signup] erro:', error)
-    attachCorsForAllowedOrigin(c)
     return c.json({ error: 'Erro interno ao criar conta.' }, 500)
   }
 })
@@ -135,7 +129,6 @@ authRoutes.post('/auth/login', async (c) => {
     const email = String(body?.email || '').trim().toLowerCase()
     const password = String(body?.password || '')
     if (!email || !password) {
-      attachCorsForAllowedOrigin(c)
       return c.json({ error: 'Credenciais invalidas.' }, 400)
     }
 
@@ -144,26 +137,32 @@ authRoutes.post('/auth/login', async (c) => {
     const user = result.rows[0]
 
     if (!user) {
-      attachCorsForAllowedOrigin(c)
-      return c.json({ error: 'Credenciais invalidas.' }, 400)
+      return c.json({ error: 'Credenciais invalidas.' }, 401)
     }
 
     const passwordHash = typeof user.password_hash === 'string' ? user.password_hash : ''
     if (!passwordHash) {
-      attachCorsForAllowedOrigin(c)
-      return c.json({ error: 'Credenciais invalidas.' }, 400)
-    }
-
-    // Detect legacy bcrypt hashes and offer password reset
-    if (passwordHash.startsWith('$2')) {
-      attachCorsForAllowedOrigin(c)
-      return c.json({ error: 'Senha desatualizada. Solicite a redefinição no WhatsApp.', requiresPasswordReset: true }, 400)
+      return c.json({ error: 'Credenciais invalidas.' }, 401)
     }
 
     const validPassword = await comparePassword(password, passwordHash)
     if (!validPassword) {
-      attachCorsForAllowedOrigin(c)
-      return c.json({ error: 'Credenciais invalidas.' }, 400)
+      return c.json({ error: 'Credenciais invalidas.' }, 401)
+    }
+
+    // Migração de hash progressiva: bcrypt -> sha256
+    if (passwordHash.startsWith('$2')) {
+      try {
+        const { hashPassword: hashPwd } = await import('../lib/password')
+        const newHash = await hashPwd(password)
+        await db.query(
+          'UPDATE public.users SET password_hash = $1 WHERE id = $2',
+          [newHash, user.id]
+        )
+        console.log(`[Auth] Migrated bcrypt hash to sha256 for user ${user.id}`)
+      } catch (migrationErr) {
+        console.error('[Auth] Failed to migrate hash, continuing login:', migrationErr)
+      }
     }
 
     const token = await signAuthToken(c.env, {
@@ -172,14 +171,12 @@ authRoutes.post('/auth/login', async (c) => {
       tv: Number(user.token_version || 0),
     })
 
-    attachCorsForAllowedOrigin(c)
     return c.json({
       user: { id: user.id, email: user.email, name: user.name },
       token,
     })
   } catch (error) {
     console.error('[Auth.login] erro interno:', error)
-    attachCorsForAllowedOrigin(c)
     return c.json(
       {
         error: 'Erro interno no login.',
@@ -197,7 +194,6 @@ authRoutes.post('/auth/forgot-password', async (c) => {
 
     const genericMessage = 'Se o e-mail estiver cadastrado, a nova senha sera enviada para o telefone da conta.'
     if (!email) {
-      attachCorsForAllowedOrigin(c)
       return c.json({ ok: true, message: genericMessage })
     }
 
@@ -213,13 +209,11 @@ authRoutes.post('/auth/forgot-password', async (c) => {
 
     const user = result.rows[0]
     if (!user?.id) {
-      attachCorsForAllowedOrigin(c)
       return c.json({ ok: true, message: genericMessage })
     }
 
     const phone = toEvolutionNumber(user.phone)
     if (!phone) {
-      attachCorsForAllowedOrigin(c)
       return c.json({ ok: true, message: genericMessage })
     }
 
@@ -235,7 +229,6 @@ authRoutes.post('/auth/forgot-password', async (c) => {
     const evolutionInstance = String(settings.evolution_shared_instance || '').trim()
 
     if (!evolutionUrl || !evolutionApiKey || !evolutionInstance) {
-      attachCorsForAllowedOrigin(c)
       return c.json({ ok: true, message: genericMessage })
     }
 
@@ -265,11 +258,9 @@ authRoutes.post('/auth/forgot-password', async (c) => {
       message: whatsappMessage,
     })
 
-    attachCorsForAllowedOrigin(c)
     return c.json({ ok: true, message: genericMessage })
   } catch (error) {
     console.error('[Auth.forgot-password] erro interno:', error)
-    attachCorsForAllowedOrigin(c)
     return c.json(
       {
         error: 'Erro interno ao processar recuperacao de senha.',
