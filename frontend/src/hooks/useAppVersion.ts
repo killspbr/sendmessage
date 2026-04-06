@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 
-const APP_VERSION = '1.1.4'
+const APP_VERSION = '1.2.0'
 
 export function useAppVersion() {
   const [updateAvailable, setUpdateAvailable] = useState(false)
@@ -24,23 +24,34 @@ export function useAppVersion() {
     checkVersion()
 
     const interval = setInterval(() => {
-      fetch('/index.html', { cache: 'no-store' })
-        .then(() => {
-          const currentStoredVersion = localStorage.getItem('app_version')
-          if (currentStoredVersion !== APP_VERSION) {
+      fetch('/version.json', { cache: 'no-store' })
+        .then(r => r.json())
+        .then(data => {
+          if (data.version && data.version !== APP_VERSION) {
             setForceUpdate(true)
+            localStorage.setItem('app_version', data.version)
+            window.location.reload()
           }
         })
         .catch(() => {})
-    }, 300000)
+    }, 60000)
 
     return () => clearInterval(interval)
   }, [])
+
+  // If forceUpdate, redirect immediately
+  useEffect(() => {
+    if (forceUpdate) {
+      localStorage.setItem('app_version', APP_VERSION)
+      window.location.href = window.location.pathname + '?v=' + Date.now()
+    }
+  }, [forceUpdate])
 
   // Listen for SW new version event
   useEffect(() => {
     const handler = () => {
       setUpdateAvailable(true)
+      window.location.reload()
     }
 
     window.addEventListener('app:new-version-available', handler as EventListener)
@@ -49,10 +60,10 @@ export function useAppVersion() {
     }
   }, [])
 
-  const handleForceUpdate = () => {
+  const handleForceUpdate = useCallback(() => {
     localStorage.setItem('app_version', APP_VERSION)
-    window.location.reload()
-  }
+    window.location.href = window.location.pathname + '?v=' + Date.now()
+  }, [])
 
   return {
     APP_VERSION,
