@@ -156,6 +156,7 @@ export async function apiFetch<T = any>(endpoint: string, options: RequestInit =
       ;(apiError as any).error = errorData.error
       ;(apiError as any).technical = errorData.technical
       ;(apiError as any).details = errorData.details
+      ;(apiError as any).requiresPasswordReset = !!errorData.requiresPasswordReset
       throw apiError
     }
 

@@ -1,5 +1,5 @@
 import { Hono } from 'hono'
-import bcrypt from 'bcryptjs'
+import { hashPassword, comparePassword } from '../lib/password'
 import { SignJWT } from 'jose'
 import type { Bindings, AppVariables } from '../types'
 import { authenticateToken } from '../lib/auth'
@@ -70,54 +70,63 @@ async function sendPasswordResetViaWhatsapp(params: {
 }
 
 authRoutes.post('/auth/signup', async (c) => {
-  const body = await c.req.json().catch(() => ({} as any))
-  const email = String(body?.email || '').trim().toLowerCase()
-  const password = String(body?.password || '')
-  const name = String(body?.name || '').trim()
+  try {
+    const body = await c.req.json().catch(() => ({} as any))
+    const email = String(body?.email || '').trim().toLowerCase()
+    const password = String(body?.password || '')
+    const name = String(body?.name || '').trim()
 
-  if (!email || !password) {
-    return c.json({ error: 'Email e senha sao obrigatorios.' }, 400)
-  }
+    if (!email || !password) {
+      attachCorsForAllowedOrigin(c)
+      return c.json({ error: 'Email e senha sao obrigatorios.' }, 400)
+    }
 
-  const db = getDb(c.env)
-  const existing = await db.query('SELECT id FROM public.users WHERE email = $1 LIMIT 1', [email])
-  if (existing.rows.length > 0) {
-    return c.json({ error: 'Este e-mail ja esta cadastrado.' }, 400)
-  }
+    const db = getDb(c.env)
+    const existing = await db.query('SELECT id FROM public.users WHERE email = $1 LIMIT 1', [email])
+    if (existing.rows.length > 0) {
+      attachCorsForAllowedOrigin(c)
+      return c.json({ error: 'Este e-mail ja esta cadastrado.' }, 400)
+    }
 
-  const passwordHash = await bcrypt.hash(password, 10)
-  const inserted = await db.query(
-    `INSERT INTO public.users (email, password_hash, name)
-     VALUES ($1, $2, $3)
-     RETURNING id, email, name, token_version`,
-    [email, passwordHash, name || null]
-  )
+    const passwordHash = await hashPassword(password)
+    const inserted = await db.query(
+      `INSERT INTO public.users (email, password_hash, name)
+       VALUES ($1, $2, $3)
+       RETURNING id, email, name, token_version`,
+      [email, passwordHash, name || null]
+    )
 
-  const user = inserted.rows[0]
-  const userCount = await db.query('SELECT COUNT(*)::int AS total FROM public.users')
-  const isFirstUser = Number(userCount.rows[0]?.total || 0) === 1
+    const user = inserted.rows[0]
+    const userCount = await db.query('SELECT COUNT(*)::int AS total FROM public.users')
+    const isFirstUser = Number(userCount.rows[0]?.total || 0) === 1
 
-  if (isFirstUser) {
-    const adminGroup = await db.query(`SELECT id FROM public.user_groups WHERE name = 'Administrador' LIMIT 1`)
-    if (adminGroup.rows[0]?.id) {
-      await db.query('INSERT INTO public.user_profiles (id, group_id) VALUES ($1, $2) ON CONFLICT (id) DO NOTHING', [user.id, adminGroup.rows[0].id])
+    if (isFirstUser) {
+      const adminGroup = await db.query(`SELECT id FROM public.user_groups WHERE name = 'Administrador' LIMIT 1`)
+      if (adminGroup.rows[0]?.id) {
+        await db.query('INSERT INTO public.user_profiles (id, group_id) VALUES ($1, $2) ON CONFLICT (id) DO NOTHING', [user.id, adminGroup.rows[0].id])
+      } else {
+        await db.query('INSERT INTO public.user_profiles (id) VALUES ($1) ON CONFLICT (id) DO NOTHING', [user.id])
+      }
     } else {
       await db.query('INSERT INTO public.user_profiles (id) VALUES ($1) ON CONFLICT (id) DO NOTHING', [user.id])
     }
-  } else {
-    await db.query('INSERT INTO public.user_profiles (id) VALUES ($1) ON CONFLICT (id) DO NOTHING', [user.id])
+
+    const token = await signAuthToken(c.env, {
+      id: String(user.id),
+      email: String(user.email),
+      tv: Number(user.token_version || 0),
+    })
+
+    attachCorsForAllowedOrigin(c)
+    return c.json({
+      user: { id: user.id, email: user.email, name: user.name },
+      token,
+    }, 201)
+  } catch (error) {
+    console.error('[Auth.signup] erro:', error)
+    attachCorsForAllowedOrigin(c)
+    return c.json({ error: 'Erro interno ao criar conta.' }, 500)
   }
-
-  const token = await signAuthToken(c.env, {
-    id: String(user.id),
-    email: String(user.email),
-    tv: Number(user.token_version || 0),
-  })
-
-  return c.json({
-    user: { id: user.id, email: user.email, name: user.name },
-    token,
-  }, 201)
 })
 
 authRoutes.post('/auth/login', async (c) => {
@@ -145,7 +154,13 @@ authRoutes.post('/auth/login', async (c) => {
       return c.json({ error: 'Credenciais invalidas.' }, 400)
     }
 
-    const validPassword = await bcrypt.compare(password, passwordHash)
+    // Detect legacy bcrypt hashes and offer password reset
+    if (passwordHash.startsWith('$2')) {
+      attachCorsForAllowedOrigin(c)
+      return c.json({ error: 'Senha desatualizada. Solicite a redefinição no WhatsApp.', requiresPasswordReset: true }, 400)
+    }
+
+    const validPassword = await comparePassword(password, passwordHash)
     if (!validPassword) {
       attachCorsForAllowedOrigin(c)
       return c.json({ error: 'Credenciais invalidas.' }, 400)
@@ -225,7 +240,7 @@ authRoutes.post('/auth/forgot-password', async (c) => {
     }
 
     const newPassword = generateTemporaryPassword(12)
-    const passwordHash = await bcrypt.hash(newPassword, 10)
+    const passwordHash = await hashPassword(newPassword)
 
     await db.query(
       `UPDATE public.users
@@ -289,7 +304,7 @@ authRoutes.post('/auth/reset-password', async (c) => {
     return c.json({ error: 'Token invalido ou expirado.' }, 400)
   }
 
-  const passwordHash = await bcrypt.hash(password, 10)
+  const passwordHash = await hashPassword(password)
   await db.query(
     `UPDATE public.users
         SET password_hash = $1,

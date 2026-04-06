@@ -61,9 +61,10 @@ function App() {
   const [authMode, setAuthMode] = useState<'login'|'signup'>('login')
   const [rememberMe, setRememberMe] = useState(true)
   const [localAuthError, setLocalAuthError] = useState<string|null>(null)
+  const [showResetPrompt, setShowResetPrompt] = useState(false)
 
   // 2. Authentication & Guard
-  const { currentUser, authLoading, authError, login, logout } = useAuth()
+  const { currentUser, authLoading, authError, requiresPasswordReset, login, logout } = useAuth()
 
   // 3. Configuration & Guard
   const effectiveUserId = impersonatedUserId || currentUser?.id || null
@@ -203,25 +204,31 @@ function App() {
   // Views logic
   if (authLoading) return <div className="h-screen bg-slate-50 flex items-center justify-center"><div className="animate-spin rounded-full h-8 w-8 border-t-2 border-emerald-500" /></div>
   if (!currentUser) return (
-    <AuthPage 
-      authMode={authMode as any} 
-      authEmail={authEmail} 
-      authPassword={authPassword} 
-      authName={authName} 
-      authError={authError || localAuthError} 
+    <AuthPage
+      authMode={authMode as any}
+      authEmail={authEmail}
+      authPassword={authPassword}
+      authName={authName}
+      authError={authError || localAuthError}
       rememberMe={rememberMe}
-      onSetAuthMode={setAuthMode as any} 
-      onSetAuthEmail={setAuthEmail} 
-      onSetAuthPassword={setAuthPassword} 
+      showResetPrompt={showResetPrompt}
+      onSetAuthMode={setAuthMode as any}
+      onSetAuthEmail={setAuthEmail}
+      onSetAuthPassword={setAuthPassword}
       onSetAuthName={setAuthName}
       onToggleRememberMe={() => setRememberMe(!rememberMe)}
       onSetAuthError={setLocalAuthError}
       onSubmit={async () => {
+        setShowResetPrompt(false)
         try {
           if (authMode === 'login') await login({ email: authEmail, password: authPassword })
           else await login({ email: authEmail, password: authPassword, name: authName })
-        } catch {}
-      }} 
+        } catch {
+          if (requiresPasswordReset) {
+            setShowResetPrompt(true)
+          }
+        }
+      }}
     />
   )
   

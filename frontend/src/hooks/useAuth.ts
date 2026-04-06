@@ -7,6 +7,7 @@ export type UseAuthResult = {
   authLoading: boolean
   authError: string | null
   currentUser: any | null
+  requiresPasswordReset: boolean
   login: (credentials: any) => Promise<void>
   signup: (userData: any) => Promise<void>
   logout: () => void
@@ -16,6 +17,7 @@ export function useAuth(): UseAuthResult {
   const [authLoading, setAuthLoading] = useState(true)
   const [authError, setAuthError] = useState<string | null>(null)
   const [currentUser, setCurrentUser] = useState<any | null>(null)
+  const [requiresPasswordReset, setRequiresPasswordReset] = useState(false)
 
   useEffect(() => {
     let isMounted = true
@@ -73,6 +75,7 @@ export function useAuth(): UseAuthResult {
   const login = async (credentials: any) => {
     setAuthLoading(true)
     setAuthError(null)
+    setRequiresPasswordReset(false)
     try {
       const data = await apiFetch('/api/auth/login', {
         method: 'POST',
@@ -83,6 +86,9 @@ export function useAuth(): UseAuthResult {
       setCurrentUser(data.user)
     } catch (e: any) {
       setAuthError(e.message)
+      if (e?.requiresPasswordReset) {
+        setRequiresPasswordReset(true)
+      }
       throw e
     } finally {
       setAuthLoading(false)
@@ -114,5 +120,5 @@ export function useAuth(): UseAuthResult {
     setCurrentUser(null)
   }
 
-  return { authLoading, authError, currentUser, login, signup, logout }
+  return { authLoading, authError, currentUser, requiresPasswordReset, login, signup, logout }
 }

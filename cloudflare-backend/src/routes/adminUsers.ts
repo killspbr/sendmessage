@@ -1,5 +1,5 @@
 import { Hono } from 'hono'
-import bcrypt from 'bcryptjs'
+import { hashPassword } from '../lib/password'
 import type { Bindings, AppVariables } from '../types'
 import { authenticateToken, checkAdmin } from '../lib/auth'
 import { getDb } from '../lib/db'
@@ -435,7 +435,7 @@ adminUsersRoutes.post('/admin/users/:id/reset-password', authenticateToken, chec
   if (!id) return c.json({ success: false, error: 'Usuario invalido.' }, 400)
 
   const defaultPassword = '123456'
-  const passwordHash = await bcrypt.hash(defaultPassword, 10)
+  const passwordHash = await hashPassword(defaultPassword)
 
   const result = await db.query(
     `UPDATE public.users

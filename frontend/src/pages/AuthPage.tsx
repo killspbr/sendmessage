@@ -5,6 +5,7 @@ type AuthPageProps = {
   authName: string
   authError: string | null
   rememberMe: boolean
+  showResetPrompt: boolean
   onSetAuthMode: (mode: 'login' | 'signup' | 'forgot-password' | 'reset-password') => void
   onSetAuthEmail: (email: string) => void
   onSetAuthPassword: (password: string) => void
@@ -21,6 +22,7 @@ export function AuthPage({
   authName,
   authError,
   rememberMe,
+  showResetPrompt,
   onSetAuthMode,
   onSetAuthEmail,
   onSetAuthPassword,
@@ -152,6 +154,24 @@ export function AuthPage({
             }`}>
               {authError}
             </p>
+          )}
+
+          {showResetPrompt && authMode === 'login' && (
+            <div className="rounded-md px-3 py-2 bg-blue-500/10 border border-blue-500/40 space-y-1.5">
+              <p className="text-[11px] text-blue-300">
+                Sua senha precisa ser atualizada. Solicite o reset pelo WhatsApp para receber uma nova senha temporária.
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  onSetAuthMode('forgot-password')
+                  onSetAuthError(null)
+                }}
+                className="text-[11px] text-blue-400 hover:text-blue-300 underline transition"
+              >
+                Solicitar nova senha pelo WhatsApp
+              </button>
+            </div>
           )}
 
           {authMode === 'login' && (
