@@ -11,14 +11,14 @@
     "check": "tsc --noEmit"
   },
   "dependencies": {
-    "bcryptjs": "^3.0.2",
+    "bcryptjs": "^2.4.3",
     "hono": "^4.9.7",
     "jose": "^6.1.0",
     "pg": "^8.16.3"
   },
   "devDependencies": {
-    "@types/bcryptjs": "^3.0.0",
     "@cloudflare/workers-types": "^4.20260315.0",
+    "@types/bcryptjs": "^3.0.0",
     "@types/pg": "^8.15.5",
     "typescript": "^5.8.3",
     "wrangler": "^4.9.0"
