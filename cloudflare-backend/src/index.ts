@@ -111,6 +111,7 @@ app.get('/api/rescue-migration', async (c) => {
   }
 })
 
+
 app.get('/api/version-check', (c) => {
   return c.json({
     status: 'ONLINE',
