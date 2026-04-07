@@ -1047,52 +1047,68 @@ instanceLabRoutes.get('/admin/warmer', authenticateToken, checkAdmin, async (c) 
   const db = getDb(c.env)
   await ensureInstanceLabSchema(db)
 
-  // Verifica se a coluna 'ok' existe antes de usá-la na query
-  const warmerLogColumns = await getTableColumns(db, 'warmer_logs')
-  const hasOkColumn = hasColumn(warmerLogColumns, 'ok')
+  const hasLogs = await tableExists(db, 'warmer_logs')
+  const hasRuns = await tableExists(db, 'warmer_runs')
 
-  const failedEventsExpr = hasOkColumn
-    ? 'COUNT(*) FILTER (WHERE l.ok = false)'
-    : '0'
+  // Build query dynamically based on which tables exist
+  let selectExtra = ''
+  let joins = ''
 
-  const todayJoin = `LEFT JOIN LATERAL (
-    SELECT COUNT(*) AS total_events, ${failedEventsExpr} AS failed_events
-     FROM public.warmer_logs l
-    WHERE l.warmer_id = w.id
-      AND l.sent_at >= CURRENT_DATE
-  ) today ON TRUE`
+  if (hasLogs) {
+    const warmerLogColumns = await getTableColumns(db, 'warmer_logs')
+    const hasOkCol = hasColumn(warmerLogColumns, 'ok')
+    const failedExpr = hasOkCol ? "COUNT(*) FILTER (WHERE l.ok = false)" : '0'
 
-  const recentRunJoin = `LEFT JOIN LATERAL (
-    SELECT * FROM public.warmer_runs r
-    WHERE r.warmer_id = w.id
-      AND r.status IN ('queued', 'running')
-    ORDER BY r.created_at DESC
-    LIMIT 1
-  ) recent_run ON TRUE`
-
-  const lastRunJoin = `LEFT JOIN LATERAL (
-    SELECT * FROM public.warmer_runs r
-    WHERE r.warmer_id = w.id
-    ORDER BY r.created_at DESC
-    LIMIT 1
-  ) last_run ON TRUE`
-
-  const result = await db.query(`
-    SELECT
-      w.*,
+    selectExtra += `,
       COALESCE(today.total_events, 0)::int AS sent_today,
-      COALESCE(today.failed_events, 0)::int AS failed_today,
+      COALESCE(today.failed_events, 0)::int AS failed_today`
+    joins += `
+      LEFT JOIN LATERAL (
+        SELECT COUNT(*) AS total_events, ${failedExpr} AS failed_events
+        FROM public.warmer_logs l
+        WHERE l.warmer_id = w.id AND l.sent_at >= CURRENT_DATE
+      ) today ON TRUE`
+  } else {
+    selectExtra += `,
+      0 AS sent_today,
+      0 AS failed_today`
+  }
+
+  if (hasRuns) {
+    selectExtra += `,
       recent_run.id AS active_run_id,
       recent_run.status AS active_run_status,
       recent_run.steps_total AS active_run_steps_total,
       recent_run.steps_completed AS active_run_steps_completed,
       last_run.status AS last_run_status_actual,
       last_run.finished_at AS last_run_finished_at,
-      last_run.last_error AS last_run_error_actual
+      last_run.last_error AS last_run_error_actual`
+    joins += `
+      LEFT JOIN LATERAL (
+        SELECT * FROM public.warmer_runs r
+        WHERE r.warmer_id = w.id AND r.status IN ('queued', 'running')
+        ORDER BY r.created_at DESC LIMIT 1
+      ) recent_run ON TRUE
+      LEFT JOIN LATERAL (
+        SELECT * FROM public.warmer_runs r
+        WHERE r.warmer_id = w.id
+        ORDER BY r.created_at DESC LIMIT 1
+      ) last_run ON TRUE`
+  } else {
+    selectExtra += `,
+      NULL AS active_run_id,
+      NULL AS active_run_status,
+      NULL::int AS active_run_steps_total,
+      NULL::int AS active_run_steps_completed,
+      NULL AS last_run_status_actual,
+      NULL AS last_run_finished_at,
+      NULL AS last_run_error_actual`
+  }
+
+  const result = await db.query(`
+    SELECT w.*${selectExtra}
     FROM public.warmer_configs w
-    ${todayJoin}
-    ${recentRunJoin}
-    ${lastRunJoin}
+    ${joins}
     ORDER BY w.created_at DESC
   `)
 
