@@ -145,26 +145,33 @@ function getCorsHeaders(request: Request): Record<string, string> {
   const origin = request.headers.get('Origin')
   const headers: Record<string, string> = { ...DEFAULT_CORS_HEADERS, 'Vary': 'Origin' }
 
-  if (origin && (ALLOWED_ORIGINS.includes(origin) || origin.endsWith('.pages.dev'))) {
-    headers['Access-Control-Allow-Origin'] = origin
+  const isAllowed = origin && (ALLOWED_ORIGINS.includes(origin) || origin.endsWith('.pages.dev'))
+  
+  if (isAllowed) {
+    headers['Access-Control-Allow-Origin'] = origin!
     headers['Access-Control-Allow-Credentials'] = 'true'
   } else {
-    // Fallback seguro: se não for uma origem conhecida, permitimos mas sem credentials
-    // ou simplesmente refletimos a origem para evitar bloqueios de desenvolvimento
     headers['Access-Control-Allow-Origin'] = origin || '*'
+  }
+
+  // Suporte para requisições de redes privadas (chrome às vezes pede isso)
+  if (request.headers.get('Access-Control-Request-Private-Network') === 'true') {
+    headers['Access-Control-Allow-Private-Network'] = 'true'
   }
 
   return headers
 }
 
 function corsify(response: Response, request: Request): Response {
-  // Criamos uma nova resposta baseada na original para poder modificar os headers
-  const patched = new Response(response.body, response)
   const corsHeaders = getCorsHeaders(request)
+  const patched = new Response(response.body, response)
   
-  for (const [k, v] of Object.entries(corsHeaders)) {
+  Object.entries(corsHeaders).forEach(([k, v]) => {
     patched.headers.set(k, v)
-  }
+  })
+
+  // Log técnico para wrangler tail
+  console.log(`[CORS] ${request.method} ${new URL(request.url).pathname} | Origin: ${request.headers.get('Origin') || 'none'} | Allowed: ${patched.headers.get('Access-Control-Allow-Origin')}`)
   
   return patched
 }
