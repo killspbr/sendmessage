@@ -179,8 +179,46 @@ app.onError((err, c) => {
   })
 })
 
+// ── CORS RUNTIME WRAPPER ────────────────────────────────────────────
+// Hono's middleware chain can be bypassed by runtime errors, sub-app
+// errors, or unhandled rejections. This wrapper guarantees CORS
+// headers on EVERY response at the Cloudflare Workers level.
+// ─────────────────────────────────────────────────────────────────────
+const CORS_HEADERS: Record<string, string> = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,PATCH,OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type,Authorization,X-Requested-With,Accept,Origin',
+  'Access-Control-Expose-Headers': 'Content-Length',
+  'Access-Control-Max-Age': '86400',
+}
+
+function corsify(response: Response): Response {
+  const patched = new Response(response.body, response)
+  for (const [k, v] of Object.entries(CORS_HEADERS)) {
+    patched.headers.set(k, v)
+  }
+  return patched
+}
+
 export default {
-  fetch: app.fetch,
+  async fetch(request: Request, env: Bindings, ctx: ExecutionContext): Promise<Response> {
+    // Preflight: responder imediatamente sem tocar no Hono
+    if (request.method === 'OPTIONS') {
+      return new Response(null, { status: 204, headers: CORS_HEADERS })
+    }
+
+    try {
+      const response = await app.fetch(request, env, ctx)
+      return corsify(response)
+    } catch (err) {
+      console.error('[WorkerRuntime] Erro fatal nao capturado pelo Hono:', err)
+      return new Response(
+        JSON.stringify({ error: 'Erro interno no servidor.', technical: err instanceof Error ? err.message : String(err) }),
+        { status: 500, headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' } }
+      )
+    }
+  },
+
   async scheduled(event: any, env: Bindings, ctx: ExecutionContext) {
     if (String(env.WARMER_CRON_ENABLED || '').trim().toLowerCase() !== 'true') {
       console.log('[ScheduledTrigger] Warmer cron desabilitado por configuracao.')
@@ -189,10 +227,8 @@ export default {
 
     console.log(`[ScheduledTrigger] Executing at ${new Date().toISOString()}. Event: ${event.cron || 'manual'}`)
     
-    // Importacao dinamica para evitar problemas de carregamento circular se houver
     const { handleScheduledWarming } = await import('./routes/instanceLab')
     
-    // Usamos waitUntil para garantir que o processo termine mesmo se a funcao retornar
     ctx.waitUntil(handleScheduledWarming(env))
   }
 }
