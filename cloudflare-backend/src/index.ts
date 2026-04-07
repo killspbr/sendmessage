@@ -1,5 +1,4 @@
 import { Hono } from 'hono'
-import { cors } from 'hono/cors'
 import { getDb } from './lib/db'
 import { ensureCloudflareSchema } from './lib/schema'
 import type { AppVariables, Bindings } from './types'
@@ -33,26 +32,12 @@ app.use('*', async (c, next) => {
   await next()
 })
 
-// Configuração CENTRALIZADA de CORS
-app.use('*', cors({
-  origin: '*',
-  allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
-  exposeHeaders: ['Content-Length'],
-  maxAge: 86400,
-}))
-
 app.use('*', async (c, next) => {
   try {
     await next()
   } catch (error) {
     console.error('[CloudflareBackend] Erro capturado no guard global:', error)
     const message = error instanceof Error ? error.message : String(error)
-
-    // Defense-in-depth: garantir CORS mesmo se o middleware chain falhar
-    c.header('Access-Control-Allow-Origin', '*')
-    c.header('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,PATCH,OPTIONS')
-    c.header('Access-Control-Allow-Headers', 'Content-Type,Authorization,X-Requested-With,Accept,Origin')
 
     return c.json(
       {
@@ -141,94 +126,90 @@ app.route('/api/email-webhook', emailWebhookRoutes)
 app.route('/api/chat', chatRoutes)
 app.route('/api/webhooks', webhookRoutes)
 
-// CORS headers explícitos para handlers que BYPASSAM o middleware chain do Hono
-const CORS_SAFE_HEADERS: Record<string, string> = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,PATCH,OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type,Authorization,X-Requested-With,Accept,Origin',
-}
+// ── CONFIGURAÇÃO DEFINITIVA DE CORS (RUNTIME LEVEL) ──────────────────
+const ALLOWED_ORIGINS = [
+  'https://sendmessage-frontend.pages.dev',
+  'https://sendmessage-frontend-pgs.pages.dev',
+  'http://localhost:5173',
+  'http://localhost:3000'
+]
 
-app.notFound((c) => {
-  return c.json({ error: 'Rota nao encontrada no backend Cloudflare.' }, 404, CORS_SAFE_HEADERS)
-})
-
-app.onError((err, c) => {
-  console.error('[GlobalError]', err)
-
-  const msg = err instanceof Error ? err.message : String(err)
-  let status = 500
-  let body: Record<string, string> = { error: 'Erro interno no servidor.' }
-
-  if (msg.includes('timeout') || msg.includes('DB_QUERY_TIMEOUT')) {
-    status = 504
-    body = { error: 'Erro de timeout no banco de dados. Tente novamente em instantes.' }
-  }
-
-  if (msg.includes('HYPERDRIVE') || msg.includes('DATABASE_URL') || msg.includes('ECONN') || msg.includes('ETIMEDOUT')) {
-    status = 503
-    body = { error: 'Banco de dados temporariamente indisponivel. Tente novamente.' }
-  }
-
-  // onError BYPASSA o middleware cors() do Hono — headers CORS devem ser explicitos aqui
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: {
-      ...CORS_SAFE_HEADERS,
-      'Content-Type': 'application/json',
-    },
-  })
-})
-
-// ── CORS RUNTIME WRAPPER ────────────────────────────────────────────
-// Hono's middleware chain can be bypassed by runtime errors, sub-app
-// errors, or unhandled rejections. This wrapper guarantees CORS
-// headers on EVERY response at the Cloudflare Workers level.
-// ─────────────────────────────────────────────────────────────────────
-const CORS_HEADERS: Record<string, string> = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,PATCH,OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type,Authorization,X-Requested-With,Accept,Origin',
-  'Access-Control-Expose-Headers': 'Content-Length',
+const DEFAULT_CORS_HEADERS: Record<string, string> = {
+  'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, PATCH, OPTIONS, HEAD',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With, Accept, Origin, X-Version',
+  'Access-Control-Expose-Headers': 'Content-Length, X-Koyeb-Project',
   'Access-Control-Max-Age': '86400',
 }
 
-function corsify(response: Response): Response {
+function getCorsHeaders(request: Request): Record<string, string> {
+  const origin = request.headers.get('Origin')
+  const headers: Record<string, string> = { ...DEFAULT_CORS_HEADERS, 'Vary': 'Origin' }
+
+  if (origin && (ALLOWED_ORIGINS.includes(origin) || origin.endsWith('.pages.dev'))) {
+    headers['Access-Control-Allow-Origin'] = origin
+    headers['Access-Control-Allow-Credentials'] = 'true'
+  } else {
+    // Fallback seguro: se não for uma origem conhecida, permitimos mas sem credentials
+    // ou simplesmente refletimos a origem para evitar bloqueios de desenvolvimento
+    headers['Access-Control-Allow-Origin'] = origin || '*'
+  }
+
+  return headers
+}
+
+function corsify(response: Response, request: Request): Response {
+  // Criamos uma nova resposta baseada na original para poder modificar os headers
   const patched = new Response(response.body, response)
-  for (const [k, v] of Object.entries(CORS_HEADERS)) {
+  const corsHeaders = getCorsHeaders(request)
+  
+  for (const [k, v] of Object.entries(corsHeaders)) {
     patched.headers.set(k, v)
   }
+  
   return patched
 }
 
 export default {
   async fetch(request: Request, env: Bindings, ctx: ExecutionContext): Promise<Response> {
-    // Preflight: responder imediatamente sem tocar no Hono
+    const corsHeaders = getCorsHeaders(request)
+
+    // 1. Manuseio de Preflight (OPTIONS) - Resposta imediata 204
     if (request.method === 'OPTIONS') {
-      return new Response(null, { status: 204, headers: CORS_HEADERS })
+      return new Response(null, {
+        status: 204,
+        headers: corsHeaders
+      })
     }
 
     try {
+      // 2. Execução normal do Hono
       const response = await app.fetch(request, env, ctx)
-      return corsify(response)
+      
+      // 3. Garantia de CORS em todas as respostas de sucesso/erro do Hono
+      return corsify(response, request)
     } catch (err) {
-      console.error('[WorkerRuntime] Erro fatal nao capturado pelo Hono:', err)
+      // 4. Captura de Erros Fatais (Crash do Worker)
+      console.error('[WorkerRuntime] Erro fatal não capturado:', err)
+      
       return new Response(
-        JSON.stringify({ error: 'Erro interno no servidor.', technical: err instanceof Error ? err.message : String(err) }),
-        { status: 500, headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' } }
+        JSON.stringify({
+          error: 'Erro crítico no backend.',
+          technical: err instanceof Error ? err.message : String(err)
+        }),
+        {
+          status: 500,
+          headers: {
+            ...corsHeaders,
+            'Content-Type': 'application/json'
+          }
+        }
       )
     }
   },
 
   async scheduled(event: any, env: Bindings, ctx: ExecutionContext) {
-    if (String(env.WARMER_CRON_ENABLED || '').trim().toLowerCase() !== 'true') {
-      console.log('[ScheduledTrigger] Warmer cron desabilitado por configuracao.')
-      return
-    }
-
-    console.log(`[ScheduledTrigger] Executing at ${new Date().toISOString()}. Event: ${event.cron || 'manual'}`)
-    
+    if (String(env.WARMER_CRON_ENABLED || '').trim().toLowerCase() !== 'true') return
     const { handleScheduledWarming } = await import('./routes/instanceLab')
-    
     ctx.waitUntil(handleScheduledWarming(env))
   }
 }
