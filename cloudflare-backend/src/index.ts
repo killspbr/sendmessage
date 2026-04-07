@@ -49,6 +49,11 @@ app.use('*', async (c, next) => {
     console.error('[CloudflareBackend] Erro capturado no guard global:', error)
     const message = error instanceof Error ? error.message : String(error)
 
+    // Defense-in-depth: garantir CORS mesmo se o middleware chain falhar
+    c.header('Access-Control-Allow-Origin', '*')
+    c.header('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,PATCH,OPTIONS')
+    c.header('Access-Control-Allow-Headers', 'Content-Type,Authorization,X-Requested-With,Accept,Origin')
+
     return c.json(
       {
         error: 'Erro interno no backend Cloudflare.',
@@ -135,7 +140,17 @@ app.route('/api/email-webhook', emailWebhookRoutes)
 app.route('/api/chat', chatRoutes)
 app.route('/api/webhooks', webhookRoutes)
 
-app.notFound((c) => c.json({ error: 'Rota nao encontrada no backend Cloudflare.' }, 404))
+// CORS headers explícitos para handlers que BYPASSAM o middleware chain do Hono
+const CORS_SAFE_HEADERS: Record<string, string> = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,PATCH,OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type,Authorization,X-Requested-With,Accept,Origin',
+}
+
+app.notFound((c) => {
+  return c.json({ error: 'Rota nao encontrada no backend Cloudflare.' }, 404, CORS_SAFE_HEADERS)
+})
+
 app.onError((err, c) => {
   console.error('[GlobalError]', err)
 
@@ -153,8 +168,14 @@ app.onError((err, c) => {
     body = { error: 'Banco de dados temporariamente indisponivel. Tente novamente.' }
   }
 
-  // set CORS headers explicitly via Response init to ensure Workers compliance
-  return c.json(body, status as any)
+  // onError BYPASSA o middleware cors() do Hono — headers CORS devem ser explicitos aqui
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: {
+      ...CORS_SAFE_HEADERS,
+      'Content-Type': 'application/json',
+    },
+  })
 })
 
 export default {
