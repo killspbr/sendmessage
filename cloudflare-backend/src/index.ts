@@ -97,6 +97,26 @@ app.get('/api/rescue-migration', async (c) => {
 })
 
 
+app.onError((err, c) => {
+  console.error('[Hono-Level-Error]', err)
+  const origin = c.req.header('Origin') || '*'
+  const isAllowed = origin.endsWith('.pages.dev') || ALLOWED_ORIGINS.includes(origin)
+  
+  const headers: Record<string, string> = {
+    'Access-Control-Allow-Origin': isAllowed ? origin : '*',
+    'Content-Type': 'application/json'
+  }
+  if (isAllowed) headers['Access-Control-Allow-Credentials'] = 'true'
+
+  // Retornamos 400 em vez de 500 para CORS funcionar no Cloudflare
+  return c.json({ error: 'Erro interno no servidor.', technical: err.message, status: 500 }, 400, headers)
+})
+
+app.notFound((c) => {
+  const origin = c.req.header('Origin') || '*'
+  return c.json({ error: 'Rota nao encontrada' }, 404, { 'Access-Control-Allow-Origin': origin })
+})
+
 app.get('/api/version-check', (c) => {
   return c.json({
     status: 'ONLINE',
@@ -162,53 +182,36 @@ function getCorsHeaders(request: Request): Record<string, string> {
   return headers
 }
 
-function corsify(response: Response, request: Request): Response {
-  const corsHeaders = getCorsHeaders(request)
-  const patched = new Response(response.body, response)
-  
-  Object.entries(corsHeaders).forEach(([k, v]) => {
-    patched.headers.set(k, v)
-  })
-
-  // Log técnico para wrangler tail
-  console.log(`[CORS] ${request.method} ${new URL(request.url).pathname} | Origin: ${request.headers.get('Origin') || 'none'} | Allowed: ${patched.headers.get('Access-Control-Allow-Origin')}`)
-  
-  return patched
-}
 
 export default {
   async fetch(request: Request, env: Bindings, ctx: ExecutionContext): Promise<Response> {
-    const corsHeaders = getCorsHeaders(request)
-
-    // 1. Manuseio de Preflight (OPTIONS) - Resposta imediata 204
-    if (request.method === 'OPTIONS') {
-      return new Response(null, {
-        status: 204,
-        headers: corsHeaders
-      })
-    }
-
+    let corsHeaders: Record<string, string> = { 'Access-Control-Allow-Origin': '*' }
+    
     try {
-      // 2. Execução normal do Hono
+      corsHeaders = getCorsHeaders(request)
+
+      // 1. Preflight
+      if (request.method === 'OPTIONS') {
+        return new Response(null, { status: 204, headers: corsHeaders })
+      }
+
+      // 2. Transmissão Hono
       const response = await app.fetch(request, env, ctx)
       
-      // 3. Garantia de CORS em todas as respostas de sucesso/erro do Hono
-      return corsify(response, request)
-    } catch (err) {
-      // 4. Captura de Erros Fatais (Crash do Worker)
-      console.error('[WorkerRuntime] Erro fatal não capturado:', err)
-      
+      // 3. Clone e injeção de CORS
+      const patched = new Response(response.body, response)
+      Object.entries(corsHeaders).forEach(([k, v]) => patched.headers.set(k, v))
+      return patched
+
+    } catch (err: any) {
+      console.error('[Worker-Fatal]', err.message || err)
+      // Usamos 400 em vez de 500 para evitar que o Cloudflare intercepte 
+      // e substitua por uma página de erro sem headers CORS.
       return new Response(
-        JSON.stringify({
-          error: 'Erro crítico no backend.',
-          technical: err instanceof Error ? err.message : String(err)
-        }),
-        {
-          status: 500,
-          headers: {
-            ...corsHeaders,
-            'Content-Type': 'application/json'
-          }
+        JSON.stringify({ error: 'Erro interno capturado.', technical: err.message || String(err), status: 500 }),
+        { 
+          status: 400, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
         }
       )
     }
