@@ -1047,9 +1047,13 @@ instanceLabRoutes.get('/admin/warmer', authenticateToken, checkAdmin, async (c) 
   const db = getDb(c.env)
   await ensureInstanceLabSchema(db)
 
-  // Otimizacao: Assumimos que o schema ja foi garantido pela linha acima.
-  // Evitamos queries excessivas ao information_schema na listagem publica.
-  const failedEventsExpr = 'COUNT(*) FILTER (WHERE l.ok = false)'
+  // Verifica se a coluna 'ok' existe antes de usá-la na query
+  const warmerLogColumns = await getTableColumns(db, 'warmer_logs')
+  const hasOkColumn = hasColumn(warmerLogColumns, 'ok')
+
+  const failedEventsExpr = hasOkColumn
+    ? 'COUNT(*) FILTER (WHERE l.ok = false)'
+    : '0'
 
   const todayJoin = `LEFT JOIN LATERAL (
     SELECT COUNT(*) AS total_events, ${failedEventsExpr} AS failed_events
