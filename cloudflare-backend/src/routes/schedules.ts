@@ -4,6 +4,8 @@ import { authenticateToken } from '../lib/auth'
 import { getDb } from '../lib/db'
 import { isSchemaMissingError, runBestEffortDdl } from '../lib/ddl'
 import { executeWhatsappCampaignDelivery, validateCampaignDeliveryPayload } from '../lib/campaignDelivery'
+import { runSchemaBestEffort } from '../lib/runtimeSchema'
+import { logger } from '../lib/logger'
 import { buildContactSendHistoryEntry, insertContactSendHistory } from '../lib/sendHistory'
 import { htmlToWhatsapp, resolveTemplate } from '../lib/messageUtils'
 
@@ -574,7 +576,8 @@ async function listSchedulesWithStats(
   statusFilter: string[],
   userId: string,
   admin: boolean,
-  limit?: number
+  limit?: number,
+  offset?: number
 ) {
   const params: unknown[] = [statusFilter]
   let whereClause = 'WHERE s.status = ANY($1)'
@@ -583,11 +586,12 @@ async function listSchedulesWithStats(
     whereClause += ` AND s.user_id = $${params.length}`
   }
 
-  if (typeof limit === 'number') {
-    params.push(limit)
-  }
-
-  const limitClause = typeof limit === 'number' ? `LIMIT $${params.length}` : ''
+  const limitClause = typeof limit === 'number' ? `LIMIT $${params.length + 1}` : ''
+  const offsetClause = typeof offset === 'number' ? `OFFSET $${params.length + 2}` : ''
+  
+  const queryParams = [...params]
+  if (typeof limit === 'number') queryParams.push(limit)
+  if (typeof offset === 'number') queryParams.push(offset)
 
   return db.query(
     `SELECT
@@ -617,8 +621,8 @@ async function listSchedulesWithStats(
      ) q ON q.schedule_id = s.id
      ${whereClause}
      ORDER BY COALESCE(s.resumed_at, s.paused_at, s.data_criacao) DESC
-     ${limitClause}`,
-    params
+     ${limitClause} ${offsetClause}`,
+    queryParams
   )
 }
 
@@ -809,9 +813,20 @@ scheduleRoutes.get('/schedules/professional', authenticateToken, async (c) => {
   }
 
   const admin = await isAdminUser(userId, db)
-  const result = await listSchedulesWithStats(db, ACTIVE_SCHEDULE_STATUSES, userId, admin)
+  
+  // Paginação
+  const page = Math.max(1, Number(c.req.query('page') || 1))
+  const limit = Math.max(1, Math.min(200, Number(c.req.query('limit') || 50)))
+  const offset = (page - 1) * limit
+
+  const result = await listSchedulesWithStats(db, ACTIVE_SCHEDULE_STATUSES, userId, admin, limit, offset)
   const server = await getServerClock(c.env)
-  return c.json({ success: true, data: result.rows, server })
+  return c.json({ 
+    success: true, 
+    data: result.rows, 
+    server,
+    meta: { page, limit } 
+  })
 })
 
 scheduleRoutes.post('/schedules/professional/refresh', authenticateToken, async (c) => {
@@ -842,9 +857,23 @@ scheduleRoutes.get('/schedules/history', authenticateToken, async (c) => {
   }
 
   const admin = await isAdminUser(userId, db)
-  const result = await listSchedulesWithStats(db, filteredStatuses, userId, admin, 100)
+  
+  // Paginação
+  const page = Math.max(1, Number(c.req.query('page') || 1))
+  const limit = Math.max(1, Math.min(200, Number(c.req.query('limit') || 50)))
+  const offset = (page - 1) * limit
+
+  const result = await listSchedulesWithStats(db, filteredStatuses, userId, admin, limit, offset)
   const server = await getServerClock(c.env)
-  return c.json({ success: true, data: result.rows, server })
+  
+  logger.info(c.env, 'Histórico de agendamentos carregado', { userId, page, limit })
+
+  return c.json({ 
+    success: true, 
+    data: result.rows, 
+    server,
+    meta: { page, limit }
+  })
 })
 
 scheduleRoutes.get('/queue/professional', authenticateToken, async (c) => {
@@ -854,6 +883,12 @@ scheduleRoutes.get('/queue/professional', authenticateToken, async (c) => {
   await ensureScheduleTables(db)
 
   const admin = await isAdminUser(userId, db)
+  
+  // Paginação
+  const page = Math.max(1, Number(c.req.query('page') || 1))
+  const limit = Math.max(1, Math.min(200, Number(c.req.query('limit') || 50)))
+  const offset = (page - 1) * limit
+
   const params: unknown[] = []
   let whereClause = ''
   if (!admin) {
@@ -882,10 +917,15 @@ scheduleRoutes.get('/queue/professional', authenticateToken, async (c) => {
        LEFT JOIN public.campaigns c ON q.campaign_id = c.id
        ${whereClause}
        ORDER BY q.id DESC
-       LIMIT 100`,
-    params
+       LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+    [...params, limit, offset]
   )
 
   const server = await getServerClock(c.env)
-  return c.json({ success: true, data: queueResult.rows, server })
+  return c.json({ 
+    success: true, 
+    data: queueResult.rows, 
+    server,
+    meta: { page, limit }
+  })
 })

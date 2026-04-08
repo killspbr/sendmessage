@@ -163,40 +163,72 @@ listsContactsRoutes.delete('/lists', authenticateToken, async (c) => {
 })
 
 listsContactsRoutes.get('/contacts', authenticateToken, async (c) => {
+  const userId = getAuthenticatedUserId(c)
   try {
-    const userId = getAuthenticatedUserId(c)
     if (!userId) return c.json({ error: 'Acesso negado.' }, 401)
+    
+    // Paginação: page (default 1), limit (default 100)
+    const page = Math.max(1, Number(c.req.query('page') || 1))
+    const limit = Math.max(1, Math.min(1000, Number(c.req.query('limit') || 100)))
+    const offset = (page - 1) * limit
+
     const listId = c.req.query('listId')
     const db = getDb(c.env)
     await ensureListsAndContactsTables(db)
 
+    let total = 0
+    let contactsResult
+
     if (listId) {
-      const result = await db.query(
+      const countRes = await db.query(
+        'SELECT COUNT(*)::int AS total FROM public.contacts WHERE user_id = $1 AND list_id = $2',
+        [userId, listId]
+      )
+      total = countRes.rows[0]?.total || 0
+
+      contactsResult = await db.query(
         `SELECT *
            FROM public.contacts
           WHERE user_id = $1
             AND list_id = $2
-          ORDER BY name ASC`,
-        [userId, listId]
+          ORDER BY name ASC
+          LIMIT $3 OFFSET $4`,
+        [userId, listId, limit, offset]
       )
-      return c.json(result.rows)
+    } else {
+      const countRes = await db.query(
+        'SELECT COUNT(*)::int AS total FROM public.contacts WHERE user_id = $1',
+        [userId]
+      )
+      total = countRes.rows[0]?.total || 0
+
+      contactsResult = await db.query(
+        `SELECT *
+           FROM public.contacts
+          WHERE user_id = $1
+          ORDER BY name ASC
+          LIMIT $2 OFFSET $3`,
+        [userId, limit, offset]
+      )
     }
 
-    const result = await db.query(
-      `SELECT *
-         FROM public.contacts
-        WHERE user_id = $1
-        ORDER BY name ASC`,
-      [userId]
-    )
-
-    return c.json(result.rows)
+    return c.json({
+      rows: contactsResult.rows,
+      meta: {
+        total,
+        page,
+        limit,
+        pages: Math.ceil(total / limit)
+      }
+    })
   } catch (error) {
     const technical =
       typeof (error as any)?.message === 'string'
         ? (error as any).message
         : String(error || 'Erro interno')
+    
     console.error('[contacts.get] Falha ao carregar contatos:', technical)
+    
     return c.json(
       {
         error: 'Erro ao carregar contatos.',

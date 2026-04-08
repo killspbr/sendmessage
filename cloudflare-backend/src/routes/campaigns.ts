@@ -6,6 +6,7 @@ import { executeWhatsappCampaignDelivery, validateCampaignDeliveryPayload } from
 import { buildContactSendHistoryEntry, insertContactSendHistory } from '../lib/sendHistory'
 import { toEvolutionNumber, ensureAbsoluteUrl } from '../lib/messageUtils'
 import { runSchemaBestEffort } from '../lib/runtimeSchema'
+import { logger } from '../lib/logger'
 
 const ALLOWED_CHANNELS = new Set(['whatsapp', 'email'])
 
@@ -144,21 +145,45 @@ function sleep(ms: number) {
 export const campaignRoutes = new Hono<{ Bindings: Bindings; Variables: AppVariables }>()
 
 campaignRoutes.get('/campaigns', authenticateToken, async (c) => {
+  const userId = getAuthenticatedUserId(c)
   try {
-    const userId = getAuthenticatedUserId(c)
     if (!userId) return c.json({ error: 'Acesso negado.' }, 401)
 
     const db = getDb(c.env)
     await ensureCampaignsTable(db)
-    const result = await db.query(
-      'SELECT * FROM public.campaigns WHERE user_id = $1 ORDER BY created_at DESC',
+
+    // Paginação: page (default 1), limit (default 20)
+    const page = Math.max(1, Number(c.req.query('page') || 1))
+    const limit = Math.max(1, Math.min(200, Number(c.req.query('limit') || 20)))
+    const offset = (page - 1) * limit
+
+    // Busca total para metadados de paginação
+    const countRes = await db.query(
+      'SELECT COUNT(*)::int AS total FROM public.campaigns WHERE user_id = $1',
       [userId]
     )
+    const total = countRes.rows[0]?.total || 0
 
-    return c.json(result.rows)
+    const result = await db.query(
+      'SELECT id, name, status, list_name, channels, created_at, updated_at FROM public.campaigns WHERE user_id = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3',
+      [userId, limit, offset]
+    )
+
+    logger.info(c.env, 'Lista de campanhas carregada', { userId, page, limit, total })
+
+    return c.json({
+      rows: result.rows,
+      meta: {
+        total,
+        page,
+        limit,
+        pages: Math.ceil(total / limit)
+      }
+    })
   } catch (err: any) {
-    console.error('[Campaigns.get] Erro:', err.message)
-    return c.json({ error: 'Erro ao carregar campanhas.', technical: err.message }, 500)
+    const technical = err.message || String(err)
+    logger.error(c.env, '[Campaigns.get] Erro ao listar campanhas', err, { userId })
+    return c.json({ error: 'Erro ao carregar campanhas.', technical }, 500)
   }
 })
 

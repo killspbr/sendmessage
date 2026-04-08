@@ -143,6 +143,8 @@ historyRoutes.get('/history', authenticateToken, async (c) => {
       [userId, limit, offset]
     )
 
+    logger.info(c.env, 'Historico de envios carregado', { userId, page, limit, total })
+
     return c.json({
       rows: result.rows,
       meta: {
@@ -207,6 +209,8 @@ historyRoutes.get('/campaigns/history', authenticateToken, async (c) => {
       'SELECT * FROM public.campaign_history WHERE user_id = $1 ORDER BY run_at DESC LIMIT $2 OFFSET $3',
       [userId, limit, offset]
     )
+
+    logger.info(c.env, 'Historico de campanhas carregado', { userId, page, limit, total })
 
     return c.json({
       rows: result.rows,
