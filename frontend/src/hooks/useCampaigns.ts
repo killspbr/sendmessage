@@ -1,32 +1,51 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
-import type { Campaign, CampaignChannel, CampaignDeliveryPayload } from '../types'
+import type { Campaign, CampaignChannel, CampaignDeliveryPayload, PaginationMeta } from '../types'
 import { apiFetch } from '../api'
 import { logError } from '../utils'
+import { DEFAULT_LIMITS } from '../config/pagination'
 
 export type UseCampaignsOptions = {
     effectiveUserId: string | null
+    page?: number
+    limit?: number
 }
 
 export type UseCampaignsResult = {
     campaigns: Campaign[]
     setCampaigns: Dispatch<SetStateAction<Campaign[]>>
-    reloadCampaigns: () => Promise<void>
+    pagination: PaginationMeta | null
+    reloadCampaigns: (p?: number, l?: number) => Promise<void>
 }
 
-export function useCampaigns({ effectiveUserId }: UseCampaignsOptions): UseCampaignsResult {
+export function useCampaigns({ 
+  effectiveUserId,
+  page: initialPage = 1,
+  limit: initialLimit = DEFAULT_LIMITS.campaigns
+}: UseCampaignsOptions): UseCampaignsResult {
     const [campaigns, setCampaigns] = useState<Campaign[]>([])
+    const [pagination, setPagination] = useState<PaginationMeta | null>(null)
+    const [currentPage, setCurrentPage] = useState(initialPage)
+    const [currentLimit, setCurrentLimit] = useState(initialLimit)
 
-    const loadCampaigns = async () => {
+    const loadCampaigns = useCallback(async (p?: number, l?: number) => {
         if (!effectiveUserId) {
             setCampaigns([])
+            setPagination(null)
             return
         }
 
-        try {
-            const data = await apiFetch('/api/campaigns')
+        const pageToLoad = p ?? currentPage
+        const limitToLoad = l ?? currentLimit
 
-            const next: Campaign[] = (data ?? []).map((row: any) => {
+        try {
+            const response = await apiFetch(`/api/campaigns?page=${pageToLoad}&limit=${limitToLoad}`)
+            
+            // Backend retorna { rows: [], meta: {} }
+            const rows = response.rows || []
+            const meta = response.meta || null
+
+            const next: Campaign[] = rows.map((row: any) => {
                 const channels: CampaignChannel[] = Array.isArray(row.channels)
                     ? (row.channels as CampaignChannel[])
                     : ['whatsapp']
@@ -55,24 +74,30 @@ export function useCampaigns({ effectiveUserId }: UseCampaignsOptions): UseCampa
             })
 
             setCampaigns(next)
+            if (meta) {
+              setPagination(meta)
+              setCurrentPage(meta.page)
+              setCurrentLimit(meta.limit)
+            }
         } catch (e) {
             logError('campaigns.load', 'Erro ao carregar campanhas do backend', e)
         }
-    }
+    }, [effectiveUserId, currentPage, currentLimit])
 
     useEffect(() => {
         const timer = window.setTimeout(() => {
-            void loadCampaigns()
+            void loadCampaigns(initialPage, initialLimit)
         }, 700)
 
         return () => {
             window.clearTimeout(timer)
         }
-    }, [effectiveUserId])
+    }, [effectiveUserId, initialPage, initialLimit])
 
     return {
         campaigns,
         setCampaigns,
+        pagination,
         reloadCampaigns: loadCampaigns,
     }
 }

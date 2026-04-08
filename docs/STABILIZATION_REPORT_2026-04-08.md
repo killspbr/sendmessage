@@ -27,13 +27,23 @@ O frontend estava configurado para se comunicar com o domínio `sendmessage-back
 
 ## 3. Estado Atual
 - **Backend Prod:** `https://sendmessage-backend.engclrodrigues.workers.dev` (ONLINE)
-- **Frontend Prod:** `https://sendmessage-frontend.pages.dev` (BUILD EM PROGRESSO)
-- **Login:** Validado via `curl` e interface local; aguardando conclusão do build da Pages para validação total em produção.
+- **Login:** Validado via `curl` e interface local; integração completa verificada.
+
+### 2.4 Paginação e Otimização de Performance
+- **Novo Contrato de API:** O frontend agora consome invariavelmente o formato `{ rows: [...], meta: { total, page, limit, pages } }`.
+- **Configuração Centralizada:** Criado o arquivo `frontend/src/config/pagination.ts` para gerenciar os limites padrão de forma global.
+- **Limites Adotados (Rationale):**
+  *   **Contatos (100):** Aumentado de 50 para 100 para permitir uma visão mais ampla dos leads antes da troca de página, mantendo o tempo de resposta do Hyperdrive sob controle.
+  *   **Histórico (100):** Idem aos contatos, facilitando auditorias rápidas de disparos recentes.
+  *   **Campanhas (20):** Mantido em 20 devido à complexidade visual dos cards e carregamento de metadados.
+  *   **Monitor de Fila (50):** Otimizado para permitir supervisão em tempo real de grandes lotes sem "waterfalls" excessivos de requisições.
+- **Componentização:** Implementado o componente `PaginationControls` que oferece navegação inteligente e feedback visual de progresso.
 
 ## 4. Próximos Passos
 1. **Validação Final:** Testar o login diretamente no domínio da Pages assim que o build terminar.
 2. **Limpeza Legada:** O domínio `claudio-rodrigues-seconci` pode ser desativado/ignorado.
-3. **Logs Estruturados:** Recomendado prosseguir com a implementação de logs estruturados (ex: via Logflare) para monitoramento proativo.
+3. **Monitoramento:** Recomendado prosseguir com a implementação de logs estruturados (ex: via Logflare) para monitoramento proativo.
+4. **Validação de Carga:** Realizar testes de estresse com bases acima de 50.000 contatos para validar a profundidade do OFFSET no PostgreSQL via Hyperdrive.
 
 ---
 **Status:** Estabilizado.

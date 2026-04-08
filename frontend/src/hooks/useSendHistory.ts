@@ -3,6 +3,7 @@ import type { Dispatch, SetStateAction } from 'react'
 import type { CampaignSendLog, ContactSendHistoryItem, SendHistoryItem } from '../types'
 import { apiFetch } from '../api'
 import { logError } from '../utils'
+import { DEFAULT_LIMITS } from '../config/pagination'
 
 export type UseSendHistoryOptions = {
   effectiveUserId: string | null
@@ -28,14 +29,14 @@ export function useSendHistory({ effectiveUserId }: UseSendHistoryOptions): UseS
   const [campaignSendLog, setCampaignSendLog] = useState<Record<string, CampaignSendLog>>({})
   const [sendHistory, setSendHistory] = useState<SendHistoryItem[]>([])
   const [contactSendHistory, setContactSendHistory] = useState<ContactSendHistoryItem[]>([])
-  const [pagination, setPagination] = useState({ total: 0, page: 1, limit: 50, pages: 1 })
+  const [pagination, setPagination] = useState({ total: 0, page: 1, limit: DEFAULT_LIMITS.history, pages: 1 })
 
-  const reloadContactSendHistory = useCallback(async (page = 1, limit = 50) => {
+  const reloadContactSendHistory = useCallback(async (page = 1, limit = DEFAULT_LIMITS.history) => {
     if (!effectiveUserId) {
       setCampaignSendLog({})
       setSendHistory([])
       setContactSendHistory([])
-      setPagination({ total: 0, page: 1, limit: 50, pages: 1 })
+      setPagination({ total: 0, page: 1, limit: DEFAULT_LIMITS.history, pages: 1 })
       return
     }
 
@@ -121,7 +122,7 @@ export function useSendHistory({ effectiveUserId }: UseSendHistoryOptions): UseS
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
-      void reloadContactSendHistory(1, 100)
+      void reloadContactSendHistory(1, DEFAULT_LIMITS.history)
     }, 1100)
 
     return () => {

@@ -105,12 +105,11 @@ function App() {
 
   const {
     contactsByList, reloadContacts, setContactsByList,
-    deleteContact, saveContact
+    deleteContact, saveContact, pagination: contactsPagination
   } = useContacts({ effectiveUserId, currentListId })
 
   const currentContacts = useMemo(() => contactsByList[currentListId] || [], [contactsByList, currentListId])
-
-  const { campaigns, reloadCampaigns, setCampaigns } = useCampaigns({ effectiveUserId })
+  const { campaigns, reloadCampaigns, setCampaigns, pagination: campaignsPagination } = useCampaigns({ effectiveUserId })
 
   const {
     contactSendHistory, campaignSendLog, sendHistory,
@@ -331,6 +330,8 @@ function App() {
                 onSetContactFormCep={contactsManager.setContactFormCep} onSetContactFormAddress={contactsManager.setContactFormAddress}
                 onSetContactFormCity={contactsManager.setContactFormCity} onSetContactFormRating={contactsManager.setContactFormRating}
                 onSetLastMoveMessage={showToast}
+                pagination={contactsPagination}
+                onPageChange={(p) => reloadContacts(p)}
               />
             )}
 
@@ -372,6 +373,10 @@ function App() {
                 currentUserGroupName={permissions?.groupName}
                 chat={chat}
                 instanceName={evolutionInstance}
+                pagination={campaignsPagination}
+                onPageChange={(p) => reloadCampaigns(p)}
+                newCampaignPoll={composer.newCampaignPoll}
+                onSetNewCampaignPoll={composer.setNewCampaignPoll}
               />
             )}
 

@@ -1,33 +1,52 @@
-import { useEffect, useState } from 'react'
-import type { Contact } from '../types'
+import { useEffect, useState, useCallback } from 'react'
+import type { Contact, PaginationMeta } from '../types'
 import { apiFetch } from '../api'
 import { logError } from '../utils'
+import { DEFAULT_LIMITS } from '../config/pagination'
 
 export type UseContactsOptions = {
     effectiveUserId: string | null
     currentListId: string | null
+    page?: number
+    limit?: number
 }
 
 export type UseContactsResult = {
     contactsByList: Record<string, Contact[]>
     setContactsByList: React.Dispatch<React.SetStateAction<Record<string, Contact[]>>>
-    reloadContacts: () => Promise<void>
+    pagination: PaginationMeta | null
+    reloadContacts: (p?: number, l?: number) => Promise<void>
     deleteContact: (databaseId: string) => Promise<void>
     saveContact: (contact: Partial<Contact>) => Promise<void>
     duplicateContact: (contact: Contact) => Promise<void>
 }
 
-export function useContacts({ effectiveUserId, currentListId }: UseContactsOptions): UseContactsResult {
+export function useContacts({ 
+  effectiveUserId, 
+  currentListId, 
+  page: initialPage = 1, 
+  limit: initialLimit = DEFAULT_LIMITS.contacts 
+}: UseContactsOptions): UseContactsResult {
     const [contactsByList, setContactsByList] = useState<Record<string, Contact[]>>({})
+    const [pagination, setPagination] = useState<PaginationMeta | null>(null)
+    const [currentPage, setCurrentPage] = useState(initialPage)
+    const [currentLimit, setCurrentLimit] = useState(initialLimit)
 
-    const loadContacts = async () => {
+    const loadContacts = useCallback(async (p?: number, l?: number) => {
         if (!effectiveUserId || !currentListId) return
 
-        try {
-            const data = await apiFetch(`/api/contacts?listId=${currentListId}`)
+        const pageToLoad = p ?? currentPage
+        const limitToLoad = l ?? currentLimit
 
-            const mapped: Contact[] = (data ?? []).map((row: any, index: number) => ({
-                id: index + 1,
+        try {
+            const response = await apiFetch(`/api/contacts?listId=${currentListId}&page=${pageToLoad}&limit=${limitToLoad}`)
+            
+            // O backend retorna { rows: [], meta: { ... } }
+            const rows = response.rows || []
+            const meta = response.meta || null
+
+            const mapped: Contact[] = rows.map((row: any, index: number) => ({
+                id: (pageToLoad - 1) * limitToLoad + index + 1,
                 databaseId: row.id.toString(),
                 name: row.name ?? '',
                 phone: row.phone ?? '',
@@ -37,17 +56,24 @@ export function useContacts({ effectiveUserId, currentListId }: UseContactsOptio
                 email: row.email ?? '',
                 address: row.address ?? undefined,
                 city: row.city ?? undefined,
+                labels: Array.isArray(row.labels) ? row.labels : []
             }))
 
             setContactsByList((prev) => ({
                 ...prev,
                 [currentListId]: mapped,
             }))
+            
+            if (meta) {
+              setPagination(meta)
+              setCurrentPage(meta.page)
+              setCurrentLimit(meta.limit)
+            }
         } catch (e) {
             if (e instanceof Error && e.message === 'AUTH_EXPIRED') return
             logError('contacts.load', 'Erro ao carregar contatos do backend', e)
         }
-    }
+    }, [effectiveUserId, currentListId, currentPage, currentLimit])
 
     const deleteContact = async (databaseId: string) => {
         if (!currentListId) return
@@ -78,12 +104,12 @@ export function useContacts({ effectiveUserId, currentListId }: UseContactsOptio
                 list_id: currentListId,
             }
 
-            const saved = await apiFetch(endpoint, {
+            await apiFetch(endpoint, {
                 method,
                 body: JSON.stringify(payload),
             })
 
-            await loadContacts() // Recarrega para garantir consistência (especialmente IDs locais)
+            await loadContacts()
         } catch (e) {
             logError('contacts.save', 'Erro ao salvar contato', e)
             throw e
@@ -104,12 +130,13 @@ export function useContacts({ effectiveUserId, currentListId }: UseContactsOptio
     }
 
     useEffect(() => {
-        void loadContacts()
-    }, [effectiveUserId, currentListId])
+        void loadContacts(initialPage, initialLimit)
+    }, [effectiveUserId, currentListId, initialPage, initialLimit])
 
     return {
         contactsByList,
         setContactsByList,
+        pagination,
         reloadContacts: loadContacts,
         deleteContact,
         saveContact,

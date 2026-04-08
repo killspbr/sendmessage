@@ -1,9 +1,10 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { ContactsHeader } from '../components/contacts/ContactsHeader'
 import { ContactForm } from '../components/contacts/ContactForm'
-import type { Contact, ContactList, ContactSendHistoryItem, ImportConflict } from '../types'
+import type { Contact, ContactList, ContactSendHistoryItem, ImportConflict, PaginationMeta } from '../types'
 import { normalizePhone, formatRating, BACKEND_URL } from '../utils'
 import { useChat } from '../hooks/useChat'
+import { PaginationControls } from '../components/common/PaginationControls'
 
 type ContactsPageProps = {
   // Dados
@@ -111,6 +112,12 @@ type ContactsPageProps = {
   onSetContactFormCity: (value: string) => void
   onSetContactFormRating: (value: string) => void
   onSetLastMoveMessage: (message: string) => void
+
+  // Paginação
+  pagination: PaginationMeta | null
+  onPageChange: (page: number) => void
+  loading?: boolean
+
   // Permissões (opcional)
   can?: (code: string) => boolean
   chat: ReturnType<typeof useChat>
@@ -194,6 +201,9 @@ export function ContactsPage({
   onSetContactFormCity,
   onSetContactFormRating,
   onSetLastMoveMessage,
+  pagination,
+  onPageChange,
+  loading,
   can,
   chat,
   instanceName
@@ -424,7 +434,7 @@ export function ContactsPage({
         <div className="flex items-center justify-between mb-2 gap-2">
           <div className="flex items-center gap-2">
             <span className="inline-flex items-center justify-center min-w-[80px] h-7 px-2 rounded-full bg-slate-100 text-slate-600 border border-slate-200 text-[11px] text-center">
-              {filteredContacts.length} contatos
+              {pagination?.total || filteredContacts.length} contatos
             </span>
             <button
               type="button"
@@ -666,6 +676,8 @@ export function ContactsPage({
             </tbody>
           </table>
         </div>
+
+        <PaginationControls meta={pagination} onPageChange={onPageChange} loading={loading} />
 
         {/* Preview de payload */}
         {

@@ -1,6 +1,8 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, useCallback } from 'react'
 import { apiFetch } from '../api'
-import type { Campaign } from '../types'
+import type { Campaign, PaginationMeta } from '../types'
+import { PaginationControls } from '../components/common/PaginationControls'
+import { DEFAULT_LIMITS } from '../config/pagination'
 
 type ProfSchedule = {
     id: number
@@ -212,25 +214,46 @@ export function SchedulesPage({ effectiveUserId }: SchedulesPageProps) {
     const [viewMode, setViewMode] = useState<'schedules' | 'history' | 'queue'>('schedules')
     const [historyFilter, setHistoryFilter] = useState<'all' | 'concluido' | 'cancelado' | 'erro'>('all')
 
-    const loadData = async () => {
+    // Paginação por modo
+    const [schedulesMeta, setSchedulesMeta] = useState<PaginationMeta | null>(null)
+    const [historyMeta, setHistoryMeta] = useState<PaginationMeta | null>(null)
+    const [queueMeta, setQueueMeta] = useState<PaginationMeta | null>(null)
+
+    const [schedulesPage, setSchedulesPage] = useState(1)
+    const [historyPage, setHistoryPage] = useState(1)
+    const [queuePage, setQueuePage] = useState(1)
+
+    const loadData = useCallback(async () => {
         if (!effectiveUserId) return
         setLoading(true)
         try {
+            // Ajustamos as URLs para incluir página e limite
             const [sData, hData, qData] = await Promise.all([
-                apiFetch('/api/schedules/professional'),
-                apiFetch(`/api/schedules/history?status=${historyFilter}`),
-                apiFetch('/api/queue/professional')
+                apiFetch(`/api/schedules/professional?page=${schedulesPage}&limit=${DEFAULT_LIMITS.schedules}`),
+                apiFetch(`/api/schedules/history?status=${historyFilter}&page=${historyPage}&limit=${DEFAULT_LIMITS.history}`),
+                apiFetch(`/api/queue/professional?page=${queuePage}&limit=${DEFAULT_LIMITS.contacts}`)
             ])
-            setSchedules(Array.isArray(sData.data) ? sData.data : [])
-            setHistory(Array.isArray(hData.data) ? hData.data : [])
-            setQueue(Array.isArray(qData.data) ? qData.data : [])
+            
+            // Tratamos o formato { data: [], meta: {}, server: {} } ou { rows: [], meta: {}, server: {} }
+            const sRows = sData.rows || sData.data || []
+            const hRows = hData.rows || hData.data || []
+            const qRows = qData.rows || qData.data || []
+
+            setSchedules(Array.isArray(sRows) ? sRows : [])
+            setHistory(Array.isArray(hRows) ? hRows : [])
+            setQueue(Array.isArray(qRows) ? qRows : [])
+            
+            setSchedulesMeta(sData.meta || null)
+            setHistoryMeta(hData.meta || null)
+            setQueueMeta(qData.meta || null)
+
             setServerClock(sData.server || hData.server || qData.server || null)
         } catch (e) {
             console.error('Erro ao carregar dados de agendamento profissional', e)
         } finally {
             setLoading(false)
         }
-    }
+    }, [effectiveUserId, historyFilter, schedulesPage, historyPage, queuePage])
 
     useEffect(() => {
         void loadData()
@@ -452,6 +475,7 @@ export function SchedulesPage({ effectiveUserId }: SchedulesPageProps) {
                             )
                         })
                     )}
+                    <PaginationControls meta={schedulesMeta} onPageChange={setSchedulesPage} loading={loading} />
                 </div>
             ) : viewMode === 'history' ? (
                 <div className="space-y-4">
@@ -542,6 +566,7 @@ export function SchedulesPage({ effectiveUserId }: SchedulesPageProps) {
                             })}
                         </div>
                     )}
+                    <PaginationControls meta={historyMeta} onPageChange={setHistoryPage} loading={loading} />
                 </div>
             ) : (
                 <div className="bg-white rounded-3xl border border-slate-100 overflow-hidden shadow-xl">
@@ -648,6 +673,7 @@ export function SchedulesPage({ effectiveUserId }: SchedulesPageProps) {
                             </tbody>
                         </table>
                     </div>
+                    <PaginationControls meta={queueMeta} onPageChange={setQueuePage} loading={loading} />
                 </div>
             )}
         </div>

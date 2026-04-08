@@ -1,5 +1,17 @@
 // Tipos compartilhados do sistema
 
+export type PaginationMeta = {
+  total: number
+  page: number
+  limit: number
+  pages: number
+}
+
+export type PaginatedResponse<T> = {
+  rows: T[]
+  meta: PaginationMeta
+}
+
 export type Contact = {
   id: number
   databaseId?: string

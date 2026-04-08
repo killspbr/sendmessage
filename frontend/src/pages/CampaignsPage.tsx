@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
 import { CampaignEditor } from '../components/campaigns/CampaignEditor'
 import { CampaignDeliveryComposer } from '../components/campaigns/CampaignDeliveryComposer'
-import type { Campaign, CampaignChannel, CampaignMediaItem, CampaignSharedContact, ContactList, Contact, SendHistoryItem, ContactSendHistoryItem, CampaignSendLog } from '../types'
+import { PaginationControls } from '../components/common/PaginationControls'
+import type { Campaign, CampaignChannel, CampaignMediaItem, CampaignSharedContact, ContactList, Contact, SendHistoryItem, ContactSendHistoryItem, CampaignSendLog, PaginationMeta, CampaignPoll } from '../types'
 
 type CampaignsPageProps = {
   // Dados
@@ -22,6 +23,7 @@ type CampaignsPageProps = {
   newCampaignMessage: string
   newCampaignMediaItems: CampaignMediaItem[]
   newCampaignSharedContact: CampaignSharedContact | null
+  newCampaignPoll: CampaignPoll | null
 
   // Estado de envio
   sendingCampaignId: string | null
@@ -51,6 +53,7 @@ type CampaignsPageProps = {
   onSetNewCampaignMessage: (message: string) => void
   onSetNewCampaignMediaItems: (items: CampaignMediaItem[]) => void
   onSetNewCampaignSharedContact: (contact: CampaignSharedContact | null) => void
+  onSetNewCampaignPoll: (poll: CampaignPoll | null) => void
 
   // Handlers de ações
   onCreateCampaign: () => void
@@ -96,6 +99,10 @@ type CampaignsPageProps = {
   }) => Promise<string | null>
   chat: any
   instanceName: string
+  // Paginação
+  pagination: PaginationMeta | null
+  onPageChange: (page: number) => void
+  loading?: boolean
 }
 
 function getLocalDateInputValue(date = new Date()) {
@@ -163,6 +170,7 @@ export function CampaignsPage({
   newCampaignMessage,
   newCampaignMediaItems,
   newCampaignSharedContact,
+  newCampaignPoll,
   sendingCampaignId,
   sendingCurrentIndex,
   sendingTotal,
@@ -184,6 +192,7 @@ export function CampaignsPage({
   onSetNewCampaignMessage,
   onSetNewCampaignMediaItems,
   onSetNewCampaignSharedContact,
+  onSetNewCampaignPoll,
   onCreateCampaign,
   onCancelEditCampaign,
   onStartEditCampaign,
@@ -205,7 +214,10 @@ export function CampaignsPage({
   onGenerateCampaignContentWithAI,
   onScheduleCampaign,
   chat,
-  instanceName
+  instanceName,
+  pagination,
+  onPageChange,
+  loading
 }: CampaignsPageProps) {
   const canViewCampaigns = !can || can('campaigns.view')
 
@@ -622,6 +634,8 @@ export function CampaignsPage({
                 htmlToWhatsapp={htmlToWhatsapp}
                 mediaItems={newCampaignMediaItems}
                 sharedContact={newCampaignSharedContact}
+                poll={newCampaignPoll}
+                onChangePoll={onSetNewCampaignPoll}
                 aiLoading={aiLoading}
                 onGenerateAI={
                   onGenerateCampaignContentWithAI
@@ -1131,6 +1145,7 @@ export function CampaignsPage({
                   )
                 })}
               </div>
+              <PaginationControls meta={pagination} onPageChange={onPageChange} loading={loading} />
             </div>
           ))}
         </section>
