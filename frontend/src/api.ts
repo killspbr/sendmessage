@@ -8,6 +8,8 @@ export const API_URL = import.meta.env.VITE_API_URL ||
     ? 'https://sendmessage-backend.engclrodrigues.workers.dev' 
     : 'http://localhost:4000')
 
+console.log('[API] Backend URL:', API_URL)
+
 
 // Mantemos um limite seguro, mas permissivo para não travar a UI ao trocar de telas.
 const MAX_CONCURRENT_API_REQUESTS = 25

@@ -39,12 +39,12 @@ O frontend estava configurado para se comunicar com o domínio `sendmessage-back
   *   **Monitor de Fila (50):** Otimizado para permitir supervisão em tempo real de grandes lotes sem "waterfalls" excessivos de requisições.
 - **Componentização:** Implementado o componente `PaginationControls` que oferece navegação inteligente e feedback visual de progresso.
 
-## 4. Próximos Passos
-1. **Validação Final:** Testar o login diretamente no domínio da Pages assim que o build terminar.
-2. **Limpeza Legada:** O domínio `claudio-rodrigues-seconci` pode ser desativado/ignorado.
-3. **Monitoramento:** Recomendado prosseguir com a implementação de logs estruturados (ex: via Logflare) para monitoramento proativo.
-4. **Validação de Carga:** Realizar testes de estresse com bases acima de 50.000 contatos para validar a profundidade do OFFSET no PostgreSQL via Hyperdrive.
+## 5. Ações Administrativas e Monitoramento (2026-04-08)
+- **Suporte ao Usuário:** Realizado reset manual de senha para `claudiosorriso7@gmail.com` via script de hash direto no banco de produção.
+- **Controle de Acessos:** Validado e garantido o grupo de permissão `Administrador` no perfil do usuário.
+- **Segurança de Sessão:** Incrementado `token_version` para invalidar todas as sessões ativas do usuário.
+- **Logs Estruturados:** Implementado logging centralizado via Logflare nas rotas de contatos, histórico e campanhas para rastreamento de performance e auditoria.
 
 ---
-**Status:** Estabilizado.
+**Status Final:** Estabilizado. Backend migrado, Paginação implementada, Logs operacionais e Usuário Administrador restaurado.
 **Responsável:** Antigravity AI

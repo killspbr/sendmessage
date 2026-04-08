@@ -3,6 +3,7 @@ import type { Bindings, AppVariables } from '../types'
 import { authenticateToken } from '../lib/auth'
 import { getDb } from '../lib/db'
 import { runSchemaBestEffort } from '../lib/runtimeSchema'
+import { logger } from '../lib/logger'
 
 function getAuthenticatedUserId(c: { get: (key: 'user') => { id?: string } | undefined }) {
   const user = c.get('user')
@@ -164,13 +165,12 @@ listsContactsRoutes.delete('/lists', authenticateToken, async (c) => {
 
 listsContactsRoutes.get('/contacts', authenticateToken, async (c) => {
   const userId = getAuthenticatedUserId(c)
-  try {
-    if (!userId) return c.json({ error: 'Acesso negado.' }, 401)
-    
     // Paginação: page (default 1), limit (default 100)
     const page = Math.max(1, Number(c.req.query('page') || 1))
     const limit = Math.max(1, Math.min(1000, Number(c.req.query('limit') || 100)))
-    const offset = (page - 1) * limit
+
+    try {
+      const offset = (page - 1) * limit
 
     const listId = c.req.query('listId')
     const db = getDb(c.env)
@@ -212,6 +212,8 @@ listsContactsRoutes.get('/contacts', authenticateToken, async (c) => {
       )
     }
 
+    logger.info(c.env, 'Lista de contatos carregada', { userId, page, limit, total, listId })
+
     return c.json({
       rows: contactsResult.rows,
       meta: {
@@ -227,7 +229,13 @@ listsContactsRoutes.get('/contacts', authenticateToken, async (c) => {
         ? (error as any).message
         : String(error || 'Erro interno')
     
-    console.error('[contacts.get] Falha ao carregar contatos:', technical)
+    logger.error(c.env, '[contacts.get] Falha ao carregar contatos', error, { 
+      userId, 
+      technical,
+      page,
+      limit,
+      listId: c.req.query('listId')
+    })
     
     return c.json(
       {
