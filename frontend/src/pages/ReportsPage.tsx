@@ -4,9 +4,21 @@ import type { Campaign, ContactSendHistoryItem } from '../types'
 export type ReportsPageProps = {
   campaigns: Campaign[]
   contactSendHistory: ContactSendHistoryItem[]
+  pagination?: {
+    total: number
+    page: number
+    limit: number
+    pages: number
+  }
+  onLoadPage?: (page: number) => void
 }
 
-export function ReportsPage({ campaigns, contactSendHistory }: ReportsPageProps) {
+export function ReportsPage({ 
+  campaigns, 
+  contactSendHistory,
+  pagination,
+  onLoadPage
+}: ReportsPageProps) {
   const [selectedCampaignId, setSelectedCampaignId] = useState<string | 'all'>('all')
   const [startDate, setStartDate] = useState<string>('')
   const [endDate, setEndDate] = useState<string>('')
@@ -113,7 +125,7 @@ export function ReportsPage({ campaigns, contactSendHistory }: ReportsPageProps)
       ...rows.map((cols) => cols.map((v) => {
         const safe = (v ?? '').toString().replace(/"/g, '""')
         return safe.includes(';') || safe.includes('"') || safe.includes('\n')
-          ? `"${safe}` + '"'
+          ? `"${safe}"`
           : safe
       }).join(';')),
     ]
@@ -171,7 +183,7 @@ export function ReportsPage({ campaigns, contactSendHistory }: ReportsPageProps)
       ...rows.map((cols) => cols.map((v) => {
         const safe = (v ?? '').toString().replace(/"/g, '""')
         return safe.includes(';') || safe.includes('"') || safe.includes('\n')
-          ? `"${safe}` + '"'
+          ? `"${safe}"`
           : safe
       }).join(';')),
     ]
@@ -314,26 +326,17 @@ export function ReportsPage({ campaigns, contactSendHistory }: ReportsPageProps)
                 Assim que você fizer envios reais de campanhas, os resultados aparecerão aqui com totais por campanha, erros e taxa de sucesso.
               </p>
             </div>
-            <div className="mt-1 flex flex-col gap-1.5">
-              <p className="text-[10px] font-semibold text-slate-600 uppercase tracking-wide">Próximos passos sugeridos</p>
-              <ol className="list-decimal list-inside space-y-0.5 text-[11px] text-slate-600">
-                <li>Cadastre ou importe contatos na tela <span className="font-semibold">Contatos</span>.</li>
-                <li>Crie uma campanha na tela <span className="font-semibold">Campanhas</span>, escolhendo a lista de contatos.</li>
-                <li>Dispare a campanha e aguarde a conclusão dos envios.</li>
-                <li>Volte a esta tela de <span className="font-semibold">Relatórios</span> e escolha o período para acompanhar o desempenho.</li>
-              </ol>
-            </div>
           </div>
         ) : (
           <div className="max-h-72 overflow-y-auto border border-slate-100 rounded-xl">
             <table className="w-full text-[10px]">
               <thead className="bg-slate-50 sticky top-0 z-10">
                 <tr className="text-left text-slate-500">
-                  <th className="py-1.5 px-2" title="Nome da campanha consolidada.">Campanha</th>
-                  <th className="py-1.5 px-2 text-right" title="Quantidade total de envios registrados para a campanha no período.">Envios</th>
-                  <th className="py-1.5 px-2 text-right" title="Envios com status OK.">Sucessos</th>
-                  <th className="py-1.5 px-2 text-right" title="Envios que retornaram erro.">Erros</th>
-                  <th className="py-1.5 px-2 text-right" title="Sucessos dividido pelo total de envios da campanha.">Taxa sucesso</th>
+                  <th className="py-1.5 px-2">Campanha</th>
+                  <th className="py-1.5 px-2 text-right">Envios</th>
+                  <th className="py-1.5 px-2 text-right">Sucessos</th>
+                  <th className="py-1.5 px-2 text-right">Erros</th>
+                  <th className="py-1.5 px-2 text-right">Taxa sucesso</th>
                 </tr>
               </thead>
               <tbody>
@@ -351,6 +354,31 @@ export function ReportsPage({ campaigns, contactSendHistory }: ReportsPageProps)
           </div>
         )}
       </div>
+
+      {/* Paginação */}
+      {pagination && pagination.pages > 1 && (
+        <div className="flex items-center justify-between border-t border-slate-100 pt-3 mt-1">
+          <div className="text-[10px] text-slate-500">
+            Página {pagination.page} de {pagination.pages} ({pagination.total} registros)
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              disabled={pagination.page <= 1}
+              onClick={() => onLoadPage?.(pagination.page - 1)}
+              className="px-2 py-1 rounded border border-slate-200 text-[10px] hover:bg-slate-50 disabled:opacity-50"
+            >
+              Anterior
+            </button>
+            <button
+              disabled={pagination.page >= pagination.pages}
+              onClick={() => onLoadPage?.(pagination.page + 1)}
+              className="px-2 py-1 rounded border border-slate-200 text-[10px] hover:bg-slate-50 disabled:opacity-50"
+            >
+              Próxima
+            </button>
+          </div>
+        </div>
+      )}
     </section>
   )
 }

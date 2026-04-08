@@ -3,6 +3,7 @@ import type { Bindings, AppVariables } from '../types'
 import { authenticateToken } from '../lib/auth'
 import { getDb } from '../lib/db'
 import { runSchemaBestEffort } from '../lib/runtimeSchema'
+import { logger } from '../lib/logger'
 
 function getAuthenticatedUserId(c: { get: (key: 'user') => { id?: string } | undefined }) {
   const user = c.get('user')
@@ -117,24 +118,51 @@ historyRoutes.post('/history', authenticateToken, async (c) => {
 })
 
 historyRoutes.get('/history', authenticateToken, async (c) => {
+  const userId = getAuthenticatedUserId(c)
+  if (!userId) return c.json({ error: 'Acesso negado.' }, 401)
+
+  // Paginação: page (default 1), limit (default 50)
+  const page = Math.max(1, Number(c.req.query('page') || 1))
+  const limit = Math.max(1, Math.min(200, Number(c.req.query('limit') || 50)))
+
   try {
-    const userId = getAuthenticatedUserId(c)
-    if (!userId) return c.json({ error: 'Acesso negado.' }, 401)
+    const offset = (page - 1) * limit
     const db = getDb(c.env)
     await ensureHistoryTables(db)
 
-    const result = await db.query(
-      'SELECT * FROM public.contact_send_history WHERE user_id = $1 ORDER BY run_at DESC',
+    // Busca total para metadados de paginação
+    const countRes = await db.query(
+      'SELECT COUNT(*)::int AS total FROM public.contact_send_history WHERE user_id = $1',
       [userId]
     )
+    const total = countRes.rows[0]?.total || 0
 
-    return c.json(result.rows)
+    // Busca paginada
+    const result = await db.query(
+      'SELECT * FROM public.contact_send_history WHERE user_id = $1 ORDER BY run_at DESC LIMIT $2 OFFSET $3',
+      [userId, limit, offset]
+    )
+
+    return c.json({
+      rows: result.rows,
+      meta: {
+        total,
+        page,
+        limit,
+        pages: Math.ceil(total / limit)
+      }
+    })
   } catch (error) {
     const technical =
-      typeof (error as any)?.message === 'string'
-        ? (error as any).message
-        : String(error || 'Erro interno')
-    console.error('[history.get] Falha ao carregar historico:', technical)
+      error instanceof Error ? error.message : String(error || 'Erro interno')
+    
+    logger.error(c.env, '[history.get] Falha ao carregar historico', error, { 
+      userId, 
+      technical,
+      page,
+      limit
+    })
+
     return c.json(
       {
         error: 'Erro ao carregar historico de envios.',
@@ -155,24 +183,51 @@ historyRoutes.delete('/history', authenticateToken, async (c) => {
 })
 
 historyRoutes.get('/campaigns/history', authenticateToken, async (c) => {
+  const userId = getAuthenticatedUserId(c)
+  if (!userId) return c.json({ error: 'Acesso negado.' }, 401)
+
+  // Paginação: page (default 1), limit (default 50)
+  const page = Math.max(1, Number(c.req.query('page') || 1))
+  const limit = Math.max(1, Math.min(200, Number(c.req.query('limit') || 50)))
+
   try {
-    const userId = getAuthenticatedUserId(c)
-    if (!userId) return c.json({ error: 'Acesso negado.' }, 401)
+    const offset = (page - 1) * limit
     const db = getDb(c.env)
     await ensureHistoryTables(db)
 
-    const result = await db.query(
-      'SELECT * FROM public.campaign_history WHERE user_id = $1 ORDER BY run_at DESC',
+    // Busca total para metadados de paginação
+    const countRes = await db.query(
+      'SELECT COUNT(*)::int AS total FROM public.campaign_history WHERE user_id = $1',
       [userId]
     )
+    const total = countRes.rows[0]?.total || 0
 
-    return c.json(result.rows)
+    // Busca paginada
+    const result = await db.query(
+      'SELECT * FROM public.campaign_history WHERE user_id = $1 ORDER BY run_at DESC LIMIT $2 OFFSET $3',
+      [userId, limit, offset]
+    )
+
+    return c.json({
+      rows: result.rows,
+      meta: {
+        total,
+        page,
+        limit,
+        pages: Math.ceil(total / limit)
+      }
+    })
   } catch (error) {
     const technical =
-      typeof (error as any)?.message === 'string'
-        ? (error as any).message
-        : String(error || 'Erro interno')
-    console.error('[campaigns.history.get] Falha ao carregar historico de campanhas:', technical)
+      error instanceof Error ? error.message : String(error || 'Erro interno')
+
+    logger.error(c.env, '[campaigns.history.get] Falha ao carregar historico de campanhas', error, {
+      userId,
+      technical,
+      page,
+      limit
+    })
+
     return c.json(
       {
         error: 'Erro ao carregar historico de campanhas.',

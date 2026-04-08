@@ -13,6 +13,8 @@ export type Bindings = {
   ACTIVE_USER_WINDOW_SECONDS?: string
   WARMER_CRON_ENABLED?: string
   MIGRATION_SECRET?: string
+  LOGFLARE_API_KEY?: string
+  LOGFLARE_SOURCE_TOKEN?: string
 }
 
 export type AppVariables = {

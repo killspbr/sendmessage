@@ -114,7 +114,7 @@ function App() {
 
   const {
     contactSendHistory, campaignSendLog, sendHistory,
-    reloadContactSendHistory, setContactSendHistory
+    reloadContactSendHistory, setContactSendHistory, pagination
   } = useSendHistory({ effectiveUserId })
 
   // 8. Specialized Business Logic
@@ -376,7 +376,14 @@ function App() {
             )}
 
             {currentPage === 'schedules' && <SchedulesPage campaigns={campaigns} effectiveUserId={effectiveUserId} />}
-            {currentPage === 'reports' && <ReportsPage campaigns={campaigns} contactSendHistory={contactSendHistory} />}
+            {currentPage === 'reports' && (
+              <ReportsPage 
+                campaigns={campaigns} 
+                contactSendHistory={contactSendHistory} 
+                pagination={pagination}
+                onLoadPage={(p) => reloadContactSendHistory(p, 50)}
+              />
+            )}
             {currentPage === 'profile' && (
               <UserSettingsPage 
                 effectiveUserId={effectiveUserId} 

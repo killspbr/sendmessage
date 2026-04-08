@@ -28,26 +28,28 @@ export async function hashPassword(password: string): Promise<string> {
 import bcrypt from 'bcryptjs'
 
 export async function comparePassword(password: string, stored: string): Promise<boolean> {
-  // Legacy bcrypt hash migration support
+  if (!stored) return false
   if (stored.startsWith('$2')) {
     try {
       return await bcrypt.compare(password, stored)
     } catch (err) {
-      console.error('[Passwd] Error comparing bcrypt hash:', err)
+      console.error('[Passwd] bcrypt error:', err)
       return false
     }
   }
-
-  // Format: sha256:<salt_hex>:<hash_hex>
   const parts = stored.split(':')
-  if (parts.length !== 3 || parts[0] !== 'sha256') {
-    console.warn('[Passwd] Unknown or legacy hash format, cannot verify')
-    return false
-  }
-
+  if (parts.length !== 3 || parts[0] !== 'sha256') return false
   const saltHex = parts[1]
   const expectedHash = parts[2]
-  const salt = new Uint8Array(saltHex.match(/.{1,2}/g)!.map((b: string) => parseInt(b, 16)))
-  const computed = await sha256(new TextEncoder().encode(salt.join(',') + password))
-  return computed === expectedHash
+  try {
+    const saltMatches = saltHex.match(/.{1,2}/g)
+    if (!saltMatches) return false
+    const salt = new Uint8Array(saltMatches.map((b: string) => parseInt(b, 16)))
+    const computed = await sha256(new TextEncoder().encode(salt.join(',') + password))
+    return computed === expectedHash
+  } catch (err) {
+    console.error('[Passwd] sha256 crash:', err)
+    throw err
+  }
 }
+

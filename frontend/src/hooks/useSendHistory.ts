@@ -15,27 +15,39 @@ export type UseSendHistoryResult = {
   setContactSendHistory: Dispatch<SetStateAction<ContactSendHistoryItem[]>>
   campaignSendLog: Record<string, CampaignSendLog>
   setCampaignSendLog: Dispatch<SetStateAction<Record<string, CampaignSendLog>>>
-  reloadContactSendHistory: () => Promise<void>
+  reloadContactSendHistory: (page?: number, limit?: number) => Promise<void>
+  pagination: {
+    total: number
+    page: number
+    limit: number
+    pages: number
+  }
 }
 
 export function useSendHistory({ effectiveUserId }: UseSendHistoryOptions): UseSendHistoryResult {
   const [campaignSendLog, setCampaignSendLog] = useState<Record<string, CampaignSendLog>>({})
   const [sendHistory, setSendHistory] = useState<SendHistoryItem[]>([])
   const [contactSendHistory, setContactSendHistory] = useState<ContactSendHistoryItem[]>([])
+  const [pagination, setPagination] = useState({ total: 0, page: 1, limit: 50, pages: 1 })
 
-  const reloadContactSendHistory = useCallback(async () => {
+  const reloadContactSendHistory = useCallback(async (page = 1, limit = 50) => {
     if (!effectiveUserId) {
       setCampaignSendLog({})
       setSendHistory([])
       setContactSendHistory([])
+      setPagination({ total: 0, page: 1, limit: 50, pages: 1 })
       return
     }
 
     try {
-      const data = await apiFetch('/api/history')
+      const data = await apiFetch(`/api/history?page=${page}&limit=${limit}`)
 
-      if (data) {
-        const history: ContactSendHistoryItem[] = data
+      if (data && data.rows) {
+        // Formato novo { rows, meta }
+        const { rows, meta } = data
+        setPagination(meta)
+        
+        const history: ContactSendHistoryItem[] = rows
           .map((row: any) => {
             const runAtIso = row.run_at ? new Date(row.run_at).toISOString() : ''
             const deliverySummaryRaw = row.delivery_summary
@@ -109,7 +121,7 @@ export function useSendHistory({ effectiveUserId }: UseSendHistoryOptions): UseS
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
-      void reloadContactSendHistory()
+      void reloadContactSendHistory(1, 100)
     }, 1100)
 
     return () => {
@@ -125,5 +137,6 @@ export function useSendHistory({ effectiveUserId }: UseSendHistoryOptions): UseS
     campaignSendLog,
     setCampaignSendLog,
     reloadContactSendHistory,
+    pagination,
   }
 }
