@@ -198,9 +198,23 @@ export default {
       // 2. Transmissão Hono
       const response = await app.fetch(request, env, ctx)
       
+      // 🚨 INTERCEPTAÇÃO DEFINITIVA: Se o status for 500+, forçamos 400 para manter o CORS integro no Cloudflare
+      const isError500 = response.status >= 500
+      const finalStatus = isError500 ? 400 : response.status
+      
       // 3. Clone e injeção de CORS
-      const patched = new Response(response.body, response)
+      const patched = new Response(response.body, {
+        status: finalStatus,
+        statusText: response.statusText,
+        headers: new Headers(response.headers)
+      })
+
       Object.entries(corsHeaders).forEach(([k, v]) => patched.headers.set(k, v))
+      
+      if (isError500) {
+        console.warn(`[CORS-SHIELD] Status 500 detectado e convertido para 400 em ${request.url}`)
+      }
+
       return patched
 
     } catch (err: any) {
