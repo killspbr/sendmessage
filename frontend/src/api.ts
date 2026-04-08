@@ -2,10 +2,11 @@
  * Utilitario para chamadas API ao backend proprio.
  */
 
-// Usa a URL do backend gerada pelo deploy (engclrodrigues)
-export const API_URL = import.meta.env.PROD
-    ? 'https://sendmessage-backend.engclrodrigues.workers.dev'
-    : (import.meta.env.VITE_API_URL || 'http://localhost:4000')
+// Usa a URL do backend de produção (VITE_API_URL ou fallback oficial)
+export const API_URL = import.meta.env.VITE_API_URL || 
+  (import.meta.env.PROD 
+    ? 'https://sendmessage-backend.claudio-rodrigues-seconci.workers.dev' 
+    : 'http://localhost:4000')
 
 // Mantemos um limite seguro, mas permissivo para não travar a UI ao trocar de telas.
 const MAX_CONCURRENT_API_REQUESTS = 25
