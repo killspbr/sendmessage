@@ -128,7 +128,6 @@ historyRoutes.get('/history', authenticateToken, async (c) => {
   try {
     const offset = (page - 1) * limit
     const db = getDb(c.env)
-    await ensureHistoryTables(db)
 
     // Busca total para metadados de paginação
     const countRes = await db.query(
@@ -195,7 +194,6 @@ historyRoutes.get('/campaigns/history', authenticateToken, async (c) => {
   try {
     const offset = (page - 1) * limit
     const db = getDb(c.env)
-    await ensureHistoryTables(db)
 
     // Busca total para metadados de paginação
     const countRes = await db.query(

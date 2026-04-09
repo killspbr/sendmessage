@@ -194,7 +194,7 @@ profileSettingsRoutes.get('/profile', authenticateToken, async (c) => {
   const userId = getAuthenticatedUserId(c)
   if (!userId) return c.json({ error: 'Acesso negado.' }, 401)
   const db = getDb(c.env)
-  await ensureUserProfile(userId, db)
+  // Removido ensureUserProfile redundante - o schema deve ser sincronizado via /api/admin/schema/sync
   const result = await db.query('SELECT * FROM public.user_profiles WHERE id = $1 LIMIT 1', [userId])
   return c.json(result.rows[0] || {})
 })
@@ -203,7 +203,7 @@ profileSettingsRoutes.get('/profile/full', authenticateToken, async (c) => {
   const userId = getAuthenticatedUserId(c)
   if (!userId) return c.json({ error: 'Acesso negado.' }, 401)
   const db = getDb(c.env)
-  await ensureUserProfile(userId, db)
+  
   const profile = await db.query(
     `SELECT up.*, ug.name as group_name
        FROM public.user_profiles up
@@ -224,7 +224,7 @@ profileSettingsRoutes.get('/profile/full', authenticateToken, async (c) => {
     )
     permissionsRows = permissions.rows as Array<{ code: string }>
   } catch (error) {
-    if (!isSchemaMissingError(error)) throw error
+    console.warn('[Profile.Full] Falha ao ler permissoes (schema incompleto?):', error)
   }
 
   return c.json({

@@ -49,6 +49,8 @@ export function usePresence({ currentUserId, currentPage, canAdminUsers }: UsePr
       }
     }
 
+    // Pooling desativado temporariamente para estabilização do backend
+    /*
     const initialTimer = setTimeout(() => {
       void sendHeartbeat()
     }, 2000)
@@ -60,6 +62,7 @@ export function usePresence({ currentUserId, currentPage, canAdminUsers }: UsePr
       clearTimeout(initialTimer)
       clearInterval(interval)
     }
+    */
   }, [currentUserId, currentPage])
 
   // Admin: active users polling
@@ -79,11 +82,14 @@ export function usePresence({ currentUserId, currentPage, canAdminUsers }: UsePr
     }
 
     void loadActiveUserPresence()
+    // Polling desativado temporariamente
+    /*
     const interval = setInterval(() => {
       void loadActiveUserPresence()
     }, 30000)
 
     return () => clearInterval(interval)
+    */
   }, [currentUserId, currentPage, canAdminUsers])
 
   // Admin: warmer status polling
@@ -103,11 +109,14 @@ export function usePresence({ currentUserId, currentPage, canAdminUsers }: UsePr
     }
 
     void loadWarmerStatus()
+    // Polling desativado temporariamente
+    /*
     const interval = setInterval(() => {
       void loadWarmerStatus()
     }, 45000)
 
     return () => clearInterval(interval)
+    */
   }, [currentUserId, currentPage, canAdminUsers])
 
   return {
