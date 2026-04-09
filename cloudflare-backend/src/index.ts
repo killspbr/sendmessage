@@ -88,14 +88,11 @@ app.onError((err, c) => {
 export default {
   async fetch(request: Request, env: Bindings, ctx: ExecutionContext): Promise<Response> {
     const origin = request.headers.get('Origin') || '*'
-    
-    // Configura headers padrão de erro/fallback
     const standardHeaders = {
       'Access-Control-Allow-Origin': origin,
       'Access-Control-Allow-Credentials': 'true',
       'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS, PATCH',
       'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With, Accept, X-Version, Origin',
-      'Content-Type': 'application/json'
     }
 
     if (request.method === 'OPTIONS') {
@@ -105,41 +102,44 @@ export default {
     try {
       const response = await app.fetch(request, env, ctx)
       
-      // Injeção forçada mesmo se o Hono retornar erro
-      const newHeaders = new Headers(response.headers)
-      newHeaders.set('Access-Control-Allow-Origin', origin)
-      newHeaders.set('Access-Control-Allow-Credentials', 'true')
+      // Se deu erro ou falta CORS, clonamos a resposta com headers corrigidos
+      const isError = response.status >= 400
+      const hasCors = response.headers.has('Access-Control-Allow-Origin')
+
+      if (hasCors && !isError) return response
+
+      // Para erros ou falta de CORS, montamos uma resposta LIMPA
+      const status = response.status
+      let body: any = response.body
+      const headers = new Headers(response.headers)
       
-      // Se for 500 sem corpo JSON, convertemos para JSON
-      const contentType = response.headers.get('content-type') || ''
-      if (response.status >= 500 && !contentType.includes('json')) {
-        return new Response(JSON.stringify({ 
-          error: 'Erro interno no backend.', 
-          status: response.status 
-        }), {
-          status: response.status,
-          headers: { ...standardHeaders, 'Content-Type': 'application/json' }
-        })
+      // Injeção forçada
+      headers.set('Access-Control-Allow-Origin', origin)
+      headers.set('Access-Control-Allow-Credentials', 'true')
+      headers.set('Content-Type', 'application/json')
+
+      // Se for erro, tentamos ler o corpo original ou mandamos um fallback
+      if (isError) {
+        try {
+          const originalBody = await response.json()
+          body = JSON.stringify(originalBody)
+        } catch {
+          body = JSON.stringify({ error: 'Erro interno no backend', status })
+        }
       }
 
-      return new Response(response.body, {
-        status: response.status,
-        statusText: response.statusText,
-        headers: newHeaders
-      })
+      return new Response(body, { status, headers })
     } catch (err: any) {
       console.error('[Critical-Edge-Panic]', err)
       return new Response(JSON.stringify({ 
-        error: 'Critical Server Failure (Edge)', 
-        technical: err.message,
-        path: new URL(request.url).pathname
+        error: 'Critical Error', 
+        technical: err.message 
       }), {
         status: 500,
-        headers: standardHeaders
+        headers: { ...standardHeaders, 'Content-Type': 'application/json' }
       })
     }
   },
-
   async scheduled(event: any, env: Bindings, ctx: ExecutionContext) {
     if (String(env.WARMER_CRON_ENABLED || '').trim().toLowerCase() !== 'true') return
     try {

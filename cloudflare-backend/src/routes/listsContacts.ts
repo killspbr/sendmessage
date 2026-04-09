@@ -167,19 +167,13 @@ listsContactsRoutes.get('/contacts', authenticateToken, async (c) => {
   const userId = getAuthenticatedUserId(c)
   if (!userId) return c.json({ error: 'Acesso negado.' }, 401)
 
-  const page = Math.max(1, Number(c.req.query('page') || 1))
-  const limit = Math.max(1, Math.min(1000, Number(c.req.query('limit') || 100)))
+  const page = Math.max(1, parseInt(c.req.query('page') || '1'))
+  const limit = Math.max(1, Math.min(1000, parseInt(c.req.query('limit') || '100')))
   const listId = c.req.query('listId')
   const offset = (page - 1) * limit
 
   try {
     const db = getDb(c.env)
-    
-    // Garantir que a tabela existe antes de consultar
-    try {
-      await ensureListsAndContactsTables(db)
-    } catch { /* ignora */ }
-
     let total = 0
     let contactsResult
 
@@ -208,7 +202,7 @@ listsContactsRoutes.get('/contacts', authenticateToken, async (c) => {
     }
 
     return c.json({
-      rows: contactsResult.rows,
+      rows: contactsResult.rows || [],
       meta: {
         total,
         page,
@@ -217,7 +211,7 @@ listsContactsRoutes.get('/contacts', authenticateToken, async (c) => {
       }
     })
   } catch (error: any) {
-    console.error('[Contacts.get] Erro Crítico:', error.message)
+    console.error('[Contacts.get] Fatal:', error.message)
     return c.json({ 
       error: 'Erro ao carregar contatos.', 
       technical: error.message 
