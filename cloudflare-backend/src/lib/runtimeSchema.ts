@@ -1,4 +1,4 @@
-const ENABLE_RUNTIME_SCHEMA_ENSURE = true
+const ENABLE_RUNTIME_SCHEMA_ENSURE = false
 
 export function isSkippableRuntimeSchemaError(error: unknown) {
   const message = String((error as any)?.message || error || '').toLowerCase()

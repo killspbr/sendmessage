@@ -6,31 +6,33 @@ import { getDb } from '../lib/db'
 export const presenceRoutes = new Hono<{ Bindings: Bindings; Variables: AppVariables }>()
 
 presenceRoutes.post('/auth/presence', authenticateToken, async (c) => {
-  const body = await c.req.json().catch(() => ({} as any))
-  const sessionId = String(body?.sessionId || '').trim()
-  const currentPage = String(body?.currentPage || '').trim()
-  const user = c.get('user')
-
-  if (!sessionId || !user?.id) {
-    return c.json({ error: 'sessionId e obrigatorio.' }, 400)
-  }
-
   try {
-    const db = getDb(c.env)
-    await db.query(
-      `INSERT INTO public.active_user_sessions (session_id, user_id, current_page, user_agent, last_seen_at)
-       VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)
-       ON CONFLICT (session_id) DO UPDATE SET
-         user_id = EXCLUDED.user_id,
-         current_page = EXCLUDED.current_page,
-         user_agent = EXCLUDED.user_agent,
-         last_seen_at = CURRENT_TIMESTAMP`,
-      [sessionId, user.id, currentPage || null, c.req.header('user-agent') || null]
-    )
+    const body = await c.req.json().catch(() => ({} as any))
+    const sessionId = String(body?.sessionId || '').trim()
+    const currentPage = String(body?.currentPage || '').trim()
+    const user = c.get('user')
 
-    await db.query(`DELETE FROM public.active_user_sessions WHERE last_seen_at < CURRENT_TIMESTAMP - INTERVAL '1 day'`)
-  } catch {
-    // Se tabela nao existe ou DB falha, ignora — nao é critico
+    if (sessionId && user?.id) {
+      const db = getDb(c.env)
+      // Execução em background/fogo-e-esqueça para não atrasar o response
+      void db.query(
+        `INSERT INTO public.active_user_sessions (session_id, user_id, current_page, user_agent, last_seen_at)
+         VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)
+         ON CONFLICT (session_id) DO UPDATE SET
+           user_id = EXCLUDED.user_id,
+           current_page = EXCLUDED.current_page,
+           user_agent = EXCLUDED.user_agent,
+           last_seen_at = CURRENT_TIMESTAMP`,
+        [sessionId, user.id, currentPage || null, c.req.header('user-agent') || null]
+      ).catch(() => {})
+      
+      // Limpeza ocasional (1% das requisições)
+      if (Math.random() < 0.01) {
+        void db.query(`DELETE FROM public.active_user_sessions WHERE last_seen_at < CURRENT_TIMESTAMP - INTERVAL '1 day'`).catch(() => {})
+      }
+    }
+  } catch (err) {
+    // Silencio absoluto - presença não deve quebrar o sistema
   }
 
   return c.json({ ok: true })

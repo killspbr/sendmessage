@@ -202,35 +202,46 @@ profileSettingsRoutes.get('/profile', authenticateToken, async (c) => {
 profileSettingsRoutes.get('/profile/full', authenticateToken, async (c) => {
   const userId = getAuthenticatedUserId(c)
   if (!userId) return c.json({ error: 'Acesso negado.' }, 401)
-  const db = getDb(c.env)
   
-  const profile = await db.query(
-    `SELECT up.*, ug.name as group_name
-       FROM public.user_profiles up
-       LEFT JOIN public.user_groups ug ON up.group_id = ug.id
-      WHERE up.id = $1
-      LIMIT 1`,
-    [userId]
-  )
-  let permissionsRows: Array<{ code: string }> = []
   try {
-    const permissions = await db.query(
-      `SELECT p.code
+    const db = getDb(c.env)
+    
+    // Busca profile básico
+    const profileRes = await db.query(
+      `SELECT up.*, ug.name as group_name
          FROM public.user_profiles up
-         JOIN public.group_permissions gp ON up.group_id = gp.group_id
-         JOIN public.permissions p ON gp.permission_id = p.id
-        WHERE up.id = $1`,
+         LEFT JOIN public.user_groups ug ON up.group_id = ug.id
+        WHERE up.id = $1
+        LIMIT 1`,
       [userId]
     )
-    permissionsRows = permissions.rows as Array<{ code: string }>
-  } catch (error) {
-    console.warn('[Profile.Full] Falha ao ler permissoes (schema incompleto?):', error)
-  }
+    
+    const profile = profileRes.rows[0] || { id: userId }
 
-  return c.json({
-    ...(profile.rows[0] || {}),
-    permission_codes: permissionsRows.map((row) => row.code),
-  })
+    // Busca permissões com tratamento de erro
+    let permission_codes: string[] = []
+    try {
+      const permsRes = await db.query(
+        `SELECT p.code
+           FROM public.group_permissions gp
+           JOIN public.permissions p ON gp.permission_id = p.id
+           JOIN public.user_profiles up ON up.group_id = gp.group_id
+          WHERE up.id = $1`,
+        [userId]
+      )
+      permission_codes = permsRes.rows.map(r => r.code)
+    } catch (e) {
+      console.warn('[Profile.full] Falha ao carregar permissoes:', (e as any).message)
+    }
+
+    return c.json({
+      ...profile,
+      permission_codes
+    })
+  } catch (error: any) {
+    console.error('[Profile.full] Erro crítico:', error.message)
+    return c.json({ error: 'Erro ao carregar perfil completo.', technical: error.message }, 500)
+  }
 })
 
 profileSettingsRoutes.get('/profile/limits', authenticateToken, async (c) => {

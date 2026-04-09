@@ -96,13 +96,13 @@ authRoutes.post('/auth/signup', async (c) => {
     const userCount = await db.query('SELECT COUNT(*)::int AS total FROM public.users')
     const isFirstUser = Number(userCount.rows[0]?.total || 0) === 1
 
-    if (isFirstUser) {
-      const adminGroup = await db.query(`SELECT id FROM public.user_groups WHERE name = 'Administrador' LIMIT 1`)
-      if (adminGroup.rows[0]?.id) {
-        await db.query('INSERT INTO public.user_profiles (id, group_id) VALUES ($1, $2) ON CONFLICT (id) DO NOTHING', [user.id, adminGroup.rows[0].id])
-      } else {
-        await db.query('INSERT INTO public.user_profiles (id) VALUES ($1) ON CONFLICT (id) DO NOTHING', [user.id])
-      }
+    const adminGroup = await db.query(`SELECT id FROM public.user_groups WHERE name = 'Administrador' LIMIT 1`)
+    const userGroup = await db.query(`SELECT id FROM public.user_groups WHERE name = 'Usuário' LIMIT 1`)
+    
+    if (isFirstUser && adminGroup.rows[0]?.id) {
+      await db.query('INSERT INTO public.user_profiles (id, group_id) VALUES ($1, $2) ON CONFLICT (id) DO NOTHING', [user.id, adminGroup.rows[0].id])
+    } else if (userGroup.rows[0]?.id) {
+      await db.query('INSERT INTO public.user_profiles (id, group_id) VALUES ($1, $2) ON CONFLICT (id) DO NOTHING', [user.id, userGroup.rows[0].id])
     } else {
       await db.query('INSERT INTO public.user_profiles (id) VALUES ($1) ON CONFLICT (id) DO NOTHING', [user.id])
     }

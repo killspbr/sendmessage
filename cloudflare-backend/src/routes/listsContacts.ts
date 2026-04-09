@@ -165,21 +165,25 @@ listsContactsRoutes.delete('/lists', authenticateToken, async (c) => {
 
 listsContactsRoutes.get('/contacts', authenticateToken, async (c) => {
   const userId = getAuthenticatedUserId(c)
-    // Paginação: page (default 1), limit (default 100)
-    const page = Math.max(1, Number(c.req.query('page') || 1))
-    const limit = Math.max(1, Math.min(1000, Number(c.req.query('limit') || 100)))
+  if (!userId) return c.json({ error: 'Acesso negado.' }, 401)
 
-    try {
-      const offset = (page - 1) * limit
+  const page = Math.max(1, Number(c.req.query('page') || 1))
+  const limit = Math.max(1, Math.min(1000, Number(c.req.query('limit') || 100)))
+  const listId = c.req.query('listId')
+  const offset = (page - 1) * limit
 
-    const listId = c.req.query('listId')
+  try {
     const db = getDb(c.env)
-    await ensureListsAndContactsTables(db)
+    
+    // Garantir que a tabela existe antes de consultar
+    try {
+      await ensureListsAndContactsTables(db)
+    } catch { /* ignora */ }
 
     let total = 0
     let contactsResult
 
-    if (listId) {
+    if (listId && listId !== 'undefined' && listId !== 'null') {
       const countRes = await db.query(
         'SELECT COUNT(*)::int AS total FROM public.contacts WHERE user_id = $1 AND list_id = $2',
         [userId, listId]
@@ -187,12 +191,7 @@ listsContactsRoutes.get('/contacts', authenticateToken, async (c) => {
       total = countRes.rows[0]?.total || 0
 
       contactsResult = await db.query(
-        `SELECT *
-           FROM public.contacts
-          WHERE user_id = $1
-            AND list_id = $2
-          ORDER BY name ASC
-          LIMIT $3 OFFSET $4`,
+        `SELECT * FROM public.contacts WHERE user_id = $1 AND list_id = $2 ORDER BY name ASC LIMIT $3::int OFFSET $4::int`,
         [userId, listId, limit, offset]
       )
     } else {
@@ -203,16 +202,10 @@ listsContactsRoutes.get('/contacts', authenticateToken, async (c) => {
       total = countRes.rows[0]?.total || 0
 
       contactsResult = await db.query(
-        `SELECT *
-           FROM public.contacts
-          WHERE user_id = $1
-          ORDER BY name ASC
-          LIMIT $2 OFFSET $3`,
+        `SELECT * FROM public.contacts WHERE user_id = $1 ORDER BY name ASC LIMIT $2::int OFFSET $3::int`,
         [userId, limit, offset]
       )
     }
-
-    logger.info(c.env, 'Lista de contatos carregada', { userId, page, limit, total, listId })
 
     return c.json({
       rows: contactsResult.rows,
@@ -220,30 +213,15 @@ listsContactsRoutes.get('/contacts', authenticateToken, async (c) => {
         total,
         page,
         limit,
-        pages: Math.ceil(total / limit)
+        pages: Math.ceil(total / (limit || 1))
       }
     })
-  } catch (error) {
-    const technical =
-      typeof (error as any)?.message === 'string'
-        ? (error as any).message
-        : String(error || 'Erro interno')
-    
-    logger.error(c.env, '[contacts.get] Falha ao carregar contatos', error, { 
-      userId, 
-      technical,
-      page,
-      limit,
-      listId: c.req.query('listId')
-    })
-    
-    return c.json(
-      {
-        error: 'Erro ao carregar contatos.',
-        technical,
-      },
-      500
-    )
+  } catch (error: any) {
+    console.error('[Contacts.get] Erro Crítico:', error.message)
+    return c.json({ 
+      error: 'Erro ao carregar contatos.', 
+      technical: error.message 
+    }, 500)
   }
 })
 

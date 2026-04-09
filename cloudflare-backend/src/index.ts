@@ -29,7 +29,6 @@ const app = new Hono<{ Bindings: Bindings; Variables: AppVariables }>()
 app.use('*', cors({
   origin: (origin) => {
     if (!origin) return '*'
-    // Permite domínios de produção, preview e localhost
     if (origin.includes('pages.dev') || origin.includes('localhost') || origin.includes('127.0.0.1')) return origin
     return '*'
   },
@@ -40,22 +39,17 @@ app.use('*', cors({
   credentials: true,
 }))
 
-// Responder OPTIONS imediatamente para evitar que gaste recursos de banco ou tokens
+// Responder OPTIONS imediatamente
 app.options('*', (c) => c.text('', 204))
 
-// 2. MIDDLEWARE DE INJEÇÃO DE BANCO (Somente para rotas /api/* que não sejam OPTIONS)
+// 2. MIDDLEWARE DE INJEÇÃO DE BANCO
 app.use('/api/*', async (c, next) => {
   if (c.req.method === 'OPTIONS') return next()
-  try {
-    c.set('db', getDb(c.env))
-    await next()
-  } catch (err: any) {
-    console.error('[Middleware-Panic]', err.message)
-    return c.json({ error: 'Erro de conexão com o banco.', technical: err.message }, 503)
-  }
+  c.set('db', getDb(c.env))
+  await next()
 })
 
-// Registro de Rotas
+// Registro de Rotas (vão aqui todas as rotas omitidas para brevidade no diff, mas mantendo a estrutura)
 app.route('/api', healthRoutes)
 app.route('/api', statusRoutes)
 app.route('/api', authRoutes)
@@ -78,34 +72,56 @@ app.route('/api/chat', chatRoutes)
 app.route('/api/webhooks', webhookRoutes)
 
 app.onError((err, c) => {
+  const origin = c.req.header('Origin') || '*'
   console.error(`[Global-Error] [${c.req.method}] ${c.req.path}:`, err)
-  // Stack trace no log para debug real com wrangler tail
-  if (err.stack) console.error(err.stack)
   
   return c.json({ 
     error: 'Erro interno no servidor.', 
     technical: err.message,
     path: c.req.path
-  }, 500)
+  }, 500, {
+    'Access-Control-Allow-Origin': origin,
+    'Access-Control-Allow-Credentials': 'true'
+  })
 })
 
 export default {
   async fetch(request: Request, env: Bindings, ctx: ExecutionContext): Promise<Response> {
     const origin = request.headers.get('Origin') || '*'
     
+    // Configura headers padrão de erro/fallback
+    const standardHeaders = {
+      'Access-Control-Allow-Origin': origin,
+      'Access-Control-Allow-Credentials': 'true',
+      'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS, PATCH',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With, Accept, X-Version, Origin',
+      'Content-Type': 'application/json'
+    }
+
+    if (request.method === 'OPTIONS') {
+      return new Response(null, { status: 204, headers: standardHeaders })
+    }
+
     try {
       const response = await app.fetch(request, env, ctx)
       
-      // Criamos uma nova resposta para garantir que os headers de CORS estejam presentes
-      // mesmo que o Hono tenha falhado ou o middleware não tenha rodado
+      // Injeção forçada mesmo se o Hono retornar erro
       const newHeaders = new Headers(response.headers)
-      
-      // Injeção forçada de CORS para evitar que o navegador bloqueie o erro real
       newHeaders.set('Access-Control-Allow-Origin', origin)
       newHeaders.set('Access-Control-Allow-Credentials', 'true')
-      newHeaders.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH')
-      newHeaders.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, X-Version, Origin')
       
+      // Se for 500 sem corpo JSON, convertemos para JSON
+      const contentType = response.headers.get('content-type') || ''
+      if (response.status >= 500 && !contentType.includes('json')) {
+        return new Response(JSON.stringify({ 
+          error: 'Erro interno no backend.', 
+          status: response.status 
+        }), {
+          status: response.status,
+          headers: { ...standardHeaders, 'Content-Type': 'application/json' }
+        })
+      }
+
       return new Response(response.body, {
         status: response.status,
         statusText: response.statusText,
@@ -114,16 +130,12 @@ export default {
     } catch (err: any) {
       console.error('[Critical-Edge-Panic]', err)
       return new Response(JSON.stringify({ 
-        error: 'Critical Panic Failure', 
+        error: 'Critical Server Failure (Edge)', 
         technical: err.message,
-        stack: err.stack
+        path: new URL(request.url).pathname
       }), {
         status: 500,
-        headers: { 
-           'Content-Type': 'application/json',
-           'Access-Control-Allow-Origin': origin,
-           'Access-Control-Allow-Credentials': 'true'
-        }
+        headers: standardHeaders
       })
     }
   },
